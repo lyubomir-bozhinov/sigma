@@ -1,0 +1,40 @@
+{
+  "name": "sigma",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "prettier --check .",
+    "format": "prettier --write .",
+    "setup": "node scripts/setup.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "bootstrap:apply": "node scripts/bootstrap.mjs --apply",
+    "deploy": "turbo run deploy",
+    "teardown": "node scripts/teardown.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260521.1",
+    "@types/node": "^25.9.1",
+    "prettier": "^3.8.3",
+    "turbo": "^2.9.14",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7",
+    "wrangler": "^4.93.1",
+    "xlsx": "^0.18.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd",
+      "sharp"
+    ]
+  }
+}
