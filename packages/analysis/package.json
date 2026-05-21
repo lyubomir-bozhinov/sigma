@@ -1,0 +1,17 @@
+{
+  "name": "@sigma/analysis",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sigma/config": "workspace:*",
+    "@sigma/shared": "workspace:*"
+  }
+}
