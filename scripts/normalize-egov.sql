@@ -159,12 +159,15 @@ GROUP BY bidder_key;
 --                 | 'review'         10–100× estimate (kept, but flagged)
 --                 | 'ok'
 --    `amount` is the as-recorded display value (current_value when an annex legitimately raised it,
---    else signing; signing for annex_suspect). `amount_bgn` is the SAFE-TO-SUM canonical value:
---    EUR→BGN at the fixed 1.95583, NULL for value_suspect and unconvertible foreign currencies.
+--    else signing; signing for annex_suspect). `amount_eur` is the SAFE-TO-SUM canonical value:
+--    BGN→EUR at the fixed peg (÷1.95583), EUR as-is, foreign at the signing-date ECB rate (fx_rates);
+--    NULL for value_suspect and any foreign row missing a rate. fx_converted = 1 for foreign rows, and
+--    fx_rate carries the applied rate on the row (amount * fx_rate = amount_eur), so the original value,
+--    the rate, and the EUR value are all auditable without joining fx_rates.
 INSERT OR IGNORE INTO contracts
   (id, tender_id, bidder_id, amount, currency, signed_at,
    contract_number, signing_value, current_value, annex_count, eu_funded, bids_received,
-   contract_kind, awarded_to_group, value_flag, amount_bgn)
+   contract_kind, awarded_to_group, value_flag, amount_eur, fx_converted, fx_rate)
 SELECT
   'c:' || x.id,
   't:' || x.unp,
@@ -181,11 +184,16 @@ SELECT
   x.contract_kind,
   x.awarded_to_group,
   x.value_flag,
-  CASE COALESCE(x.currency, 'BGN')
-    WHEN 'BGN' THEN x.trusted_native
-    WHEN 'EUR' THEN x.trusted_native * 1.95583
-    ELSE NULL
-  END
+  CASE
+    WHEN x.trusted_native IS NULL THEN NULL
+    WHEN COALESCE(x.currency, 'BGN') = 'EUR' THEN x.trusted_native
+    WHEN COALESCE(x.currency, 'BGN') = 'BGN' THEN x.trusted_native / 1.95583
+    ELSE x.trusted_native * (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = x.currency AND f.rate_date = x.contract_date)
+  END,
+  CASE WHEN COALESCE(x.currency, 'BGN') NOT IN ('BGN', 'EUR') THEN 1 ELSE 0 END,
+  CASE WHEN COALESCE(x.currency, 'BGN') NOT IN ('BGN', 'EUR')
+    THEN (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = x.currency AND f.rate_date = x.contract_date)
+    ELSE NULL END
 FROM (
   SELECT y.*,
     CASE y.value_flag
@@ -228,4 +236,5 @@ SELECT
   (SELECT COUNT(*) FROM contracts WHERE value_flag = 'value_suspect') AS value_suspect,
   (SELECT COUNT(*) FROM contracts WHERE value_flag = 'annex_suspect') AS annex_suspect,
   (SELECT COUNT(*) FROM contracts WHERE value_flag = 'review')    AS review,
-  (SELECT ROUND(SUM(amount_bgn) / 1e9, 2) FROM contracts)        AS clean_total_bn;
+  (SELECT COUNT(*) FROM contracts WHERE fx_converted = 1)         AS fx_converted,
+  (SELECT ROUND(SUM(amount_eur) / 1e9, 2) FROM contracts)        AS clean_total_eur_bn;
