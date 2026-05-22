@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Сигма — Платформа за прозрачни възлагания</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="index.html" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="#" aria-current="page">Начало</a>
+        <a href="authority.html">Институции</a>
+        <a href="company.html">Компании</a>
+        <a href="#">Договори</a>
+        <a href="flows.html">Потоци</a>
+        <a href="#">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене">
+        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <section class="page-header">
+      <p class="kicker">Обществени поръчки в България · открити данни</p>
+      <h1>Къде отиват парите на държавата и общините?</h1>
+      <p class="lede">
+        Сигма показва кой какво купува от държавата и на кого плаща, в две сектора —
+        строителство и храни. Без регистрация, без интерпретация. Всяко число може да бъде
+        проследено до конкретния договор.
+      </p>
+
+      <form class="hero-search" role="search">
+        <input type="search" placeholder="Напр. „Община Благоевград“, „Главболгарстрой“, „00097-2020-0001“" aria-label="Търсене" />
+        <button type="submit">Намери</button>
+      </form>
+      <p class="hero-hints">
+        Можеш да въведеш:
+        <code>име на институция</code>
+        <code>име или ЕИК на компания</code>
+        <code>предмет на договор</code>
+        <code>УНП</code>
+      </p>
+    </section>
+
+    <dl class="totals" aria-label="Обзор на данните">
+      <div class="cell"><span class="num">129 134</span><span class="label">Договора и обособени позиции</span></div>
+      <div class="cell"><span class="num">47,8 млрд. лв.</span><span class="label">Обща стойност при подписване</span></div>
+      <div class="cell"><span class="num">2 851</span><span class="label">Институции възложители</span></div>
+      <div class="cell"><span class="num">14 209</span><span class="label">Компании изпълнители</span></div>
+    </dl>
+
+    <section class="section" aria-labelledby="find-yours">
+      <h2 id="find-yours">Намери своята институция</h2>
+      <p class="section-hint">
+        Започни оттук, ако те интересува конкретно министерство, община, агенция или болница.
+        Списъкът показва най-големите по обем на поръчките през 2020–2024 г.
+      </p>
+
+      <div class="two-col">
+        <div>
+          <p class="subhead">Министерства и централни ведомства</p>
+          <div class="muni-grid">
+            <a href="authority.html">Министерство на регионалното развитие <span class="num">4,1 млрд. лв.</span></a>
+            <a href="authority.html">Агенция „Пътна инфраструктура" <span class="num">3,7 млрд. лв.</span></a>
+            <a href="authority.html">Министерство на транспорта <span class="num">2,2 млрд. лв.</span></a>
+            <a href="authority.html">НКЖИ <span class="num">1,9 млрд. лв.</span></a>
+            <a href="authority.html">Министерство на здравеопазването <span class="num">980 млн. лв.</span></a>
+            <a href="authority.html">Министерство на младежта и спорта <span class="num">412 млн. лв.</span></a>
+          </div>
+        </div>
+        <div>
+          <p class="subhead">Общини</p>
+          <div class="muni-grid">
+            <a href="authority.html">Столична община <span class="num">2,8 млрд. лв.</span></a>
+            <a href="authority.html">Община Пловдив <span class="num">740 млн. лв.</span></a>
+            <a href="authority.html">Община Варна <span class="num">612 млн. лв.</span></a>
+            <a href="authority.html">Община Бургас <span class="num">498 млн. лв.</span></a>
+            <a href="authority.html">Община Стара Загора <span class="num">352 млн. лв.</span></a>
+            <a href="authority.html">Община Благоевград <span class="num">214 млн. лв.</span></a>
+          </div>
+          <p class="small muted" style="margin-top:8px;">
+            <a href="#">Виж пълния списък на 265 общини →</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="top-bene">
+      <h2 id="top-bene">Топ 10 печеливши компании</h2>
+      <p class="section-hint">
+        Компании, наредени по обща стойност на спечелените договори, 2020–2024.
+        <a href="company.html">Виж пълния списък →</a>
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Компания</th>
+            <th scope="col" class="num">Спечелени</th>
+            <th scope="col" class="num">Договори</th>
+            <th scope="col" class="num">Институции</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rank">1</td>
+            <td><a href="company.html">ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД</a><br><span class="small muted">ЕИК 130928907 · строителство</span></td>
+            <td class="money">1,87 млрд. лв.<span class="sub">957 млн. €</span></td>
+            <td class="money">214</td>
+            <td class="money">38</td>
+          </tr>
+          <tr>
+            <td class="rank">2</td>
+            <td><a href="company.html">ТРЕЙС ГРУП ХОЛД АД</a><br><span class="small muted">ЕИК 123682269 · строителство</span></td>
+            <td class="money">1,42 млрд. лв.<span class="sub">726 млн. €</span></td>
+            <td class="money">187</td>
+            <td class="money">47</td>
+          </tr>
+          <tr>
+            <td class="rank">3</td>
+            <td><a href="company.html">ХИДРОСТРОЙ АД</a><br><span class="small muted">ЕИК 121273739 · строителство</span></td>
+            <td class="money">1,18 млрд. лв.<span class="sub">604 млн. €</span></td>
+            <td class="money">163</td>
+            <td class="money">29</td>
+          </tr>
+          <tr>
+            <td class="rank">4</td>
+            <td><a href="company.html">ДЖИ ПИ ГРУП АД</a><br><span class="small muted">ЕИК 175327028 · строителство</span></td>
+            <td class="money">894 млн. лв.<span class="sub">457 млн. €</span></td>
+            <td class="money">128</td>
+            <td class="money">22</td>
+          </tr>
+          <tr>
+            <td class="rank">5</td>
+            <td><a href="company.html">АВТОМАГИСТРАЛИ — ЧЕРНО МОРЕ АД</a><br><span class="small muted">ЕИК 814190577 · строителство</span></td>
+            <td class="money">812 млн. лв.<span class="sub">415 млн. €</span></td>
+            <td class="money">41</td>
+            <td class="money">7</td>
+          </tr>
+          <tr>
+            <td class="rank">6</td>
+            <td><a href="company.html">ПОНССТРОЙИНЖЕНЕРИНГ ЕАД</a><br><span class="small muted">ЕИК 130081393 · строителство</span></td>
+            <td class="money">684 млн. лв.<span class="sub">350 млн. €</span></td>
+            <td class="money">156</td>
+            <td class="money">33</td>
+          </tr>
+          <tr>
+            <td class="rank">7</td>
+            <td><a href="company.html">ГЕОСТРОЙ АД</a><br><span class="small muted">ЕИК 121849078 · строителство</span></td>
+            <td class="money">521 млн. лв.<span class="sub">266 млн. €</span></td>
+            <td class="money">98</td>
+            <td class="money">19</td>
+          </tr>
+          <tr>
+            <td class="rank">8</td>
+            <td><a href="company.html">ЕВРО МИЙТ ЕНД МИЛК ЕООД</a><br><span class="small muted">ЕИК 101658372 · храни</span></td>
+            <td class="money">312 млн. лв.<span class="sub">159 млн. €</span></td>
+            <td class="money">442</td>
+            <td class="money">187</td>
+          </tr>
+          <tr>
+            <td class="rank">9</td>
+            <td><a href="company.html">ИНЖСТРОЙИНЖЕНЕРИНГ ЕООД</a><br><span class="small muted">ЕИК 175027727 · строителство</span></td>
+            <td class="money">287 млн. лв.<span class="sub">147 млн. €</span></td>
+            <td class="money">74</td>
+            <td class="money">14</td>
+          </tr>
+          <tr>
+            <td class="rank">10</td>
+            <td><a href="company.html">СВИНЕКОМПЛЕКС НИКОЛОВО АД</a><br><span class="small muted">ЕИК 117001599 · храни</span></td>
+            <td class="money">198 млн. лв.<span class="sub">101 млн. €</span></td>
+            <td class="money">312</td>
+            <td class="money">143</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section" aria-labelledby="how">
+      <h2 id="how">Как се чете тази платформа</h2>
+      <div class="two-col">
+        <div>
+          <h3 style="margin-bottom:8px;">Какво показва Сигма</h3>
+          <p>
+            Сигма обединява публични данни от регистъра на обществените поръчки (АОП) —
+            кой възлага, на кого, какво и за колко. Всяко число тук се разлага до
+            конкретните договори, които го съставят.
+          </p>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px;">Атомен запис: договорът</h3>
+          <p>
+            Всеки агрегат на тази платформа — сума за институция, сума за компания, поток
+            между двете — се разлага до конкретните възложени договори. „Брой оферти" се
+            показва само като броя; самите оферти не са в публичните данни.
+            <a href="#">Виж методологията →</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код. Не съхранява лични данни.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
+          <a href="#">Лицензи и условия за ползване</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="#">Методология и речник</a><br>
+          <a href="#">За Сигма / контакти</a><br>
+          <a href="#">Изходен код (GitHub)</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

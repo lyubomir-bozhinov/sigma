@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Потоци на пари — Сигма</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="index.html" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="index.html">Начало</a>
+        <a href="authority.html">Институции</a>
+        <a href="company.html">Компании</a>
+        <a href="#">Договори</a>
+        <a href="#" aria-current="page">Потоци</a>
+        <a href="#">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене">
+        <input type="search" placeholder="Търси…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <div class="crumbs">
+    <div class="crumbs-inner">
+      <a href="index.html">Начало</a><span class="sep">›</span>
+      Потоци на пари
+    </div>
+  </div>
+
+  <main id="main">
+
+    <section class="page-header">
+      <p class="kicker">Визуализация</p>
+      <h1>Потоци на пари: откъде към кого</h1>
+      <p class="lede">
+        От институциите-възложители (вляво) към компаниите-изпълнители (вдясно). Дебелината
+        на всеки поток е пропорционална на общата сума на договорите между двете страни.
+      </p>
+    </section>
+
+    <div class="flow-controls" role="group" aria-label="Настройки на визуализацията">
+      <label>Сектор:
+        <select>
+          <option>Строителство</option>
+          <option>Храни</option>
+          <option>Двата сектора</option>
+        </select>
+      </label>
+      <label>Година:
+        <select>
+          <option>2023</option>
+          <option>2024</option>
+          <option>2020–2024</option>
+        </select>
+      </label>
+      <label>Финансиране:
+        <select>
+          <option>Всички</option>
+          <option>Само със средства на ЕС</option>
+          <option>Само национални</option>
+        </select>
+      </label>
+      <label>Топ:
+        <select>
+          <option>Топ 20 потока</option>
+          <option>Топ 50 потока</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="callout">
+      <strong>Сценарий:</strong> Строителство 2023, топ 20 потока. Всеки поток е сборът
+      от договорите между една институция и една компания за избрания период.
+    </div>
+
+    <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 600" role="img" aria-label="Поток на средства от институции към компании">
+      <!-- Column headers -->
+      <text x="135" y="12" text-anchor="end" class="cap" style="font-size:11px; font-weight:700; fill: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Институции</text>
+      <text x="565" y="12" class="cap" style="font-size:11px; font-weight:700; fill: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Компании</text>
+
+      <!-- A → C ribbons -->
+      <g class="ribbons-ac" fill-rule="evenodd">
+        <!-- A1 (АПИ) outflows -->
+        <path class="link" d="M160,20 C350,20 350,20 540,20 L540,115 C350,115 350,115 160,115 Z">
+          <title>АПИ → ГБС Инфраструктурно строителство: 400 млн. лв. · 14 договора</title>
+        </path>
+        <path class="link" d="M160,115 C350,115 350,182 540,182 L540,206 C350,206 350,139 160,139 Z">
+          <title>АПИ → ГБС Инженеринг: 100 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,139 C350,139 350,261 540,261 L540,294 C350,294 350,172 160,172 Z">
+          <title>АПИ → Трейс Груп: 140 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,172 C350,172 350,345 540,345 L540,369 C350,369 350,196 160,196 Z">
+          <title>АПИ → Хидрострой: 100 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,196 C350,196 350,424 540,424 L540,434 C350,434 350,206 160,206 Z">
+          <title>АПИ → Пътни съоръжения: 40 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,206 C350,206 350,489 540,489 L540,494 C350,494 350,211 160,211 Z">
+          <title>АПИ → Понсстройинженеринг: 20 млн. лв.</title>
+        </path>
+
+        <!-- A2 (МРРБ) outflows -->
+        <path class="link" d="M160,218 C350,218 350,206 540,206 L540,225 C350,225 350,237 160,237 Z">
+          <title>МРРБ → ГБС Инженеринг: 80 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,237 C350,237 350,294 540,294 L540,311 C350,311 350,254 160,254 Z">
+          <title>МРРБ → Трейс Груп: 70 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,254 C350,254 350,369 540,369 L540,393 C350,393 350,278 160,278 Z">
+          <title>МРРБ → Хидрострой: 100 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,278 C350,278 350,434 540,434 L540,451 C350,451 350,295 160,295 Z">
+          <title>МРРБ → Пътни съоръжения: 70 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,295 C350,295 350,494 540,494 L540,511 C350,511 350,312 160,312 Z">
+          <title>МРРБ → Понсстройинженеринг: 70 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,312 C350,312 350,556 540,556 L540,563 C350,563 350,319 160,319 Z">
+          <title>МРРБ → Поддръжка пътища Бургас: 30 млн. лв.</title>
+        </path>
+
+        <!-- A3 (НКЖИ) outflows -->
+        <path class="link" d="M160,326 C350,326 350,115 540,115 L540,143 C350,143 350,354 160,354 Z">
+          <title>НКЖИ → ГБС Инфраструктурно строителство: 120 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,354 C350,354 350,225 540,225 L540,244 C350,244 350,373 160,373 Z">
+          <title>НКЖИ → ГБС Инженеринг: 80 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,373 C350,373 350,311 540,311 L540,328 C350,328 350,390 160,390 Z">
+          <title>НКЖИ → Трейс Груп: 70 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,390 C350,390 350,393 540,393 L540,407 C350,407 350,404 160,404 Z">
+          <title>НКЖИ → Хидрострой: 60 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,404 C350,404 350,511 540,511 L540,523 C350,523 350,416 160,416 Z">
+          <title>НКЖИ → Понсстройинженеринг: 50 млн. лв.</title>
+        </path>
+
+        <!-- A4 (СО) outflows -->
+        <path class="link" d="M160,424 C350,424 350,143 540,143 L540,162 C350,162 350,443 160,443 Z">
+          <title>Столична община → ГБС Инфраструктурно строителство: 80 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,443 C350,443 350,244 540,244 L540,254 C350,254 350,453 160,453 Z">
+          <title>Столична община → ГБС Инженеринг: 40 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,453 C350,453 350,451 540,451 L540,468 C350,468 350,470 160,470 Z">
+          <title>Столична община → Пътни съоръжения: 70 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,470 C350,470 350,523 540,523 L540,542 C350,542 350,489 160,489 Z">
+          <title>Столична община → Понсстройинженеринг: 80 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,489 C350,489 350,563 540,563 L540,565 C350,565 350,492 160,492 Z">
+          <title>Столична община → Поддръжка пътища Бургас: 10 млн. лв.</title>
+        </path>
+
+        <!-- A5 (Пловдив) outflows -->
+        <path class="link" d="M160,498 C350,498 350,162 540,162 L540,174 C350,174 350,510 160,510 Z">
+          <title>Община Пловдив → ГБС Инфраструктурно строителство: 50 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,510 C350,510 350,328 540,328 L540,338 C350,338 350,520 160,520 Z">
+          <title>Община Пловдив → Трейс Груп: 40 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,520 C350,520 350,468 540,468 L540,482 C350,482 350,534 160,534 Z">
+          <title>Община Пловдив → Пътни съоръжения: 60 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,534 C350,534 350,542 540,542 L540,549 C350,549 350,541 160,541 Z">
+          <title>Община Пловдив → Понсстройинженеринг: 30 млн. лв.</title>
+        </path>
+
+        <!-- A6 (Бургас) outflows -->
+        <path class="link" d="M160,549 C350,549 350,407 540,407 L540,417 C350,417 350,559 160,559 Z">
+          <title>Община Бургас → Хидрострой: 40 млн. лв.</title>
+        </path>
+        <path class="link" d="M160,559 C350,559 350,565 540,565 L540,579 C350,579 350,573 160,573 Z">
+          <title>Община Бургас → Поддръжка пътища Бургас: 60 млн. лв.</title>
+        </path>
+      </g>
+
+      <!-- Authority bars -->
+      <g class="bars-a">
+        <rect class="node authority" x="140" y="20"  width="20" height="190"/>
+        <rect class="node authority" x="140" y="218" width="20" height="100"/>
+        <rect class="node authority" x="140" y="326" width="20" height="90"/>
+        <rect class="node authority" x="140" y="424" width="20" height="66"/>
+        <rect class="node authority" x="140" y="498" width="20" height="43"/>
+        <rect class="node authority" x="140" y="549" width="20" height="24"/>
+      </g>
+      <g class="labels-a">
+        <text x="134" y="118" text-anchor="end" class="node-label" style="font-weight:700">Агенция „Пътна инфраструктура"</text>
+        <text x="134" y="132" text-anchor="end" class="node-label small">800 млн. лв.</text>
+        <text x="134" y="270" text-anchor="end" class="node-label" style="font-weight:700">МРРБ</text>
+        <text x="134" y="284" text-anchor="end" class="node-label small">420 млн. лв.</text>
+        <text x="134" y="370" text-anchor="end" class="node-label" style="font-weight:700">НКЖИ</text>
+        <text x="134" y="384" text-anchor="end" class="node-label small">380 млн. лв.</text>
+        <text x="134" y="457" text-anchor="end" class="node-label" style="font-weight:700">Столична община</text>
+        <text x="134" y="471" text-anchor="end" class="node-label small">280 млн. лв.</text>
+        <text x="134" y="519" text-anchor="end" class="node-label" style="font-weight:700">Община Пловдив</text>
+        <text x="134" y="533" text-anchor="end" class="node-label small">180 млн. лв.</text>
+        <text x="134" y="558" text-anchor="end" class="node-label" style="font-weight:700">Община Бургас</text>
+        <text x="134" y="572" text-anchor="end" class="node-label small">100 млн. лв.</text>
+      </g>
+
+      <!-- Company bars -->
+      <g class="bars-c">
+        <rect class="node company" x="540" y="20"  width="20" height="154"/>
+        <rect class="node company" x="540" y="182" width="20" height="71"/>
+        <rect class="node company" x="540" y="261" width="20" height="76"/>
+        <rect class="node company" x="540" y="345" width="20" height="71"/>
+        <rect class="node company" x="540" y="424" width="20" height="57"/>
+        <rect class="node company" x="540" y="489" width="20" height="59"/>
+        <rect class="node company" x="540" y="556" width="20" height="24"/>
+      </g>
+      <g class="labels-c">
+        <text x="568" y="96" class="node-label" style="font-weight:700">ГБС Инфраструктурно стр-во</text>
+        <text x="568" y="110" class="node-label small">650 млн. лв.</text>
+        <text x="568" y="215" class="node-label" style="font-weight:700">ГБС Инженеринг</text>
+        <text x="568" y="229" class="node-label small">300 млн. лв.</text>
+        <text x="568" y="297" class="node-label" style="font-weight:700">Трейс Груп Холд</text>
+        <text x="568" y="311" class="node-label small">320 млн. лв.</text>
+        <text x="568" y="378" class="node-label" style="font-weight:700">Хидрострой</text>
+        <text x="568" y="392" class="node-label small">300 млн. лв.</text>
+        <text x="568" y="450" class="node-label" style="font-weight:700">Пътни съоръжения</text>
+        <text x="568" y="464" class="node-label small">240 млн. лв.</text>
+        <text x="568" y="515" class="node-label" style="font-weight:700">Понсстройинженеринг</text>
+        <text x="568" y="529" class="node-label small">250 млн. лв.</text>
+        <text x="568" y="572" class="node-label" style="font-weight:700">Поддръжка пътища — Бургас</text>
+        <text x="568" y="586" class="node-label small">100 млн. лв.</text>
+      </g>
+
+    </svg>
+
+    <div class="flow-tooltip">
+      <strong>Прочит на тази картина:</strong>
+      Дебелината на потоците показва, че от АПИ най-много пари отиват към ГБС Инфраструктурно
+      строителство (400 млн. лв., 14 договора). Топ 6-те възложителя и топ 7-те изпълнители
+      дават над 80% от строителния обем на търговите за избраната година. Кликни върху поток,
+      за да отвориш списъка с конкретните договори, които го съставят.
+    </div>
+
+    <section class="section" aria-labelledby="scenarios">
+      <h2 id="scenarios">Сценарии</h2>
+      <p class="section-hint">Готови филтри върху същата визуализация.</p>
+
+      <div class="tiles">
+        <article class="tile">
+          <p class="kicker info">Сценарий</p>
+          <h3><a href="#">Строителство 2023 — топ 20 потока</a></h3>
+          <p class="desc">Сегашната визуализация. Включва магистрални и общински строителни поръчки.</p>
+        </article>
+        <article class="tile">
+          <p class="kicker info">Сценарий</p>
+          <h3><a href="#">Храни — ЕС финансирани, 2020–2024</a></h3>
+          <p class="desc">Кои общини и училища купуват с европейски пари и от кои фирми.</p>
+        </article>
+        <article class="tile">
+          <p class="kicker info">Сценарий</p>
+          <h3><a href="#">Министерства → топ 15 изпълнители</a></h3>
+          <p class="desc">Само централните ведомства и техните най-големи получатели за 2024 г.</p>
+        </article>
+        <article class="tile">
+          <p class="kicker info">Сценарий</p>
+          <h3><a href="#">Една институция → всичките ѝ получатели</a></h3>
+          <p class="desc">Избери възложител — визуализацията показва само нейните изходящи потоци.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="explain">
+      <h2 id="explain">Какво показва тази картина</h2>
+      <div class="two-col">
+        <div>
+          <p>
+            Една институция, плащаща на една компания, сама по себе си не казва нищо. Но
+            когато се покажат 20-те най-големи потока в един сектор за една година, се виждат
+            две неща, които таблиците скриват:
+          </p>
+          <ul>
+            <li><strong>Доминиращи получатели</strong> — една компания, която поглъща
+              непропорционална част от един възложител (видимо като дебел поток към един възел).</li>
+            <li><strong>Системни клиенти</strong> — институция, чиито парични потоци отиват
+              почти изцяло към 2–3 компании (всички дебели потоци тръгват от един възел).</li>
+          </ul>
+        </div>
+        <div>
+          <p>
+            <strong>Какво визуализацията не казва.</strong> Дебелината на потока показва само
+            сумата. Един изпълнител може да доминира пазара, защото е единствен квалифициран;
+            една институция може да концентрира покупки по легитимни причини. Затова всеки
+            поток може да бъде кликнат до конкретните договори, които го съставят — преценката
+            остава за читателя.
+          </p>
+          <p>
+            <a href="#">Виж методологията →</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="top-flows">
+      <h2 id="top-flows">Топ 10 потока — табличен изглед</h2>
+      <p class="section-hint">
+        Същите данни като визуализацията. Числата са в милиони лв. при подписване.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Институция</th>
+            <th>Компания</th>
+            <th class="num">Сума</th>
+            <th class="num">Договори</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rank">1</td>
+            <td><a href="authority.html">АПИ</a></td>
+            <td><a href="company.html">ГБС Инфраструктурно стр-во</a></td>
+            <td class="money">400 млн.</td>
+            <td class="money">14</td>
+          </tr>
+          <tr>
+            <td class="rank">2</td>
+            <td><a href="authority.html">АПИ</a></td>
+            <td><a href="company.html">Трейс Груп</a></td>
+            <td class="money">140 млн.</td>
+            <td class="money">9</td>
+          </tr>
+          <tr>
+            <td class="rank">3</td>
+            <td><a href="authority.html">НКЖИ</a></td>
+            <td><a href="company.html">ГБС Инфраструктурно стр-во</a></td>
+            <td class="money">120 млн.</td>
+            <td class="money">4</td>
+          </tr>
+          <tr>
+            <td class="rank">4</td>
+            <td><a href="authority.html">АПИ</a></td>
+            <td><a href="company.html">ГБС Инженеринг</a></td>
+            <td class="money">100 млн.</td>
+            <td class="money">11</td>
+          </tr>
+          <tr>
+            <td class="rank">5</td>
+            <td><a href="authority.html">АПИ</a></td>
+            <td><a href="company.html">Хидрострой</a></td>
+            <td class="money">100 млн.</td>
+            <td class="money">7</td>
+          </tr>
+          <tr>
+            <td class="rank">6</td>
+            <td><a href="authority.html">МРРБ</a></td>
+            <td><a href="company.html">Хидрострой</a></td>
+            <td class="money">100 млн.</td>
+            <td class="money">6</td>
+          </tr>
+          <tr>
+            <td class="rank">7</td>
+            <td><a href="authority.html">Столична община</a></td>
+            <td><a href="company.html">ГБС Инфраструктурно стр-во</a></td>
+            <td class="money">80 млн.</td>
+            <td class="money">12</td>
+          </tr>
+          <tr>
+            <td class="rank">8</td>
+            <td><a href="authority.html">Столична община</a></td>
+            <td><a href="company.html">Понсстройинженеринг</a></td>
+            <td class="money">80 млн.</td>
+            <td class="money">9</td>
+          </tr>
+          <tr>
+            <td class="rank">9</td>
+            <td><a href="authority.html">МРРБ</a></td>
+            <td><a href="company.html">ГБС Инженеринг</a></td>
+            <td class="money">80 млн.</td>
+            <td class="money">8</td>
+          </tr>
+          <tr>
+            <td class="rank">10</td>
+            <td><a href="authority.html">НКЖИ</a></td>
+            <td><a href="company.html">ГБС Инженеринг</a></td>
+            <td class="money">80 млн.</td>
+            <td class="money">5</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="source">
+        Сценарий: строителство, 2023, топ 20 потока. Данни към 31.12.2024.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">АОП регистър</a><br>
+          <a href="#">Лицензи</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="#">Методология</a><br>
+          <a href="#">За Сигма</a><br>
+          <a href="#">Изходен код</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,3073 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Сигма — Платформа за прозрачни възлагания</title>
+  <style>
+    /* Sigma — civic-transparency prototype styles
+       Posture: gov.uk / usaspending.gov / OpenSpending. Neutral, utilitarian, accessible.
+       System sans, near-black on white, single deep-blue accent, red reserved for red-flag meaning. */
+
+    :root {
+      --bg: #ffffff;
+      --canvas: #f3f2f1;
+      --surface: #ffffff;
+      --text: #0b0c0c;
+      --text-muted: #505a5f;
+      --text-faint: #6f777b;
+      --border: #b1b4b6;
+      --border-soft: #dbdad9;
+      --border-strong: #0b0c0c;
+      --link: #1d70b8;
+      --link-hover: #003078;
+      --link-visited: #4c2c92;
+      --focus: #ffdd00;
+      --accent: #1d70b8;
+      --accent-bg: #e8f1f8;
+      --warning: #d4351c;
+      --warning-bg: #fbe9e6;
+      --warning-strong: #942514;
+      --success: #00703c;
+      --success-bg: #e6f1ec;
+      --info: #5694ca;
+
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+      --max: 1200px;
+      --max-narrow: 880px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.5 var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a {
+      color: var(--link);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+    a:hover { color: var(--link-hover); text-decoration-thickness: 2px; }
+    a:visited { color: var(--link-visited); }
+    a:focus { outline: 3px solid var(--focus); outline-offset: 0; background: var(--focus); color: var(--text); text-decoration: none; }
+
+    h1, h2, h3, h4, h5 { margin: 0; font-weight: 700; color: var(--text); }
+    h1 { font-size: clamp(28px, 3.6vw, 44px); line-height: 1.08; letter-spacing: -0.01em; }
+    h2 { font-size: clamp(22px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -0.005em; }
+    h3 { font-size: 20px; line-height: 1.25; }
+    h4 { font-size: 13px; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+
+    p { margin: 0 0 1em 0; }
+    ul, ol { margin: 0 0 1em 0; padding-left: 1.4em; }
+    li { margin: 0.2em 0; }
+
+    hr { border: 0; border-top: 1px solid var(--border-soft); margin: 2em 0; }
+
+    code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+
+    /* =========== Layout chrome =========== */
+
+    .skip { position: absolute; left: -9999px; top: -9999px; }
+    .skip:focus { left: 8px; top: 8px; background: var(--focus); color: var(--text); padding: 8px 12px; z-index: 1000; }
+
+    .site-header {
+      border-bottom: 8px solid var(--text);
+      background: var(--bg);
+    }
+    .site-header-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 14px 24px 16px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+    }
+    .brand:hover { color: var(--text); text-decoration: none; }
+    .brand:visited { color: var(--text); }
+    .brand-mark {
+      font-size: 22px;
+      letter-spacing: -0.01em;
+    }
+    .brand-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 400;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .site-nav {
+      display: flex;
+      gap: 22px;
+      flex: 1;
+      flex-wrap: wrap;
+    }
+    .site-nav a {
+      text-decoration: none;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 700;
+      padding: 4px 0;
+      border-bottom: 3px solid transparent;
+    }
+    .site-nav a:hover { color: var(--link-hover); border-bottom-color: var(--link); }
+    .site-nav a[aria-current="page"] { border-bottom-color: var(--text); }
+
+    .site-search {
+      display: flex;
+      border: 2px solid var(--text);
+      background: var(--bg);
+    }
+    .site-search input {
+      border: 0;
+      padding: 6px 10px;
+      font: 15px var(--font-sans);
+      width: 200px;
+      background: transparent;
+      color: var(--text);
+    }
+    .site-search input::placeholder { color: var(--text-faint); }
+    .site-search button {
+      border: 0;
+      background: var(--text);
+      color: #fff;
+      padding: 6px 12px;
+      font: 700 15px var(--font-sans);
+      cursor: pointer;
+    }
+    .site-search button:hover { background: var(--link-hover); }
+
+    /* Breadcrumb strip */
+    .crumbs {
+      background: var(--canvas);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .crumbs-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 10px 24px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .crumbs a { color: var(--link); }
+    .crumbs .sep { padding: 0 6px; color: var(--text-faint); }
+
+    /* Main column */
+    main {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+    main.narrow { max-width: var(--max-narrow); }
+
+    /* Page header */
+    .page-header { margin-bottom: 28px; }
+    .page-header .kicker {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .page-header h1 { margin-bottom: 8px; }
+    .page-header .lede {
+      font-size: 19px;
+      color: var(--text-muted);
+      max-width: 60ch;
+      margin: 12px 0 0 0;
+    }
+
+    /* Footer */
+    .site-footer {
+      background: #1d2326;
+      color: #c9d1d4;
+      padding: 32px 24px;
+      margin-top: 64px;
+    }
+    .site-footer-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      justify-content: space-between;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .site-footer a { color: #aacae9; }
+    .site-footer a:visited { color: #aacae9; }
+    .site-footer h4 { color: #fff; margin-bottom: 8px; }
+    .site-footer .freshness { color: #8d9aa1; font-size: 13px; }
+
+    /* =========== Reusable patterns =========== */
+
+    .section {
+      margin: 40px 0 0 0;
+    }
+    .section h2 {
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--text);
+      margin-bottom: 16px;
+    }
+    .section .section-hint {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin: -10px 0 18px;
+      max-width: 60ch;
+    }
+
+    .facts {
+      border-top: 1px solid var(--border);
+      margin: 0 0 8px 0;
+    }
+    .facts .row {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr;
+      gap: 16px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .facts dt {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 15px;
+    }
+    .facts dd {
+      margin: 0;
+      font-size: 15px;
+      color: var(--text);
+    }
+    .facts dd .sub { color: var(--text-muted); font-size: 13px; display: block; margin-top: 2px; }
+
+    .totals {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      margin: 24px 0 32px;
+    }
+    .totals .cell {
+      padding: 16px 20px 16px 0;
+      border-right: 1px solid var(--border-soft);
+    }
+    .totals .cell:last-child { border-right: 0; }
+    .totals .num {
+      font-size: 28px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+      display: block;
+    }
+    .totals .label {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+    thead th {
+      text-align: left;
+      font-weight: 700;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 10px 12px 10px 0;
+      border-bottom: 2px solid var(--text);
+      white-space: nowrap;
+    }
+    thead th.num, tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    thead th.center { text-align: center; }
+    tbody td {
+      padding: 12px 12px 12px 0;
+      border-bottom: 1px solid var(--border-soft);
+      vertical-align: top;
+    }
+    tbody tr:hover td { background: #f8f8f7; }
+
+    .rank {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--text-muted);
+      width: 32px;
+      padding-right: 12px !important;
+    }
+
+    .money {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .money .sub { display: block; font-weight: 400; color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+    .share {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    .share-bar {
+      display: inline-block;
+      height: 8px;
+      width: 80px;
+      background: var(--border-soft);
+      position: relative;
+    }
+    .share-bar > i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: var(--accent);
+      display: block;
+    }
+    .share-bar.warn > i { background: var(--warning); }
+    .share-num { min-width: 42px; text-align: right; font-size: 13px; color: var(--text-muted); }
+
+    .flag {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--warning-bg);
+      color: var(--warning-strong);
+      border: 1px solid var(--warning);
+      border-radius: 0;
+      white-space: nowrap;
+      margin: 1px 2px 1px 0;
+      text-decoration: none;
+      line-height: 1.5;
+    }
+    a.flag:hover { background: var(--warning); color: #fff; }
+
+    .flag.soft { background: #fff; color: var(--warning-strong); border-color: var(--warning); }
+    .flag.info { background: var(--accent-bg); color: var(--link-hover); border-color: var(--info); }
+    .flag.neutral { background: var(--canvas); color: var(--text-muted); border-color: var(--border); }
+
+    .chip {
+      display: inline-block;
+      padding: 1px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--canvas);
+      color: var(--text-muted);
+      border: 1px solid var(--border-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 1.6;
+    }
+
+    .score {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      padding: 4px 10px;
+      border: 1px solid var(--warning);
+      background: var(--warning-bg);
+      color: var(--warning-strong);
+      font-size: 16px;
+    }
+    .score .of { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+
+    .callout {
+      border-left: 8px solid var(--accent);
+      background: var(--accent-bg);
+      padding: 16px 20px;
+      margin: 24px 0;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .callout.warning { border-left-color: var(--warning); background: var(--warning-bg); }
+    .callout h3 { font-size: 16px; margin-bottom: 6px; }
+
+    .split {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 32px;
+      margin-top: 24px;
+    }
+    .split aside h4 { margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .split aside ul { list-style: none; padding: 0; margin: 0 0 24px 0; font-size: 14px; }
+    .split aside li { padding: 4px 0; }
+    .split aside li.active { font-weight: 700; }
+    .split aside .filter-group { margin-bottom: 20px; }
+    .split aside label.check { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; color: var(--text); cursor: pointer; }
+    .split aside label.check input { accent-color: var(--accent); }
+    @media (max-width: 760px) {
+      .split { grid-template-columns: 1fr; }
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+    @media (max-width: 760px) { .two-col { grid-template-columns: 1fr; } }
+
+    .hbar {
+      display: flex;
+      width: 100%;
+      height: 22px;
+      border: 1px solid var(--border);
+      margin: 8px 0 6px;
+      background: #fff;
+    }
+    .hbar > span {
+      display: block;
+      height: 100%;
+      border-right: 1px solid #fff;
+    }
+    .hbar > span:last-child { border-right: 0; }
+    .hbar-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .hbar-legend i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    details.row {
+      border-bottom: 1px solid var(--border-soft);
+    }
+    details.row > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 14px 0;
+      display: grid;
+      grid-template-columns: 32px 1fr 200px 140px 80px;
+      gap: 12px;
+      align-items: center;
+    }
+    details.row > summary::-webkit-details-marker { display: none; }
+    details.row[open] > summary { background: #f8f8f7; }
+    details.row .expander {
+      text-align: center;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    details.row[open] .expander::before { content: "−"; }
+    details.row:not([open]) .expander::before { content: "+"; }
+    details.row .body {
+      padding: 8px 44px 24px 44px;
+      background: #fafafa;
+      border-top: 1px solid var(--border-soft);
+    }
+    details.row .body h4 { margin-bottom: 8px; }
+    details.row .body .signals {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 12px 0 16px;
+    }
+    details.row .body .signal {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 16px;
+      padding: 8px 0;
+      border-bottom: 1px dotted var(--border-soft);
+      font-size: 14px;
+    }
+    details.row .body .signal .name { font-weight: 700; }
+    details.row .body .signal .why { color: var(--text-muted); }
+
+    .stat {
+      border-top: 4px solid var(--text);
+      padding-top: 14px;
+      margin-top: 12px;
+    }
+    .stat .num { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .stat .label { font-size: 14px; color: var(--text-muted); margin-top: 6px; }
+    .stat .sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    .tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0;
+      border-top: 1px solid var(--border);
+    }
+    .tile {
+      border-bottom: 1px solid var(--border-soft);
+      border-right: 1px solid var(--border-soft);
+      padding: 18px 20px 22px 0;
+    }
+    .tile:last-child { border-right: 0; }
+    .tile .kicker {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      color: var(--warning);
+      margin-bottom: 6px;
+    }
+    .tile .kicker.info { color: var(--accent); }
+    .tile h3 { margin-bottom: 6px; line-height: 1.25; }
+    .tile h3 a { color: var(--text); text-decoration: underline; text-decoration-thickness: 1px; }
+    .tile h3 a:hover { color: var(--link); }
+    .tile .desc { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+    .muted { color: var(--text-muted); }
+    .faint { color: var(--text-faint); }
+    .small { font-size: 13px; }
+    .right { text-align: right; }
+    .nowrap { white-space: nowrap; }
+    .cap { text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; font-weight: 700; }
+
+    .source {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      border-top: 1px dotted var(--border);
+      padding-top: 8px;
+    }
+
+    .paging {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .paging .ctrl a {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      text-decoration: none;
+      margin-left: 4px;
+    }
+    .paging .ctrl a:hover { background: var(--canvas); }
+
+    .hero-search {
+      display: flex;
+      margin: 18px 0 8px;
+      max-width: 640px;
+    }
+    .hero-search input {
+      flex: 1;
+      border: 2px solid var(--text);
+      border-right: 0;
+      padding: 12px 14px;
+      font: 18px var(--font-sans);
+      background: #fff;
+    }
+    .hero-search button {
+      border: 2px solid var(--text);
+      background: var(--text);
+      color: #fff;
+      padding: 12px 20px;
+      font: 700 18px var(--font-sans);
+      cursor: pointer;
+    }
+    .hero-search button:hover { background: var(--link-hover); border-color: var(--link-hover); }
+    .hero-hints {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 4px 0 24px;
+    }
+    .hero-hints code {
+      background: var(--canvas);
+      padding: 2px 6px;
+      border: 1px solid var(--border-soft);
+      font-size: 12px;
+      margin-right: 4px;
+    }
+
+    .subhead {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin: 24px 0 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .alert-strip {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning);
+      border-left: 8px solid var(--warning);
+      padding: 14px 18px;
+      margin: 20px 0 8px;
+      font-size: 15px;
+      color: var(--warning-strong);
+    }
+    .alert-strip strong { color: var(--warning-strong); }
+    .alert-strip a { color: var(--warning-strong); }
+
+    .linklist {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .linklist li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 15px;
+    }
+    .linklist li:last-child { border-bottom: 0; }
+    .linklist li .sub { display: block; color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+    .flow-svg { width: 100%; height: auto; display: block; font: 13px var(--font-sans); }
+    .flow-svg .node { fill: var(--text); }
+    .flow-svg .node.authority { fill: #1d4f72; }
+    .flow-svg .node.company   { fill: #0b3858; }
+    .flow-svg .node.person    { fill: var(--warning); }
+    .flow-svg .node-label { fill: var(--text); font-size: 12px; }
+    .flow-svg .node-label.small { fill: var(--text-muted); font-size: 11px; }
+    .flow-svg .link { fill: #1d70b8; fill-opacity: 0.28; }
+    .flow-svg .link.flagged { fill: var(--warning); fill-opacity: 0.35; }
+    .flow-svg .link:hover, .flow-svg .link.flagged:hover { fill-opacity: 0.55; cursor: pointer; }
+
+    .flow-controls {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      background: var(--canvas);
+      font-size: 14px;
+    }
+    .flow-controls label { display: flex; gap: 6px; align-items: center; }
+    .flow-controls select { padding: 4px 8px; font: 14px var(--font-sans); border: 1px solid var(--border); background: #fff; }
+    .flow-controls .toggle {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+    }
+    .flow-controls .toggle.on { background: var(--text); color: #fff; border-color: var(--text); }
+
+    .flow-tooltip {
+      border: 1px solid var(--border);
+      background: var(--canvas);
+      padding: 12px 16px;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    .flow-tooltip strong { display: block; margin-bottom: 4px; }
+
+    .muni-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0;
+      border-top: 1px solid var(--border-soft);
+      margin: 8px 0 16px;
+    }
+    .muni-grid a {
+      padding: 10px 16px 10px 0;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .muni-grid a .num { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+
+    .annot {
+      border-bottom: 2px dotted var(--warning);
+      cursor: help;
+    }
+
+    .owner-card {
+      border: 1px solid var(--border);
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      background: #fff;
+    }
+    .owner-card .role { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 700; }
+    .owner-card .name { font-size: 18px; font-weight: 700; margin: 4px 0 6px; }
+    .owner-card .meta { font-size: 14px; color: var(--text-muted); }
+    .owner-card .meta .share { font-weight: 700; color: var(--text); }
+
+    .hidden { display: none !important; }
+
+    /* Per-page wrapper — replaces multi-file structure */
+    .page { display: none; }
+    .page.is-active { display: block; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="#home" data-page="home" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="#home" data-page="home">Начало</a>
+        <a href="#authority" data-page="authority">Институции</a>
+        <a href="#company" data-page="company">Компании</a>
+        <a href="#person" data-page="person">Лица</a>
+        <a href="#red-flags" data-page="red-flags">Червени флагове</a>
+        <a href="#flows" data-page="flows">Потоци</a>
+        <a href="#">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене">
+        <input type="search" name="q" placeholder="Търси институция, компания, лице…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <!-- ================== HOME ================== -->
+  <div class="page" data-page="home" id="page-home">
+    <main id="main">
+
+      <section class="page-header">
+        <p class="kicker">Обществени поръчки в България · открити данни</p>
+        <h1>Къде отиват парите на държавата и общините?</h1>
+        <p class="lede">
+          Сигма показва кой какво купува от държавата и на кого плаща, в две сектора —
+          строителство и храни. Без регистрация, без интерпретация. Всеки показател може да бъде
+          проследен до конкретния договор.
+        </p>
+
+        <form class="hero-search" role="search">
+          <input type="search" placeholder="Напр. „Община Благоевград“, „Главболгарстрой“, „00097-2020-0001“" aria-label="Търсене" />
+          <button type="submit">Намери</button>
+        </form>
+        <p class="hero-hints">
+          Можеш да въведеш:
+          <code>име на институция</code>
+          <code>име или ЕИК на компания</code>
+          <code>име на лице</code>
+          <code>номер на поръчка</code>
+        </p>
+      </section>
+
+      <dl class="totals" aria-label="Обзор на данните">
+        <div class="cell"><span class="num">129 134</span><span class="label">Договора и обособени позиции</span></div>
+        <div class="cell"><span class="num">47,8 млрд. лв.</span><span class="label">Обща стойност при подписване</span></div>
+        <div class="cell"><span class="num">2 851</span><span class="label">Институции възложители</span></div>
+        <div class="cell"><span class="num">14 209</span><span class="label">Компании изпълнители</span></div>
+        <div class="cell"><span class="num">8 472</span><span class="label">Свързани лица (собственици)</span></div>
+      </dl>
+
+      <section class="section" aria-labelledby="find-yours">
+        <h2 id="find-yours">Намери своята институция</h2>
+        <p class="section-hint">
+          Започни оттук, ако те интересува конкретно министерство, община, агенция или болница.
+          Списъкът показва най-големите по обем на поръчките през 2020–2024 г.
+        </p>
+
+        <div class="two-col">
+          <div>
+            <p class="subhead">Министерства и централни ведомства</p>
+            <div class="muni-grid">
+              <a href="#authority" data-page="authority">Министерство на регионалното развитие <span class="num">4,1 млрд. лв.</span></a>
+              <a href="#authority" data-page="authority">Агенция „Пътна инфраструктура" <span class="num">3,7 млрд. лв.</span></a>
+              <a href="#authority" data-page="authority">Министерство на транспорта <span class="num">2,2 млрд. лв.</span></a>
+              <a href="#authority" data-page="authority">НКЖИ <span class="num">1,9 млрд. лв.</span></a>
+              <a href="#authority" data-page="authority">Министерство на здравеопазването <span class="num">980 млн. лв.</span></a>
+              <a href="#authority" data-page="authority">Министерство на младежта и спорта <span class="num">412 млн. лв.</span></a>
+            </div>
+          </div>
+          <div>
+            <p class="subhead">Общини</p>
+            <div class="muni-grid">
+              <a href="#authority" data-page="authority">Столична община <span class="num">2,8 млрд. лв.</span></a>
+              <a href="#authority" data-page="authority">Община Пловдив <span class="num">740 млн. лв.</span></a>
+              <a href="#authority" data-page="authority">Община Варна <span class="num">612 млн. лв.</span></a>
+              <a href="#authority" data-page="authority">Община Бургас <span class="num">498 млн. лв.</span></a>
+              <a href="#authority" data-page="authority">Община Стара Загора <span class="num">352 млн. лв.</span></a>
+              <a href="#authority" data-page="authority">Община Благоевград <span class="num">214 млн. лв.</span></a>
+            </div>
+            <p class="small muted" style="margin-top:8px;">
+              <a href="#">Виж пълния списък на 265 общини →</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="top-bene">
+        <h2 id="top-bene">Топ 10 печеливши компании</h2>
+        <p class="section-hint">
+          Компании, наредени по обща стойност на спечелените договори, 2020–2024.
+          <a href="#company" data-page="company">Виж пълния списък →</a>
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Компания</th>
+              <th scope="col" class="num">Спечелени</th>
+              <th scope="col" class="num">Договори</th>
+              <th scope="col" class="num">Институции</th>
+              <th scope="col">Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="#company" data-page="company">ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД</a><br><span class="small muted">ЕИК 130928907 · строителство</span></td>
+              <td class="money">1,87 млрд. лв.<span class="sub">957 млн. €</span></td>
+              <td class="money">214</td>
+              <td class="money">38</td>
+              <td><span class="flag">Концентрация</span> <span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="#company" data-page="company">ТРЕЙС ГРУП ХОЛД АД</a><br><span class="small muted">ЕИК 123682269 · строителство</span></td>
+              <td class="money">1,42 млрд. лв.<span class="sub">726 млн. €</span></td>
+              <td class="money">187</td>
+              <td class="money">47</td>
+              <td><span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="#company" data-page="company">ХИДРОСТРОЙ АД</a><br><span class="small muted">ЕИК 121273739 · строителство</span></td>
+              <td class="money">1,18 млрд. лв.<span class="sub">604 млн. €</span></td>
+              <td class="money">163</td>
+              <td class="money">29</td>
+              <td><span class="flag">Една оферта</span> <span class="flag">Концентрация</span></td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="#company" data-page="company">ДЖИ ПИ ГРУП АД</a><br><span class="small muted">ЕИК 175327028 · строителство</span></td>
+              <td class="money">894 млн. лв.<span class="sub">457 млн. €</span></td>
+              <td class="money">128</td>
+              <td class="money">22</td>
+              <td><span class="flag">Споделени собственици</span></td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="#company" data-page="company">АВТОМАГИСТРАЛИ — ЧЕРНО МОРЕ АД</a><br><span class="small muted">ЕИК 814190577 · строителство</span></td>
+              <td class="money">812 млн. лв.<span class="sub">415 млн. €</span></td>
+              <td class="money">41</td>
+              <td class="money">7</td>
+              <td><span class="flag">Без процедура</span> <span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><a href="#company" data-page="company">ПОНССТРОЙИНЖЕНЕРИНГ ЕАД</a><br><span class="small muted">ЕИК 130081393 · строителство</span></td>
+              <td class="money">684 млн. лв.<span class="sub">350 млн. €</span></td>
+              <td class="money">156</td>
+              <td class="money">33</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td><a href="#company" data-page="company">ГЕОСТРОЙ АД</a><br><span class="small muted">ЕИК 121849078 · строителство</span></td>
+              <td class="money">521 млн. лв.<span class="sub">266 млн. €</span></td>
+              <td class="money">98</td>
+              <td class="money">19</td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="rank">8</td>
+              <td><a href="#company" data-page="company">ЕВРО МИЙТ ЕНД МИЛК ЕООД</a><br><span class="small muted">ЕИК 101658372 · храни</span></td>
+              <td class="money">312 млн. лв.<span class="sub">159 млн. €</span></td>
+              <td class="money">442</td>
+              <td class="money">187</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">9</td>
+              <td><a href="#company" data-page="company">ИНЖСТРОЙИНЖЕНЕРИНГ ЕООД</a><br><span class="small muted">ЕИК 175027727 · строителство</span></td>
+              <td class="money">287 млн. лв.<span class="sub">147 млн. €</span></td>
+              <td class="money">74</td>
+              <td class="money">14</td>
+              <td><span class="flag">Концентрация</span></td>
+            </tr>
+            <tr>
+              <td class="rank">10</td>
+              <td><a href="#company" data-page="company">СВИНЕКОМПЛЕКС НИКОЛОВО АД</a><br><span class="small muted">ЕИК 117001599 · храни</span></td>
+              <td class="money">198 млн. лв.<span class="sub">101 млн. €</span></td>
+              <td class="money">312</td>
+              <td class="money">143</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section" aria-labelledby="flags">
+        <h2 id="flags">Сигнали за внимание</h2>
+        <p class="section-hint">
+          Договори с характеристики, които заслужават проверка — единствена оферта, директно
+          възлагане без състезание, ръст на стойността след подписване, концентрация на
+          изпълнител. <strong>Това не са обвинения, а характеристики.</strong>
+          <a href="#red-flags" data-page="red-flags">Виж пълния списък →</a>
+        </p>
+
+        <div class="tiles">
+          <article class="tile">
+            <p class="kicker">Една оферта · ЕС средства</p>
+            <h3><a href="#red-flags" data-page="red-flags">Реконструкция на път II-49 Търговище — Разград</a></h3>
+            <p class="desc">
+              Възложител: <a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a> ·
+              Изпълнител: <a href="#company" data-page="company">АВТОМАГИСТРАЛИ — ЧЕРНО МОРЕ АД</a> ·
+              Стойност: 84,3 млн. лв. · 1 оферта · ОП с ЕС финансиране
+            </p>
+          </article>
+          <article class="tile">
+            <p class="kicker">Ръст на стойността +47%</p>
+            <h3><a href="#red-flags" data-page="red-flags">Доизграждане на АМ „Хемус" — лот 6</a></h3>
+            <p class="desc">
+              Възложител: <a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a> ·
+              Изпълнител: <a href="#company" data-page="company">ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД</a> ·
+              Подписан: 412 млн. лв. → Текущ: 605 млн. лв. (+193 млн. след 4 анекса)
+            </p>
+          </article>
+          <article class="tile">
+            <p class="kicker">Споделени собственици</p>
+            <h3><a href="#red-flags" data-page="red-flags">Реконструкция на ул. „Цар Симеон" — Стара Загора</a></h3>
+            <p class="desc">
+              Възложител: <a href="#authority" data-page="authority">Община Стара Загора</a> ·
+              3 от 4 оферти подадени от компании, свързани чрез
+              <a href="#person" data-page="person">един собственик</a>. Стойност: 4,7 млн. лв.
+            </p>
+          </article>
+          <article class="tile">
+            <p class="kicker">Концентрация 68%</p>
+            <h3><a href="#red-flags" data-page="red-flags">Един изпълнител прибира над 2/3 от строителните разходи на ВиК Перник</a></h3>
+            <p class="desc">
+              Възложител: <a href="#authority" data-page="authority">„Водоснабдяване и канализация" ООД — Перник</a> ·
+              68% от 84 млн. лв. към един изпълнител през 2022–2024.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="how">
+        <h2 id="how">Как се чете тази платформа</h2>
+        <div class="two-col">
+          <div>
+            <h3 style="margin-bottom:8px;">Какво показва Сигма</h3>
+            <p>
+              Сигма обединява публични данни от регистъра на обществените поръчки (АОП) и
+              данни от Търговския регистър за собствеността на компаниите. Всяко число тук
+              се разлага до конкретните договори, които го съставят.
+            </p>
+          </div>
+          <div>
+            <h3 style="margin-bottom:8px;">Какво <em>не</em> може да каже Сигма</h3>
+            <p>
+              Една характеристика не доказва нарушение. Една оферта може да означава, че няма
+              конкуренция; може да означава и тесен пазар. Сигма посочва моделите и обяснява
+              какво биха могли да означават — преценката остава за читателя.
+              <a href="#">Виж методологията →</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================== AUTHORITY ================== -->
+  <div class="page" data-page="authority" id="page-authority">
+    <div class="crumbs">
+      <div class="crumbs-inner">
+        <a href="#home" data-page="home">Начало</a><span class="sep">›</span>
+        <a href="#">Институции</a><span class="sep">›</span>
+        <a href="#">Общини</a><span class="sep">›</span>
+        Община Благоевград
+      </div>
+    </div>
+
+    <main>
+
+      <section class="page-header">
+        <p class="kicker">Институция · <span class="chip">Община</span></p>
+        <h1>Община Благоевград</h1>
+        <p class="lede">
+          Общо публични средства, разходвани за обществени поръчки в строителство и храни за
+          периода 2020–2024 г. Всяко число по-долу може да бъде разложено до конкретните
+          договори, които го съставят.
+        </p>
+      </section>
+
+      <div class="alert-strip" role="alert">
+        <strong>За тази институция са открити 4 типа сигнали за внимание.</strong>
+        Един изпълнител печели 31% от строителните разходи; 22% от договорите са с една оферта;
+        средната стойност нараства с 9% спрямо подписване.
+        <a href="#signals-authority">Виж подробно ↓</a>
+      </div>
+
+      <dl class="facts" aria-label="Ключови показатели">
+        <div class="row"><dt>Обща стойност (подписване)</dt><dd>214,3 млн. лв. <span class="sub">109,6 млн. €</span></dd></div>
+        <div class="row"><dt>Брой договори</dt><dd>342 <span class="sub">в т.ч. 89 обособени позиции</span></dd></div>
+        <div class="row"><dt>Период</dt><dd>януари 2020 — декември 2024</dd></div>
+        <div class="row"><dt>Различни изпълнители</dt><dd>118</dd></div>
+        <div class="row"><dt>Финансиране със средства от ЕС</dt><dd>67,1 млн. лв. <span class="sub">31% от общия обем</span></dd></div>
+        <div class="row"><dt>Средно оферти на търг</dt><dd>2,4 <span class="sub">медиана: 2</span></dd></div>
+        <div class="row"><dt>Сектори</dt><dd>строителство (84%), храни (16%)</dd></div>
+      </dl>
+
+      <section class="section" aria-labelledby="top-contractors">
+        <h2 id="top-contractors">Топ изпълнители</h2>
+        <p class="section-hint">
+          Подредени по обща сума, спечелена от Община Благоевград, 2020–2024. Колоната
+          „Дял" показва каква част от общите 214,3 млн. лв. отива към всеки изпълнител.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Компания</th>
+              <th class="num">Спечелено</th>
+              <th class="num">Договори</th>
+              <th>Дял от общата сума</th>
+              <th>Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="#company" data-page="company">СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</a><br><span class="small muted">ЕИК 811152743 · строителство</span></td>
+              <td class="money">66,4 млн. лв.</td>
+              <td class="money">38</td>
+              <td><span class="share"><span class="share-bar warn"><i style="width:31%"></i></span><span class="share-num">31,0%</span></span></td>
+              <td><span class="flag">Концентрация</span> <span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="#company" data-page="company">ЕВРО МИЙТ ЕНД МИЛК ЕООД</a><br><span class="small muted">ЕИК 101658372 · храни</span></td>
+              <td class="money">28,7 млн. лв.</td>
+              <td class="money">42</td>
+              <td><span class="share"><span class="share-bar"><i style="width:13.4%"></i></span><span class="share-num">13,4%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="#company" data-page="company">ПИРИН СТРОЙ АД</a><br><span class="small muted">ЕИК 811220104 · строителство</span></td>
+              <td class="money">19,2 млн. лв.</td>
+              <td class="money">27</td>
+              <td><span class="share"><span class="share-bar"><i style="width:9%"></i></span><span class="share-num">9,0%</span></span></td>
+              <td><span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="#company" data-page="company">БАЛКАНСТРОЙ АД</a><br><span class="small muted">ЕИК 811152105 · строителство</span></td>
+              <td class="money">14,8 млн. лв.</td>
+              <td class="money">19</td>
+              <td><span class="share"><span class="share-bar"><i style="width:6.9%"></i></span><span class="share-num">6,9%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="#company" data-page="company">МЛЕЧНИ ПРОДУКТИ ПИРИН ООД</a><br><span class="small muted">ЕИК 101552287 · храни</span></td>
+              <td class="money">11,3 млн. лв.</td>
+              <td class="money">35</td>
+              <td><span class="share"><span class="share-bar"><i style="width:5.3%"></i></span><span class="share-num">5,3%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><a href="#company" data-page="company">ХИДРОСТРОЙ ЮГ ЕООД</a><br><span class="small muted">ЕИК 175027841 · строителство</span></td>
+              <td class="money">8,9 млн. лв.</td>
+              <td class="money">12</td>
+              <td><span class="share"><span class="share-bar"><i style="width:4.2%"></i></span><span class="share-num">4,2%</span></span></td>
+              <td><span class="flag">Споделени собственици</span></td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td><a href="#company" data-page="company">ХЛЕБОЗАВОД БЛАГОЕВГРАД АД</a><br><span class="small muted">ЕИК 811125428 · храни</span></td>
+              <td class="money">7,4 млн. лв.</td>
+              <td class="money">28</td>
+              <td><span class="share"><span class="share-bar"><i style="width:3.4%"></i></span><span class="share-num">3,4%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td colspan="6" style="padding-top:14px;">
+                <a href="#">… още 111 изпълнители · виж пълния списък</a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <div class="two-col">
+        <section class="section" aria-labelledby="what">
+          <h2 id="what">Какво купува</h2>
+          <p class="section-hint">CPV категории, подредени по обем.</p>
+          <table>
+            <tbody>
+              <tr>
+                <td><a href="#">Строителни работи (45200000)</a></td>
+                <td class="money">112,8 млн. лв.<span class="sub">52,6%</span></td>
+              </tr>
+              <tr>
+                <td><a href="#">Поддръжка на пътища (45233141)</a></td>
+                <td class="money">38,2 млн. лв.<span class="sub">17,8%</span></td>
+              </tr>
+              <tr>
+                <td><a href="#">Хранителни продукти (15800000)</a></td>
+                <td class="money">22,1 млн. лв.<span class="sub">10,3%</span></td>
+              </tr>
+              <tr>
+                <td><a href="#">Електроинсталационни работи (45310000)</a></td>
+                <td class="money">14,7 млн. лв.<span class="sub">6,9%</span></td>
+              </tr>
+              <tr>
+                <td><a href="#">Месо и месни продукти (15110000)</a></td>
+                <td class="money">8,9 млн. лв.<span class="sub">4,2%</span></td>
+              </tr>
+              <tr>
+                <td><a href="#">Мляко и млечни продукти (15500000)</a></td>
+                <td class="money">7,8 млн. лв.<span class="sub">3,6%</span></td>
+              </tr>
+              <tr>
+                <td><span class="muted">… още 14 категории</span></td>
+                <td class="money">9,8 млн. лв.<span class="sub">4,6%</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section" aria-labelledby="how-buy">
+          <h2 id="how-buy">Как купува</h2>
+          <p class="section-hint">Разпределение на договорите по тип процедура.</p>
+
+          <div class="hbar" aria-hidden="true">
+            <span style="width:54%; background:#1d70b8" title="Открита процедура — 54%"></span>
+            <span style="width:18%; background:#5694ca" title="Публично състезание — 18%"></span>
+            <span style="width:6%; background:#85adcd" title="Събиране на оферти — 6%"></span>
+            <span style="width:14%; background:#d4351c" title="Пряко договаряне — 14%"></span>
+            <span style="width:8%; background:#942514" title="Договаряне без обявление — 8%"></span>
+          </div>
+          <div class="hbar-legend">
+            <span><i style="background:#1d70b8"></i>Открита процедура · 54%</span>
+            <span><i style="background:#5694ca"></i>Публично състезание · 18%</span>
+            <span><i style="background:#85adcd"></i>Събиране на оферти · 6%</span>
+            <span><i style="background:#d4351c"></i>Пряко договаряне · 14%</span>
+            <span><i style="background:#942514"></i>Договаряне без обявление · 8%</span>
+          </div>
+
+          <p class="section-hint" style="margin-top:18px;">
+            <strong>22% от договорите</strong> са възложени по непъконкурентни процедури
+            (пряко договаряне или без обявление). Това не е задължително нарушение — законът
+            допуска тези процедури при определени условия. Тук те са общо
+            <strong>47,1 млн. лв.</strong>
+          </p>
+        </section>
+      </div>
+
+      <section class="section" id="signals-authority" aria-labelledby="signals-title-authority">
+        <h2 id="signals-title-authority">Сигнали за внимание</h2>
+        <p class="section-hint">
+          Характеристики на договорите, които заслужават проверка. Всеки сигнал е дефиниран в
+          <a href="#">Методология › Червени флагове</a>.
+        </p>
+
+        <div class="callout warning">
+          <h3>Концентрация на изпълнител · СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</h3>
+          <p>
+            Един изпълнител — <a href="#company" data-page="company">СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</a> — печели
+            <strong>31% от общата сума</strong> на обществените поръчки на Община Благоевград за
+            периода 2020–2024 (66,4 от 214,3 млн. лв., 38 договора).
+            За сравнение: вторият най-голям изпълнител получава 13,4%.
+          </p>
+          <p class="small muted" style="margin-bottom:0;">
+            <a href="#">Какво означава „концентрация"? →</a>
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Една оферта · 76 договора</h3>
+          <p>
+            В <strong>76 договора</strong> е била подадена само една оферта — общо
+            <strong>41,2 млн. лв.</strong> Това е 22% от всички договори на общината.
+            За 28 от тях процедурата е била „Открита процедура" — формално конкурентна, но
+            без реална конкуренция в крайна сметка.
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Ръст на стойността след подписване</h3>
+          <p>
+            При <strong>52 договора</strong> текущата стойност надвишава тази при подписване с
+            повече от 20%. Кумулативен ръст: <strong>+18,7 млн. лв.</strong> (8,7% върху общата
+            сума при подписване). Най-съществен пример:
+            <a href="#">„Реконструкция на ул. Тодор Александров"</a> — 4,3 → 7,1 млн. лв.
+            след 3 анекса.
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Споделени собственици · ХИДРОСТРОЙ ЮГ ЕООД</h3>
+          <p>
+            <a href="#company" data-page="company">ХИДРОСТРОЙ ЮГ ЕООД</a> споделя собственик с
+            <a href="#company" data-page="company">ПИРИН СТРОЙ АД</a> и
+            <a href="#company" data-page="company">БАЛКАНСТРОЙ АД</a> чрез
+            <a href="#person" data-page="person">Иван Петров</a>. Тези три компании заедно са участвали в
+            11 търга на Община Благоевград; в 4 от тях двете или повече от тях са били сред
+            подадените оферти. Общо спечелени през трите компании: <strong>42,9 млн. лв.</strong>
+          </p>
+          <p class="small muted" style="margin-bottom:0;">
+            Този сигнал се появява в Сигма само защото е свързан с данните от Търговския
+            регистър. <a href="#flows" data-page="flows">Виж връзките визуално →</a>
+          </p>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="all">
+        <h2 id="all">Всички договори</h2>
+        <p class="section-hint">
+          342 договора, 2020–2024. Показани са най-скорошните 10.
+          <a href="#">Виж всички / филтрирай / свали като CSV →</a>
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Предмет</th>
+              <th>Изпълнител</th>
+              <th>Процедура</th>
+              <th class="num">Стойност</th>
+              <th>Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="nowrap">14.12.2024</td>
+              <td><a href="#">Снегопочистване и пътна поддръжка — 2025</a><br><span class="small muted">UNP 00104-2024-0087 · ОП с 4 ОП</span></td>
+              <td><a href="#company" data-page="company">ПИРИН СТРОЙ АД</a></td>
+              <td><span class="chip">Открита процедура</span></td>
+              <td class="money">2,84 млн. лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">02.11.2024</td>
+              <td><a href="#">Доставка на месо и месни продукти за детски градини</a><br><span class="small muted">UNP 00104-2024-0079</span></td>
+              <td><a href="#company" data-page="company">ЕВРО МИЙТ ЕНД МИЛК ЕООД</a></td>
+              <td><span class="chip">Открита процедура</span></td>
+              <td class="money">705 661 лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">28.09.2024</td>
+              <td><a href="#">Реконструкция на ул. „Тодор Александров"</a><br><span class="small muted">UNP 00104-2024-0072 · 3 анекса</span></td>
+              <td><a href="#company" data-page="company">СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</a></td>
+              <td><span class="chip">Открита процедура</span></td>
+              <td class="money">7,12 млн. лв.<span class="sub">подписан: 4,30</span></td>
+              <td><span class="flag">Една оферта</span> <span class="flag">Ръст +66%</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">15.08.2024</td>
+              <td><a href="#">Доставка на хляб и хлебни изделия</a><br><span class="small muted">UNP 00104-2024-0061</span></td>
+              <td><a href="#company" data-page="company">ХЛЕБОЗАВОД БЛАГОЕВГРАД АД</a></td>
+              <td><span class="chip">Събиране на оферти</span></td>
+              <td class="money">412 800 лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">22.07.2024</td>
+              <td><a href="#">Аварийно укрепване на свлачище — кв. Грамада</a><br><span class="small muted">UNP 00104-2024-0058</span></td>
+              <td><a href="#company" data-page="company">ХИДРОСТРОЙ ЮГ ЕООД</a></td>
+              <td><span class="chip">Пряко договаряне</span></td>
+              <td class="money">1,28 млн. лв.</td>
+              <td><span class="flag">Без процедура</span> <span class="flag">Споделени собственици</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">04.06.2024</td>
+              <td><a href="#">Изграждане на спортна площадка — ОУ „Димитър Талев"</a><br><span class="small muted">UNP 00104-2024-0044 · ЕС финансиране</span></td>
+              <td><a href="#company" data-page="company">СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</a></td>
+              <td><span class="chip">Открита процедура</span></td>
+              <td class="money">894 200 лв.</td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">17.05.2024</td>
+              <td><a href="#">Доставка на плодове и зеленчуци за детски градини</a><br><span class="small muted">UNP 00104-2024-0037</span></td>
+              <td><a href="#company" data-page="company">ПИРИН ФРЕШ ООД</a></td>
+              <td><span class="chip">Публично състезание</span></td>
+              <td class="money">287 400 лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">12.03.2024</td>
+              <td><a href="#">Текущ ремонт на улична мрежа</a><br><span class="small muted">UNP 00104-2024-0018 · 4 ОП</span></td>
+              <td><a href="#company" data-page="company">БАЛКАНСТРОЙ АД</a></td>
+              <td><span class="chip">Открита процедура</span></td>
+              <td class="money">3,42 млн. лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">28.02.2024</td>
+              <td><a href="#">Газификация на ДГ № 7</a><br><span class="small muted">UNP 00104-2024-0011</span></td>
+              <td><a href="#company" data-page="company">СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</a></td>
+              <td><span class="chip">Пряко договаряне</span></td>
+              <td class="money">412 200 лв.</td>
+              <td><span class="flag">Без процедура</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">14.01.2024</td>
+              <td><a href="#">Доставка на млечни продукти</a><br><span class="small muted">UNP 00104-2024-0003</span></td>
+              <td><a href="#company" data-page="company">МЛЕЧНИ ПРОДУКТИ ПИРИН ООД</a></td>
+              <td><span class="chip">Открита процедура</span></td>
+              <td class="money">328 700 лв.</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="paging">
+          <span>Показани 1–10 от 342</span>
+          <div class="ctrl">
+            <a href="#" aria-disabled="true">‹ Предишни</a>
+            <a href="#">Следващи ›</a>
+          </div>
+        </div>
+
+        <p class="source">
+          Източник: Регистър на обществените поръчки (АОП), снимка от 31.12.2024.
+          Канонизация на името на институцията: „ОБЩИНА БЛАГОЕВГРАД", „Община Благоевград",
+          „Община гр. Благоевград" обединени.
+        </p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================== COMPANY ================== -->
+  <div class="page" data-page="company" id="page-company">
+    <div class="crumbs">
+      <div class="crumbs-inner">
+        <a href="#home" data-page="home">Начало</a><span class="sep">›</span>
+        <a href="#">Компании</a><span class="sep">›</span>
+        ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД
+      </div>
+    </div>
+
+    <main>
+
+      <section class="page-header">
+        <p class="kicker">Компания · <span class="chip">Строителство</span> · ЕИК&nbsp;130928907</p>
+        <h1>ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД</h1>
+        <p class="lede">
+          Седалище: София. Активна. Профил, обобщаващ публичните средства, спечелени от тази
+          компания през регистъра на обществените поръчки за периода 2020–2024 г.
+        </p>
+      </section>
+
+      <div class="alert-strip" role="alert">
+        <strong>За тази компания са открити 3 типа сигнали за внимание.</strong>
+        Висока концентрация при два възложителя (61% при АПИ, 47% при НКЖИ), систематичен ръст
+        на стойността по магистрални проекти, и една свързана компания чрез споделен собственик.
+        <a href="#signals-company">Виж подробно ↓</a>
+      </div>
+
+      <dl class="facts" aria-label="Ключови показатели">
+        <div class="row"><dt>Общо спечелено (подписване)</dt><dd>1,87 млрд. лв. <span class="sub">957 млн. €</span></dd></div>
+        <div class="row"><dt>Текуща стойност след анекси</dt><dd>2,11 млрд. лв. <span class="sub">+12,8% спрямо подписване</span></dd></div>
+        <div class="row"><dt>Брой договори</dt><dd>214 <span class="sub">31 от тях обособени позиции</span></dd></div>
+        <div class="row"><dt>Брой институции платци</dt><dd>38</dd></div>
+        <div class="row"><dt>Период</dt><dd>март 2020 — ноември 2024</dd></div>
+        <div class="row"><dt>Дял ЕС финансиране</dt><dd>54,2% <span class="sub">1,01 млрд. лв.</span></dd></div>
+        <div class="row"><dt>Среден брой оферти на търг</dt><dd>2,1 <span class="sub">медиана: 2 · в 28% от търговете — 1 оферта</span></dd></div>
+        <div class="row"><dt>CPV категории</dt><dd>предимно 45233 (пътно строителство), 45221 (мостове), 45112 (земни работи)</dd></div>
+      </dl>
+
+      <section class="section" aria-labelledby="owners">
+        <h2 id="owners">Собственици и свързани лица</h2>
+        <p class="section-hint">
+          От Търговския регистър (data.egov.bg). Дялове и роли към 31.12.2024.
+        </p>
+
+        <div class="two-col">
+          <article class="owner-card">
+            <p class="role">Мажоритарен собственик</p>
+            <p class="name"><a href="#person" data-page="person">Илия Стоянов Стоянов</a></p>
+            <p class="meta"><span class="share">68% от капитала</span> · едноличен управител</p>
+            <p class="small muted" style="margin-top:8px;">
+              Свързан и с други 4 компании. Виж <a href="#person" data-page="person">пълния профил →</a>
+            </p>
+          </article>
+          <article class="owner-card">
+            <p class="role">Миноритарен собственик</p>
+            <p class="name"><a href="#">Веселин Иванов Петров</a></p>
+            <p class="meta"><span class="share">22% от капитала</span></p>
+            <p class="small muted" style="margin-top:8px;">
+              Свързан с 1 друга компания.
+            </p>
+          </article>
+          <article class="owner-card">
+            <p class="role">Миноритарен собственик</p>
+            <p class="name"><a href="#">ГБС ХОЛДИНГ ЕАД</a></p>
+            <p class="meta"><span class="share">10% от капитала</span></p>
+            <p class="small muted" style="margin-top:8px;">
+              Холдингова структура.
+            </p>
+          </article>
+          <article class="owner-card">
+            <p class="role">Представляващ</p>
+            <p class="name"><a href="#">Стоян Илиев Стоянов</a></p>
+            <p class="meta">Член на съвета на директорите · няма участие в капитала</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="related">
+        <h2 id="related">Свързани компании чрез споделени собственици</h2>
+        <p class="section-hint">
+          Компании, които споделят поне един собственик с ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД,
+          и сумите спечелени от тях през обществени поръчки.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Компания</th>
+              <th>Чрез</th>
+              <th class="num">Спечелено самостоятелно</th>
+              <th class="num">Договори</th>
+              <th>Бележка</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="#">ГБС ИНЖЕНЕРИНГ АД</a><br><span class="small muted">ЕИК 130928914</span></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a> (54%)</td>
+              <td class="money">684 млн. лв.</td>
+              <td class="money">187</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><a href="#">ПЪТНИ СЪОРЪЖЕНИЯ ЕООД</a><br><span class="small muted">ЕИК 175214738</span></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a> (100%)</td>
+              <td class="money">142 млн. лв.</td>
+              <td class="money">38</td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td><a href="#">ПОДДРЪЖКА ПЪТИЩА — БУРГАС ООД</a><br><span class="small muted">ЕИК 102843118</span></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a> (40%)</td>
+              <td class="money">98 млн. лв.</td>
+              <td class="money">62</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><a href="#">ГЕОТЕХНИК ПЛОВДИВ АД</a><br><span class="small muted">ЕИК 115014782</span></td>
+              <td><a href="#">Веселин Иванов</a> (62%)</td>
+              <td class="money">47 млн. лв.</td>
+              <td class="money">21</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td><strong>Общо през всички свързани компании + ГБС</strong></td>
+              <td></td>
+              <td class="money"><strong>2,84 млрд. лв.</strong></td>
+              <td class="money"><strong>522</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        <p class="small muted" style="margin-top:10px;">
+          За агрегиран изглед на сумите към един човек, виж
+          <a href="#person" data-page="person">профила на Илия Стоянов →</a>
+        </p>
+      </section>
+
+      <section class="section" aria-labelledby="from">
+        <h2 id="from">Откъде печели</h2>
+        <p class="section-hint">
+          Институции, наредени по сума, заплатена на ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Институция</th>
+              <th class="num">Спечелено от тази институция</th>
+              <th class="num">Договори</th>
+              <th>Дял от спечеленото от ГБС</th>
+              <th>Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td class="money">847 млн. лв.</td>
+              <td class="money">28</td>
+              <td><span class="share"><span class="share-bar warn"><i style="width:45%"></i></span><span class="share-num">45,3%</span></span></td>
+              <td><span class="flag">Концентрация</span> <span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="#authority" data-page="authority">НКЖИ</a></td>
+              <td class="money">412 млн. лв.</td>
+              <td class="money">19</td>
+              <td><span class="share"><span class="share-bar warn"><i style="width:22%"></i></span><span class="share-num">22,0%</span></span></td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="#authority" data-page="authority">Министерство на регионалното развитие</a></td>
+              <td class="money">187 млн. лв.</td>
+              <td class="money">14</td>
+              <td><span class="share"><span class="share-bar"><i style="width:10%"></i></span><span class="share-num">10,0%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="#authority" data-page="authority">Столична община</a></td>
+              <td class="money">128 млн. лв.</td>
+              <td class="money">22</td>
+              <td><span class="share"><span class="share-bar"><i style="width:6.8%"></i></span><span class="share-num">6,8%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="#authority" data-page="authority">Община Пловдив</a></td>
+              <td class="money">84 млн. лв.</td>
+              <td class="money">11</td>
+              <td><span class="share"><span class="share-bar"><i style="width:4.5%"></i></span><span class="share-num">4,5%</span></span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td colspan="6"><a href="#">… още 33 институции</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <div class="two-col">
+        <section class="section" aria-labelledby="how-win">
+          <h2 id="how-win">Как печели</h2>
+          <p class="section-hint">Тип на процедурата, с която компанията е спечелила договорите.</p>
+          <div class="hbar" aria-hidden="true">
+            <span style="width:42%; background:#1d70b8" title="Открита процедура — 42%"></span>
+            <span style="width:18%; background:#5694ca" title="Публично състезание — 18%"></span>
+            <span style="width:12%; background:#85adcd" title="Договаряне с обявление — 12%"></span>
+            <span style="width:18%; background:#d4351c" title="Пряко договаряне — 18%"></span>
+            <span style="width:10%; background:#942514" title="Договаряне без обявление — 10%"></span>
+          </div>
+          <div class="hbar-legend">
+            <span><i style="background:#1d70b8"></i>Открита · 42%</span>
+            <span><i style="background:#5694ca"></i>Публично състезание · 18%</span>
+            <span><i style="background:#85adcd"></i>Договаряне с обявление · 12%</span>
+            <span><i style="background:#d4351c"></i>Пряко договаряне · 18%</span>
+            <span><i style="background:#942514"></i>Без обявление · 10%</span>
+          </div>
+          <p class="small muted" style="margin-top:12px;">
+            <strong>28% от договорите</strong> са по непъконкурентни процедури — общо
+            524 млн. лв. За сектор „пътно строителство" общия национален дял на тези процедури
+            е около 14%.
+          </p>
+        </section>
+
+        <section class="section" aria-labelledby="bids">
+          <h2 id="bids">Брой оферти на спечелените търгове</h2>
+          <p class="section-hint">Колко конкуренти е имала компанията.</p>
+          <table>
+            <tbody>
+              <tr>
+                <td>1 оферта (само ГБС)</td>
+                <td class="money">28%<span class="sub">60 търга</span></td>
+              </tr>
+              <tr>
+                <td>2 оферти</td>
+                <td class="money">37%<span class="sub">79 търга</span></td>
+              </tr>
+              <tr>
+                <td>3 оферти</td>
+                <td class="money">21%<span class="sub">45 търга</span></td>
+              </tr>
+              <tr>
+                <td>4+ оферти</td>
+                <td class="money">14%<span class="sub">30 търга</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="small muted" style="margin-top:8px;">
+            За сравнение: средно за национални строителни поръчки над 5 млн. лв. — 3,4 оферти.
+          </p>
+        </section>
+      </div>
+
+      <section class="section" id="signals-company" aria-labelledby="signals-title-company">
+        <h2 id="signals-title-company">Сигнали за внимание</h2>
+        <p class="section-hint">
+          Подробни обяснения — <a href="#">Методология › Червени флагове</a>.
+        </p>
+
+        <div class="callout warning">
+          <h3>Концентрация при основни възложители</h3>
+          <p>
+            <strong>45% от спечеленото</strong> от ГБС идва от един възложител — Агенция „Пътна
+            инфраструктура" (847 млн. лв., 28 договора). За НКЖИ дялът е 22%. Заедно двете
+            институции дават 67% от общите приходи на компанията от обществени поръчки.
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Систематичен ръст на стойността</h3>
+          <p>
+            При <strong>47 договора</strong> текущата стойност надвишава подписаната с над 15%.
+            Кумулативно: текущите стойности са с <strong>240 млн. лв.</strong> по-високи от
+            подписаните (+12,8%). Шест от десетте договора с най-голям абсолютен ръст са с
+            АПИ. Пример: <a href="#">„Доизграждане на АМ Хемус — лот 6"</a>,
+            412 → 605 млн. лв. след 4 анекса.
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Една оферта · 60 търга</h3>
+          <p>
+            В 60 от спечелените 214 търга <strong>ГБС е единственият участник</strong>
+            (общо 423 млн. лв.). Това е значително над средното за пътно строителство
+            (около 8% от търговете).
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Свързана компания с „една оферта" — ПЪТНИ СЪОРЪЖЕНИЯ ЕООД</h3>
+          <p>
+            <a href="#">ПЪТНИ СЪОРЪЖЕНИЯ ЕООД</a> — собственост 100% на същия мажоритарен
+            собственик — е спечелила <strong>92% от своите 38 договора</strong> с една оферта.
+            Това не е сигнал срещу ГБС, а контекст: вижда се на ниво <em>лице</em>, не на ниво
+            компания. <a href="#person" data-page="person">Виж профила на Илия Стоянов →</a>
+          </p>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="latest">
+        <h2 id="latest">Скорошни договори</h2>
+        <p class="section-hint">10 от 214. <a href="#">Виж всички / филтрирай / свали като CSV →</a></p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Предмет</th>
+              <th>Институция</th>
+              <th class="num">Подписан</th>
+              <th class="num">Текущ</th>
+              <th>Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="nowrap">14.11.2024</td>
+              <td><a href="#">Поддръжка и ремонт на републикански пътища — район ЮЗ</a><br><span class="small muted">UNP 00044-2024-0142</span></td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td class="money">42,8 млн. лв.</td>
+              <td class="money">42,8 млн. лв.</td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">28.09.2024</td>
+              <td><a href="#">Реконструкция жп линия София — Драгоман, етап 2</a><br><span class="small muted">UNP 02018-2024-0034 · ЕС финансиране</span></td>
+              <td><a href="#authority" data-page="authority">НКЖИ</a></td>
+              <td class="money">187 млн. лв.</td>
+              <td class="money">187 млн. лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">12.06.2024</td>
+              <td><a href="#">Доизграждане на АМ „Хемус" — лот 6</a><br><span class="small muted">UNP 00044-2024-0078 · ЕС · 4 анекса</span></td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td class="money">412 млн. лв.</td>
+              <td class="money">605 млн. лв.<span class="sub">+47%</span></td>
+              <td><span class="flag">Ръст +47%</span> <span class="flag">Анекси</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">04.04.2024</td>
+              <td><a href="#">Изграждане на околовръстен път Кърджали</a><br><span class="small muted">UNP 00044-2024-0042</span></td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td class="money">68,4 млн. лв.</td>
+              <td class="money">68,4 млн. лв.</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">22.02.2024</td>
+              <td><a href="#">Аварийно укрепване на трасе — АМ „Тракия", км 254</a><br><span class="small muted">UNP 00044-2024-0019</span></td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td class="money">18,2 млн. лв.</td>
+              <td class="money">18,2 млн. лв.</td>
+              <td><span class="flag">Без процедура</span></td>
+            </tr>
+            <tr>
+              <td class="nowrap">14.12.2023</td>
+              <td><a href="#">Реконструкция бул. „Цар Освободител" — София</a><br><span class="small muted">UNP 00087-2023-0186</span></td>
+              <td><a href="#authority" data-page="authority">Столична община</a></td>
+              <td class="money">12,4 млн. лв.</td>
+              <td class="money">13,1 млн. лв.<span class="sub">+5,6%</span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="nowrap">04.11.2023</td>
+              <td><a href="#">Доизграждане на АМ „Хемус" — лот 5</a><br><span class="small muted">UNP 00044-2023-0142 · ЕС · 2 анекса</span></td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td class="money">328 млн. лв.</td>
+              <td class="money">387 млн. лв.<span class="sub">+18%</span></td>
+              <td><span class="flag">Една оферта</span> <span class="flag">Ръст +18%</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="paging">
+          <span>Показани 1–7 от 214</span>
+          <div class="ctrl">
+            <a href="#" aria-disabled="true">‹ Предишни</a>
+            <a href="#">Следващи ›</a>
+          </div>
+        </div>
+        <p class="source">
+          Източник: АОП регистър (снимка 31.12.2024) и Търговски регистър (data.egov.bg,
+          снимка 15.12.2024). ЕИК 130928907.
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================== PERSON ================== -->
+  <div class="page" data-page="person" id="page-person">
+    <div class="crumbs">
+      <div class="crumbs-inner">
+        <a href="#home" data-page="home">Начало</a><span class="sep">›</span>
+        <a href="#">Лица</a><span class="sep">›</span>
+        Илия Стоянов Стоянов
+      </div>
+    </div>
+
+    <main>
+
+      <section class="page-header">
+        <p class="kicker">Лице · <span class="chip">Собственик</span> · <span class="chip">Управител</span></p>
+        <h1>Илия Стоянов Стоянов</h1>
+        <p class="lede">
+          Профил, обобщаващ публичните средства, спечелени през обществени поръчки от 4
+          компании, в които това лице е собственик или управител (към 31.12.2024).
+          Източник на свързаността: Търговски регистър (data.egov.bg). Сигма не показва ЕГН,
+          адреси или друга лична информация.
+        </p>
+      </section>
+
+      <div class="callout">
+        <h3>Защо съществува този профил?</h3>
+        <p>
+          Когато един човек контролира няколко компании, които участват в обществени поръчки,
+          пълната картина се вижда едва когато сумите се обединят на нивото на човека.
+          Този профил показва тази обединена картина за конкретното лице — какво е спечелено
+          през всички свързани компании, от кои институции, и кои характеристики се повтарят
+          в портфолиото.
+        </p>
+      </div>
+
+      <div class="alert-strip" role="alert">
+        <strong>За това лице са открити 2 типа сигнали на портфолио ниво.</strong>
+        Висока концентрация на спечеленото при два възложителя (АПИ — 41%, НКЖИ — 18%); една
+        от свързаните компании печели 92% от търговете си с една оферта.
+        <a href="#signals-person">Виж подробно ↓</a>
+      </div>
+
+      <dl class="facts" aria-label="Ключови показатели">
+        <div class="row"><dt>Общо публични средства към свързани компании</dt><dd>2,79 млрд. лв. <span class="sub">1,43 млрд. €</span></dd></div>
+        <div class="row"><dt>Свързани компании</dt><dd>4 <span class="sub">2 като мажоритарен собственик, 2 чрез миноритарни дялове</span></dd></div>
+        <div class="row"><dt>Институции платци</dt><dd>52 <span class="sub">през всички 4 компании</span></dd></div>
+        <div class="row"><dt>Брой договори (общо)</dt><dd>501</dd></div>
+        <div class="row"><dt>Период</dt><dd>януари 2020 — ноември 2024</dd></div>
+        <div class="row"><dt>Сектор</dt><dd>строителство (98%), храни (2%)</dd></div>
+      </dl>
+
+      <section class="section" aria-labelledby="companies">
+        <h2 id="companies">Свързани компании</h2>
+        <p class="section-hint">
+          Компании, в които Илия Стоянов е собственик или управител, и сумите спечелени от
+          всяка през обществени поръчки за периода 2020–2024.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Компания</th>
+              <th>Роля и дял</th>
+              <th class="num">Спечелено</th>
+              <th class="num">Договори</th>
+              <th>Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="#company" data-page="company">ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД</a><br><span class="small muted">ЕИК 130928907 · строителство</span></td>
+              <td>Мажоритарен собственик <span class="share-num">68%</span> · едноличен управител</td>
+              <td class="money">1,87 млрд. лв.</td>
+              <td class="money">214</td>
+              <td><span class="flag">Концентрация</span> <span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="#">ГБС ИНЖЕНЕРИНГ АД</a><br><span class="small muted">ЕИК 130928914 · строителство</span></td>
+              <td>Мажоритарен собственик <span class="share-num">54%</span></td>
+              <td class="money">684 млн. лв.</td>
+              <td class="money">187</td>
+              <td><span class="flag">Ръст</span></td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="#">ПЪТНИ СЪОРЪЖЕНИЯ ЕООД</a><br><span class="small muted">ЕИК 175214738 · строителство</span></td>
+              <td>Едноличен собственик <span class="share-num">100%</span></td>
+              <td class="money">142 млн. лв.</td>
+              <td class="money">38</td>
+              <td><span class="flag">Една оферта · 92%</span></td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="#">ПОДДРЪЖКА ПЪТИЩА — БУРГАС ООД</a><br><span class="small muted">ЕИК 102843118 · строителство</span></td>
+              <td>Миноритарен собственик <span class="share-num">40%</span></td>
+              <td class="money">98 млн. лв.</td>
+              <td class="money">62</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3"><strong>Общо през 4 компании</strong></td>
+              <td class="money"><strong>2,79 млрд. лв.</strong></td>
+              <td class="money"><strong>501</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <section class="section" aria-labelledby="person-from">
+        <h2 id="person-from">Откъде идват парите</h2>
+        <p class="section-hint">
+          Институции, обединени през всички 4 свързани компании. Така една институция, която
+          е плащала на повече от една от компаниите, се появява тук с агрегирана сума.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Институция</th>
+              <th>Чрез компании</th>
+              <th class="num">Платено общо</th>
+              <th>Дял от 2,79 млрд. лв.</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a></td>
+              <td>ГБС, ГБС Инженеринг, Пътни съоръжения, Поддръжка пътища Бургас (и&nbsp;4-те)</td>
+              <td class="money">1,14 млрд. лв.</td>
+              <td><span class="share"><span class="share-bar warn"><i style="width:41%"></i></span><span class="share-num">40,8%</span></span></td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="#authority" data-page="authority">НКЖИ</a></td>
+              <td>ГБС, ГБС Инженеринг</td>
+              <td class="money">512 млн. лв.</td>
+              <td><span class="share"><span class="share-bar warn"><i style="width:18%"></i></span><span class="share-num">18,4%</span></span></td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="#authority" data-page="authority">Министерство на регионалното развитие</a></td>
+              <td>ГБС, ГБС Инженеринг</td>
+              <td class="money">287 млн. лв.</td>
+              <td><span class="share"><span class="share-bar"><i style="width:10%"></i></span><span class="share-num">10,3%</span></span></td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="#authority" data-page="authority">Столична община</a></td>
+              <td>ГБС, ГБС Инженеринг</td>
+              <td class="money">184 млн. лв.</td>
+              <td><span class="share"><span class="share-bar"><i style="width:7%"></i></span><span class="share-num">6,6%</span></span></td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="#authority" data-page="authority">Община Бургас</a></td>
+              <td>Поддръжка пътища Бургас</td>
+              <td class="money">94 млн. лв.</td>
+              <td><span class="share"><span class="share-bar"><i style="width:3.4%"></i></span><span class="share-num">3,4%</span></span></td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><a href="#authority" data-page="authority">Община Пловдив</a></td>
+              <td>ГБС, Пътни съоръжения</td>
+              <td class="money">87 млн. лв.</td>
+              <td><span class="share"><span class="share-bar"><i style="width:3.1%"></i></span><span class="share-num">3,1%</span></span></td>
+            </tr>
+            <tr>
+              <td colspan="5"><a href="#">… още 46 институции</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section" id="signals-person" aria-labelledby="signals-title-person">
+        <h2 id="signals-title-person">Сигнали на ниво лице</h2>
+        <p class="section-hint">
+          Това са сигнали, които се виждат само когато сумите от няколко компании се обединят
+          към едно лице — те <em>не</em> се появяват в профилите на отделните компании.
+        </p>
+
+        <div class="callout warning">
+          <h3>Концентрация на портфолио ниво — АПИ + НКЖИ = 59%</h3>
+          <p>
+            Близо 60% от парите, спечелени от 4-те компании, идват от 2 институции (АПИ — 41%,
+            НКЖИ — 18%). По отделно ГБС изглежда силно ориентирана към АПИ; в комбинация с
+            другите 3 компании, картината се засилва.
+          </p>
+          <p class="small muted" style="margin-bottom:0;">
+            <a href="#">Какво означава „концентрация на портфолио" →</a>
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <h3>Една оферта · 92% от търговете на ПЪТНИ СЪОРЪЖЕНИЯ ЕООД</h3>
+          <p>
+            Тази свързана компания (100% собственост) е спечелила <strong>35 от 38 търга</strong>
+            с една оферта (общо 132 млн. лв.). Това е аномално високо в сравнение с пазара и с
+            другите три компании в портфолиото.
+          </p>
+        </div>
+
+        <div class="callout">
+          <h3>Какво <em>не</em> е сигнал</h3>
+          <p>
+            Свързаните компании не са се конкурирали помежду си в един и същи търг (проверка:
+            0 случая на „споделени собственици в един търг" — сигнал 7а от методологията).
+            Това означава, че няма фалшива конкуренция в данните.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="data">
+        <h2 id="data">Източник на данни</h2>
+        <p>
+          Свързаността между това лице и компаниите по-горе идва от <a href="#">Търговски
+          регистър — отворени данни, data.egov.bg</a> (снимка от 15 декември 2024 г.).
+          Регистърът е публичен; в него собствеността и управлението на дружествата са
+          задължителна информация по Закона за търговския регистър.
+        </p>
+        <p>
+          Сигма показва само трите имена и ролята на лицето. Личният идентификатор (ЕГН) е
+          хеширан в източника и Сигма не го съхранява и не го показва. Адреси, дата на
+          раждане, роднинства и други лични данни не са част от платформата.
+        </p>
+        <p class="small muted">
+          Ако намираш техническа грешка в свързването — например че този профил събира под
+          едно лице двама различни човека със същото име — пиши ни на
+          <a href="#">contact@sigma.bg</a>.
+        </p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================== FLOWS ================== -->
+  <div class="page" data-page="flows" id="page-flows">
+    <div class="crumbs">
+      <div class="crumbs-inner">
+        <a href="#home" data-page="home">Начало</a><span class="sep">›</span>
+        Потоци на пари
+      </div>
+    </div>
+
+    <main>
+
+      <section class="page-header">
+        <p class="kicker">Визуализация</p>
+        <h1>Потоци на пари: откъде към кого</h1>
+        <p class="lede">
+          От институциите-възложители (вляво) към компаниите-изпълнители (в средата). С
+          включена колона „Лица" — нагоре до крайния собственик на компанията. Дебелината на
+          всеки поток е пропорционална на сумата.
+        </p>
+      </section>
+
+      <div class="flow-controls" role="group" aria-label="Настройки на визуализацията">
+        <label>Сектор:
+          <select>
+            <option>Строителство</option>
+            <option>Храни</option>
+            <option>Двата сектора</option>
+          </select>
+        </label>
+        <label>Година:
+          <select>
+            <option>2023</option>
+            <option>2024</option>
+            <option>2020–2024</option>
+          </select>
+        </label>
+        <label>Финансиране:
+          <select>
+            <option>Всички</option>
+            <option>Само със средства на ЕС</option>
+            <option>Само национални</option>
+          </select>
+        </label>
+        <label>Топ:
+          <select>
+            <option>Топ 20 потока</option>
+            <option>Топ 50 потока</option>
+          </select>
+        </label>
+        <button type="button" id="ownersToggle" class="toggle on" aria-pressed="true">
+          <span aria-hidden="true">●</span> Покажи колона „Лица" (собственици)
+        </button>
+      </div>
+
+      <div class="callout">
+        <strong>Сценарий:</strong> Строителство 2023, топ 20 потока. Включена е колоната
+        „Свързани лица" — нагоре до крайния собственик. Когато един човек контролира няколко
+        компании, отделните им потоци се обединяват в дебел поток към едно име.
+      </div>
+
+      <svg class="flow-svg" id="flowSvg" viewBox="0 0 1100 600" role="img" aria-label="Поток на средства от институции през компании към свързани лица">
+        <text x="135" y="12" text-anchor="end" class="cap" style="font-size:11px; font-weight:700; fill: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Институции</text>
+        <text x="565" y="12" class="cap" style="font-size:11px; font-weight:700; fill: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Компании</text>
+        <text x="945" y="12" text-anchor="end" class="cap personLabel" style="font-size:11px; font-weight:700; fill: var(--warning); text-transform: uppercase; letter-spacing: 0.08em;">Свързани лица — собственици</text>
+
+        <g class="ribbons-ac" fill-rule="evenodd">
+          <path class="link flagged" d="M160,20 C350,20 350,20 540,20 L540,115 C350,115 350,115 160,115 Z">
+            <title>АПИ → ГБС Инфраструктурно строителство: 400 млн. лв. · 14 договора · сигнал „Една оферта"</title>
+          </path>
+          <path class="link" d="M160,115 C350,115 350,182 540,182 L540,206 C350,206 350,139 160,139 Z">
+            <title>АПИ → ГБС Инженеринг: 100 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,139 C350,139 350,261 540,261 L540,294 C350,294 350,172 160,172 Z">
+            <title>АПИ → Трейс Груп: 140 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,172 C350,172 350,345 540,345 L540,369 C350,369 350,196 160,196 Z">
+            <title>АПИ → Хидрострой: 100 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,196 C350,196 350,424 540,424 L540,434 C350,434 350,206 160,206 Z">
+            <title>АПИ → Пътни съоръжения: 40 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,206 C350,206 350,489 540,489 L540,494 C350,494 350,211 160,211 Z">
+            <title>АПИ → Понсстройинженеринг: 20 млн. лв.</title>
+          </path>
+
+          <path class="link" d="M160,218 C350,218 350,206 540,206 L540,225 C350,225 350,237 160,237 Z">
+            <title>МРРБ → ГБС Инженеринг: 80 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,237 C350,237 350,294 540,294 L540,311 C350,311 350,254 160,254 Z">
+            <title>МРРБ → Трейс Груп: 70 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,254 C350,254 350,369 540,369 L540,393 C350,393 350,278 160,278 Z">
+            <title>МРРБ → Хидрострой: 100 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,278 C350,278 350,434 540,434 L540,451 C350,451 350,295 160,295 Z">
+            <title>МРРБ → Пътни съоръжения: 70 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,295 C350,295 350,494 540,494 L540,511 C350,511 350,312 160,312 Z">
+            <title>МРРБ → Понсстройинженеринг: 70 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,312 C350,312 350,556 540,556 L540,563 C350,563 350,319 160,319 Z">
+            <title>МРРБ → Поддръжка пътища Бургас: 30 млн. лв.</title>
+          </path>
+
+          <path class="link flagged" d="M160,326 C350,326 350,115 540,115 L540,143 C350,143 350,354 160,354 Z">
+            <title>НКЖИ → ГБС Инфраструктурно строителство: 120 млн. лв. · сигнал „Една оферта"</title>
+          </path>
+          <path class="link" d="M160,354 C350,354 350,225 540,225 L540,244 C350,244 350,373 160,373 Z">
+            <title>НКЖИ → ГБС Инженеринг: 80 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,373 C350,373 350,311 540,311 L540,328 C350,328 350,390 160,390 Z">
+            <title>НКЖИ → Трейс Груп: 70 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,390 C350,390 350,393 540,393 L540,407 C350,407 350,404 160,404 Z">
+            <title>НКЖИ → Хидрострой: 60 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,404 C350,404 350,511 540,511 L540,523 C350,523 350,416 160,416 Z">
+            <title>НКЖИ → Понсстройинженеринг: 50 млн. лв.</title>
+          </path>
+
+          <path class="link" d="M160,424 C350,424 350,143 540,143 L540,162 C350,162 350,443 160,443 Z">
+            <title>Столична община → ГБС Инфраструктурно строителство: 80 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,443 C350,443 350,244 540,244 L540,254 C350,254 350,453 160,453 Z">
+            <title>Столична община → ГБС Инженеринг: 40 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,453 C350,453 350,451 540,451 L540,468 C350,468 350,470 160,470 Z">
+            <title>Столична община → Пътни съоръжения: 70 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,470 C350,470 350,523 540,523 L540,542 C350,542 350,489 160,489 Z">
+            <title>Столична община → Понсстройинженеринг: 80 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,489 C350,489 350,563 540,563 L540,565 C350,565 350,492 160,492 Z">
+            <title>Столична община → Поддръжка пътища Бургас: 10 млн. лв.</title>
+          </path>
+
+          <path class="link" d="M160,498 C350,498 350,162 540,162 L540,174 C350,174 350,510 160,510 Z">
+            <title>Община Пловдив → ГБС Инфраструктурно строителство: 50 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,510 C350,510 350,328 540,328 L540,338 C350,338 350,520 160,520 Z">
+            <title>Община Пловдив → Трейс Груп: 40 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,520 C350,520 350,468 540,468 L540,482 C350,482 350,534 160,534 Z">
+            <title>Община Пловдив → Пътни съоръжения: 60 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,534 C350,534 350,542 540,542 L540,549 C350,549 350,541 160,541 Z">
+            <title>Община Пловдив → Понсстройинженеринг: 30 млн. лв.</title>
+          </path>
+
+          <path class="link" d="M160,549 C350,549 350,407 540,407 L540,417 C350,417 350,559 160,559 Z">
+            <title>Община Бургас → Хидрострой: 40 млн. лв.</title>
+          </path>
+          <path class="link" d="M160,559 C350,559 350,565 540,565 L540,579 C350,579 350,573 160,573 Z">
+            <title>Община Бургас → Поддръжка пътища Бургас: 60 млн. лв.</title>
+          </path>
+        </g>
+
+        <g class="bars-a">
+          <rect class="node authority" x="140" y="20"  width="20" height="190"/>
+          <rect class="node authority" x="140" y="218" width="20" height="100"/>
+          <rect class="node authority" x="140" y="326" width="20" height="90"/>
+          <rect class="node authority" x="140" y="424" width="20" height="66"/>
+          <rect class="node authority" x="140" y="498" width="20" height="43"/>
+          <rect class="node authority" x="140" y="549" width="20" height="24"/>
+        </g>
+        <g class="labels-a">
+          <text x="134" y="118" text-anchor="end" class="node-label" style="font-weight:700">Агенция „Пътна инфраструктура"</text>
+          <text x="134" y="132" text-anchor="end" class="node-label small">800 млн. лв.</text>
+          <text x="134" y="270" text-anchor="end" class="node-label" style="font-weight:700">МРРБ</text>
+          <text x="134" y="284" text-anchor="end" class="node-label small">420 млн. лв.</text>
+          <text x="134" y="370" text-anchor="end" class="node-label" style="font-weight:700">НКЖИ</text>
+          <text x="134" y="384" text-anchor="end" class="node-label small">380 млн. лв.</text>
+          <text x="134" y="457" text-anchor="end" class="node-label" style="font-weight:700">Столична община</text>
+          <text x="134" y="471" text-anchor="end" class="node-label small">280 млн. лв.</text>
+          <text x="134" y="519" text-anchor="end" class="node-label" style="font-weight:700">Община Пловдив</text>
+          <text x="134" y="533" text-anchor="end" class="node-label small">180 млн. лв.</text>
+          <text x="134" y="558" text-anchor="end" class="node-label" style="font-weight:700">Община Бургас</text>
+          <text x="134" y="572" text-anchor="end" class="node-label small">100 млн. лв.</text>
+        </g>
+
+        <g class="bars-c">
+          <rect class="node company" x="540" y="20"  width="20" height="154"/>
+          <rect class="node company" x="540" y="182" width="20" height="71"/>
+          <rect class="node company" x="540" y="261" width="20" height="76"/>
+          <rect class="node company" x="540" y="345" width="20" height="71"/>
+          <rect class="node company" x="540" y="424" width="20" height="57"/>
+          <rect class="node company" x="540" y="489" width="20" height="59"/>
+          <rect class="node company" x="540" y="556" width="20" height="24"/>
+        </g>
+        <g class="labels-c">
+          <text x="568" y="96" class="node-label" style="font-weight:700">ГБС Инфраструктурно стр-во</text>
+          <text x="568" y="110" class="node-label small">650 млн. лв.</text>
+          <text x="568" y="215" class="node-label" style="font-weight:700">ГБС Инженеринг</text>
+          <text x="568" y="229" class="node-label small">300 млн. лв.</text>
+          <text x="568" y="297" class="node-label" style="font-weight:700">Трейс Груп Холд</text>
+          <text x="568" y="311" class="node-label small">320 млн. лв.</text>
+          <text x="568" y="378" class="node-label" style="font-weight:700">Хидрострой</text>
+          <text x="568" y="392" class="node-label small">300 млн. лв.</text>
+          <text x="568" y="450" class="node-label" style="font-weight:700">Пътни съоръжения</text>
+          <text x="568" y="464" class="node-label small">240 млн. лв.</text>
+          <text x="568" y="515" class="node-label" style="font-weight:700">Понсстройинженеринг</text>
+          <text x="568" y="529" class="node-label small">250 млн. лв.</text>
+          <text x="568" y="572" class="node-label" style="font-weight:700">Поддръжка пътища — Бургас</text>
+          <text x="568" y="586" class="node-label small">100 млн. лв.</text>
+        </g>
+
+        <g class="ribbons-cp" id="ribbonsCP">
+          <path class="link flagged" d="M560,20 C740,20 740,20 920,20 L920,174 C740,174 740,174 560,174 Z">
+            <title>ГБС Инфраструктурно → Илия Стоянов (мажоритарен собственик, 68%): 650 млн. лв.</title>
+          </path>
+          <path class="link flagged" d="M560,182 C740,182 740,174 920,174 L920,245 C740,245 740,253 560,253 Z">
+            <title>ГБС Инженеринг → Илия Стоянов (54%): 300 млн. лв.</title>
+          </path>
+          <path class="link" d="M560,261 C740,261 740,334 920,334 L920,410 C740,410 740,337 560,337 Z">
+            <title>Трейс Груп → Стоян Георгиев: 320 млн. лв.</title>
+          </path>
+          <path class="link" d="M560,345 C740,345 740,418 920,418 L920,489 C740,489 740,416 560,416 Z">
+            <title>Хидрострой → Атанас Атанасов: 300 млн. лв.</title>
+          </path>
+          <path class="link flagged" d="M560,424 C740,424 740,245 920,245 L920,302 C740,302 740,481 560,481 Z">
+            <title>Пътни съоръжения → Илия Стоянов (100%): 240 млн. лв. · сигнал „92% от търговете с 1 оферта"</title>
+          </path>
+          <path class="link" d="M560,489 C740,489 740,497 920,497 L920,556 C740,556 740,548 560,548 Z">
+            <title>Понсстройинженеринг → други собственици: 250 млн. лв.</title>
+          </path>
+          <path class="link flagged" d="M560,556 C740,556 740,302 920,302 L920,326 C740,326 740,580 560,580 Z">
+            <title>Поддръжка пътища Бургас → Илия Стоянов (40%): 100 млн. лв.</title>
+          </path>
+        </g>
+
+        <g class="bars-p" id="barsP">
+          <rect class="node person" x="920" y="20"  width="20" height="306"/>
+          <rect class="node person" x="920" y="334" width="20" height="76"/>
+          <rect class="node person" x="920" y="418" width="20" height="71"/>
+          <rect class="node person" x="920" y="497" width="20" height="59"/>
+        </g>
+        <g class="labels-p" id="labelsP">
+          <text x="914" y="170" text-anchor="end" class="node-label" style="font-weight:700; fill: var(--warning)">Илия Стоянов</text>
+          <text x="914" y="184" text-anchor="end" class="node-label small">собственик в 4 компании · 1,29 млрд. лв.</text>
+          <text x="914" y="370" text-anchor="end" class="node-label" style="font-weight:700">Стоян Георгиев</text>
+          <text x="914" y="384" text-anchor="end" class="node-label small">собственик · 320 млн. лв.</text>
+          <text x="914" y="450" text-anchor="end" class="node-label" style="font-weight:700">Атанас Атанасов</text>
+          <text x="914" y="464" text-anchor="end" class="node-label small">собственик · 300 млн. лв.</text>
+          <text x="914" y="523" text-anchor="end" class="node-label" style="font-weight:700">Други собственици</text>
+          <text x="914" y="537" text-anchor="end" class="node-label small">3 лица · 250 млн. лв.</text>
+        </g>
+      </svg>
+
+      <div class="flow-tooltip">
+        <strong>Прочит на тази картина:</strong>
+        Дебелината на потоците показва, че от АПИ най-много пари отиват към ГБС Инфраструктурно
+        строителство (червен поток — 400 млн. лв., с сигнал „Една оферта"). Когато включим
+        колоната „Свързани лица", виждаме, че ГБС Инфраструктурно, ГБС Инженеринг, Пътни
+        съоръжения и Поддръжка пътища Бургас имат общ собственик — <a href="#person" data-page="person">Илия
+        Стоянов</a>. Сборът на парите към тези 4 компании е 1,29 млрд. лв. — над половината от
+        всичко във визуализацията.
+      </div>
+
+      <section class="section" aria-labelledby="scenarios">
+        <h2 id="scenarios">Сценарии</h2>
+        <p class="section-hint">Готови филтри, които често ползват журналисти и изследователи.</p>
+
+        <div class="tiles">
+          <article class="tile">
+            <p class="kicker info">Сценарий</p>
+            <h3><a href="#">Строителство 2023 — топ 20 потока</a></h3>
+            <p class="desc">Сегашната визуализация. Включва двата сектора магистрални и общински строителни поръчки.</p>
+          </article>
+          <article class="tile">
+            <p class="kicker info">Сценарий</p>
+            <h3><a href="#">Храни — ЕС финансирани, 2020–2024</a></h3>
+            <p class="desc">Кои общини и училища купуват с европейски пари, от кои фирми.</p>
+          </article>
+          <article class="tile">
+            <p class="kicker info">Сценарий</p>
+            <h3><a href="#">Концентрация над 40% — институции с доминиращ изпълнител</a></h3>
+            <p class="desc">Само институциите, при които един изпълнител печели над 40% от строителните поръчки.</p>
+          </article>
+          <article class="tile">
+            <p class="kicker info">Сценарий</p>
+            <h3><a href="#">Само свързани лица с ≥ 3 компании</a></h3>
+            <p class="desc">Лица, които контролират 3 или повече компании, спечелили обществени поръчки.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="explain">
+        <h2 id="explain">Защо това има значение</h2>
+        <div class="two-col">
+          <div>
+            <p>
+              Сама по себе си една институция, плащаща на една компания, не казва нищо. Но
+              когато визуализирате 20-те най-големи потока в един сектор за една година, се
+              виждат три неща, които таблиците не показват:
+            </p>
+            <ul>
+              <li><strong>Доминиращи получатели</strong> — една компания, която поглъща
+                непропорционална част от един възложител (видимо като дебел поток към един възел).</li>
+              <li><strong>Системни клиенти</strong> — институция, чиито парични потоци отиват
+                почти изцяло към 2–3 компании (всички дебели потоци от един възел).</li>
+              <li><strong>Истинска концентрация на собственост</strong> — три или четири
+                нормално изглеждащи компании, които при включена колона „Лица" се сливат в един
+                поток до едно име.</li>
+            </ul>
+          </div>
+          <div>
+            <p>
+              <strong>Какво визуализацията не казва.</strong> Дебел поток не означава нарушение.
+              Един изпълнител може да доминира пазара, защото е единствен квалифициран.
+              Един човек може да притежава 4 компании по добросъвестни причини.
+              Визуализацията посочва моделите; преценката за това какво означават остава за
+              читателя — затова всеки поток може да бъде кликнат до конкретните договори,
+              които го съставят.
+            </p>
+            <p>
+              <a href="#">Виж методологията →</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="top-flows">
+        <h2 id="top-flows">Топ 10 потока — табличен изглед</h2>
+        <p class="section-hint">
+          Същите данни като визуализацията. Числата са в милиони лв. при подписване.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Институция</th>
+              <th>Компания</th>
+              <th>Свързано лице</th>
+              <th class="num">Сума</th>
+              <th class="num">Договори</th>
+              <th>Сигнали</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="#authority" data-page="authority">АПИ</a></td>
+              <td><a href="#company" data-page="company">ГБС Инфраструктурно стр-во</a></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a></td>
+              <td class="money">400 млн.</td>
+              <td class="money">14</td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="#authority" data-page="authority">АПИ</a></td>
+              <td><a href="#company" data-page="company">Трейс Груп</a></td>
+              <td><a href="#">Стоян Георгиев</a></td>
+              <td class="money">140 млн.</td>
+              <td class="money">9</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="#authority" data-page="authority">НКЖИ</a></td>
+              <td><a href="#company" data-page="company">ГБС Инфраструктурно стр-во</a></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a></td>
+              <td class="money">120 млн.</td>
+              <td class="money">4</td>
+              <td><span class="flag">Една оферта</span></td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="#authority" data-page="authority">АПИ</a></td>
+              <td><a href="#company" data-page="company">ГБС Инженеринг</a></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a></td>
+              <td class="money">100 млн.</td>
+              <td class="money">11</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="#authority" data-page="authority">АПИ</a></td>
+              <td><a href="#company" data-page="company">Хидрострой</a></td>
+              <td><a href="#">Атанас Атанасов</a></td>
+              <td class="money">100 млн.</td>
+              <td class="money">7</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><a href="#authority" data-page="authority">МРРБ</a></td>
+              <td><a href="#company" data-page="company">Хидрострой</a></td>
+              <td><a href="#">Атанас Атанасов</a></td>
+              <td class="money">100 млн.</td>
+              <td class="money">6</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td><a href="#authority" data-page="authority">Столична община</a></td>
+              <td><a href="#company" data-page="company">ГБС Инфраструктурно стр-во</a></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a></td>
+              <td class="money">80 млн.</td>
+              <td class="money">12</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">8</td>
+              <td><a href="#authority" data-page="authority">Столична община</a></td>
+              <td><a href="#company" data-page="company">Понсстройинженеринг</a></td>
+              <td><a href="#">Други</a></td>
+              <td class="money">80 млн.</td>
+              <td class="money">9</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">9</td>
+              <td><a href="#authority" data-page="authority">МРРБ</a></td>
+              <td><a href="#company" data-page="company">ГБС Инженеринг</a></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a></td>
+              <td class="money">80 млн.</td>
+              <td class="money">8</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="rank">10</td>
+              <td><a href="#authority" data-page="authority">НКЖИ</a></td>
+              <td><a href="#company" data-page="company">ГБС Инженеринг</a></td>
+              <td><a href="#person" data-page="person">Илия Стоянов</a></td>
+              <td class="money">80 млн.</td>
+              <td class="money">5</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="source">
+          Сценарий: строителство, 2023, топ 20 потока. Данни към 31.12.2024.
+        </p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================== RED FLAGS ================== -->
+  <div class="page" data-page="red-flags" id="page-red-flags">
+    <div class="crumbs">
+      <div class="crumbs-inner">
+        <a href="#home" data-page="home">Начало</a><span class="sep">›</span>
+        Червени флагове
+      </div>
+    </div>
+
+    <main>
+
+      <section class="page-header">
+        <p class="kicker">Класиране по сигнали</p>
+        <h1>Червени флагове</h1>
+        <p class="lede">
+          Договори от регистъра на обществените поръчки, при които една или повече характеристики
+          заслужават проверка — единствена оферта, директно възлагане, ръст на стойността,
+          концентрация на изпълнител, споделени собственици. Подредени по съставен резултат от
+          100 точки.
+        </p>
+      </section>
+
+      <div class="callout">
+        <h3>Какво показва това класиране</h3>
+        <p>
+          Червените флагове са <strong>обективни характеристики</strong> на договорите, които
+          корелират с проблеми при други случаи — не са обвинение или преценка за нарушение.
+          Един договор с висок резултат може да бъде напълно законен; един договор с нулев
+          резултат може да бъде проблемен по причини, които данните не показват.
+          Цел на класирането: <em>да насочи вниманието</em>, не да присъжда.
+          <a href="#">Виж пълната методология и точкуването →</a>
+        </p>
+      </div>
+
+      <div class="split">
+        <aside aria-label="Филтри и категории">
+          <h4>Изглед</h4>
+          <ul>
+            <li class="active">Договори · 1 247</li>
+            <li><a href="#" class="muted">Институции · 412</a></li>
+            <li><a href="#" class="muted">Компании · 384</a></li>
+            <li><a href="#" class="muted">Лица · 78</a></li>
+          </ul>
+
+          <div class="filter-group">
+            <h4>Сигнали</h4>
+            <label class="check"><input type="checkbox" checked> Една оферта</label>
+            <label class="check"><input type="checkbox" checked> Без конкурентна процедура</label>
+            <label class="check"><input type="checkbox" checked> Ръст на стойността</label>
+            <label class="check"><input type="checkbox" checked> Чести анекси</label>
+            <label class="check"><input type="checkbox" checked> Концентрация</label>
+            <label class="check"><input type="checkbox" checked> ЕС средства без конкуренция</label>
+            <label class="check"><input type="checkbox" checked> Споделени собственици</label>
+          </div>
+
+          <div class="filter-group">
+            <h4>Сектор</h4>
+            <label class="check"><input type="checkbox" checked> Строителство</label>
+            <label class="check"><input type="checkbox" checked> Храни</label>
+          </div>
+
+          <div class="filter-group">
+            <h4>Година</h4>
+            <label class="check"><input type="checkbox"> 2020</label>
+            <label class="check"><input type="checkbox"> 2021</label>
+            <label class="check"><input type="checkbox" checked> 2022</label>
+            <label class="check"><input type="checkbox" checked> 2023</label>
+            <label class="check"><input type="checkbox" checked> 2024</label>
+          </div>
+
+          <div class="filter-group">
+            <h4>Минимална стойност</h4>
+            <label class="check"><input type="radio" name="min"> 100 хил. лв.</label>
+            <label class="check"><input type="radio" name="min" checked> 1 млн. лв.</label>
+            <label class="check"><input type="radio" name="min"> 10 млн. лв.</label>
+          </div>
+
+          <p class="small muted" style="margin-top:24px;">
+            <a href="#">Свали като CSV (1 247 реда)</a>
+          </p>
+        </aside>
+
+        <div>
+          <p class="muted small" style="margin: 4px 0 18px;">
+            Показани 1 247 договора, които задействат поне един сигнал.
+            Подредени по съставен резултат. Кликни „+" за обяснение защо всеки сигнал е задействан.
+          </p>
+
+          <div style="border-top: 2px solid var(--text);">
+            <div style="display:grid; grid-template-columns: 32px 1fr 200px 140px 80px; gap: 12px; padding: 8px 0; font-size:13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 700; border-bottom: 1px solid var(--border);">
+              <div></div>
+              <div>Договор / страни</div>
+              <div>Сигнали</div>
+              <div style="text-align:right;">Стойност</div>
+              <div style="text-align:right;">Резултат</div>
+            </div>
+
+            <details class="row" open>
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Доизграждане на АМ „Хемус" — лот 6</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00044-2024-0078 · <a href="#authority" data-page="authority">Агенция „Пътна инфраструктура"</a> → <a href="#company" data-page="company">ГБС Инфраструктурно строителство АД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Една оферта</span>
+                  <span class="flag">Ръст +47%</span>
+                  <span class="flag">ЕС</span>
+                  <span class="flag">4 анекса</span>
+                </span>
+                <span class="money">605 млн. лв.<span class="sub">подписан: 412</span></span>
+                <span style="text-align:right;"><span class="score">93<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Една оферта</span><br><span class="small muted">+20 точки</span></div>
+                    <div class="why">
+                      В тръжната процедура е подадена само 1 оферта (тази на ГБС). Открита
+                      процедура без реален конкурент.
+                    </div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Ръст на стойността +47%</span><br><span class="small muted">+25 точки (таван)</span></div>
+                    <div class="why">
+                      Подписана стойност 412 млн. лв.; текуща стойност след 4 анекса —
+                      605 млн. лв. Увеличение от 193 млн. лв. (+47%) над прага от 20%.
+                    </div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Чести анекси</span><br><span class="small muted">+15 точки</span></div>
+                    <div class="why">
+                      Регистрирани 4 анекса по договора, при праг 3 за активиране на сигнала.
+                    </div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">ЕС финансиране без реална конкуренция</span><br><span class="small muted">+30 точки (надстройка над „Една оферта")</span></div>
+                    <div class="why">
+                      Договорът е финансиран по ОП „Транспорт и транспортна инфраструктура" с
+                      ЕС средства. Възлагане с единствена оферта при ЕС финансиране е сигнал
+                      от по-висока тежест — подлежи и на одит от ЕС органи.
+                    </div>
+                  </div>
+                </div>
+                <p class="small muted" style="margin-bottom:0;">
+                  <a href="#">Виж пълния договор и историята на анексите →</a> ·
+                  <a href="#">Виж в АОП регистъра →</a>
+                </p>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Реконструкция жп линия София — Драгоман, етап 1</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 02018-2023-0098 · <a href="#authority" data-page="authority">НКЖИ</a> → <a href="#company" data-page="company">ГБС Инфраструктурно строителство АД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Една оферта</span>
+                  <span class="flag">ЕС</span>
+                  <span class="flag">Концентрация</span>
+                </span>
+                <span class="money">187 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">85<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Една оферта</span><br><span class="small muted">+20 точки</span></div>
+                    <div class="why">Открита процедура с 1 подадена оферта.</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">ЕС без конкуренция</span><br><span class="small muted">+30 точки</span></div>
+                    <div class="why">ОП „Транспорт", ЕС финансиране, без реална конкуренция.</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Концентрация при възложителя</span><br><span class="small muted">+15 точки</span></div>
+                    <div class="why">
+                      ГБС държи 47% от строителните разходи на НКЖИ за 2023 г. — над прага от 40%.
+                    </div>
+                  </div>
+                </div>
+                <p class="small muted" style="margin-bottom:0;">
+                  <a href="#">Виж пълния договор →</a>
+                </p>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Реконструкция на ул. „Цар Симеон" — Стара Загора</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00064-2023-0142 · <a href="#authority" data-page="authority">Община Стара Загора</a> → <a href="#company" data-page="company">ГРАДСКА АВТО ОПЛЕМЕТ ЕООД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Споделени собственици</span>
+                  <span class="flag">Ръст +18%</span>
+                </span>
+                <span class="money">5,6 млн. лв.<span class="sub">подписан: 4,7</span></span>
+                <span style="text-align:right;"><span class="score">68<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Споделени собственици</span><br><span class="small muted">+40 точки</span></div>
+                    <div class="why">
+                      3 от 4-те подадени оферти за този търг идват от компании, които споделят
+                      собственик чрез <a href="#person" data-page="person">един и същ човек</a> (по Търговския регистър).
+                      Конкуренцията в търга е била номинална.
+                    </div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Ръст на стойността +18%</span><br><span class="small muted">+25 точки</span></div>
+                    <div class="why">
+                      Подписана 4,7 млн. лв.; текуща след 2 анекса — 5,6 млн. лв. (+18%).
+                    </div>
+                  </div>
+                </div>
+                <p class="small muted" style="margin-bottom:0;">
+                  Това е силен сигнал, защото се вижда само през собствеността — на пръв поглед
+                  4 различни компании, а реално 1 собственик зад 3 от тях.
+                  <a href="#flows" data-page="flows">Виж връзките визуално →</a>
+                </p>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Аварийно укрепване на свлачище — кв. Грамада</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00104-2024-0058 · <a href="#authority" data-page="authority">Община Благоевград</a> → <a href="#">ХИДРОСТРОЙ ЮГ ЕООД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Без процедура</span>
+                  <span class="flag">Споделени собственици</span>
+                </span>
+                <span class="money">1,28 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">65<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Без конкурентна процедура</span><br><span class="small muted">+25 точки</span></div>
+                    <div class="why">
+                      „Пряко договаряне" — без обявление или състезание. Законът допуска това
+                      при определени условия (аварийна ситуация); тук обосновката е „спешност".
+                    </div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Споделени собственици (на ниво институция)</span><br><span class="small muted">+25 точки</span></div>
+                    <div class="why">
+                      ХИДРОСТРОЙ ЮГ ЕООД, заедно с 2 други компании от Община Благоевград
+                      (ПИРИН СТРОЙ АД, БАЛКАНСТРОЙ АД), споделят един собственик. През тези 3
+                      компании общината е изплатила 42,9 млн. лв. за периода.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Реконструкция на път II-49 Търговище — Разград</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00044-2023-0212 · <a href="#authority" data-page="authority">АПИ</a> → <a href="#">АВТОМАГИСТРАЛИ — ЧЕРНО МОРЕ АД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Една оферта</span>
+                  <span class="flag">ЕС</span>
+                </span>
+                <span class="money">84,3 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">62<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Една оферта</span><br><span class="small muted">+20 точки</span></div>
+                    <div class="why">Открита процедура с 1 оферта.</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">ЕС без конкуренция</span><br><span class="small muted">+30 точки</span></div>
+                    <div class="why">ЕС финансиране, без реална конкуренция.</div>
+                  </div>
+                </div>
+                <p class="small muted" style="margin-bottom:0;">Допълнителен контекст: компанията е спечелила всичките си 41 договора с 1 оферта от АПИ — виж <a href="#">профила</a>.</p>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Реконструкция на ул. „Тодор Александров" — Благоевград</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00104-2024-0072 · <a href="#authority" data-page="authority">Община Благоевград</a> → <a href="#">СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Една оферта</span>
+                  <span class="flag">Ръст +66%</span>
+                  <span class="flag">Концентрация</span>
+                </span>
+                <span class="money">7,12 млн. лв.<span class="sub">подписан: 4,30</span></span>
+                <span style="text-align:right;"><span class="score">60<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Една оферта</span><br><span class="small muted">+20 точки</span></div>
+                    <div class="why">Открита процедура с 1 оферта.</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Ръст +66%</span><br><span class="small muted">+25 точки</span></div>
+                    <div class="why">
+                      Подписан 4,30 млн. лв., текущ 7,12 млн. лв. (+66%, 3 анекса).
+                    </div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Концентрация при възложителя</span><br><span class="small muted">+15 точки</span></div>
+                    <div class="why">
+                      СТРОЙ-ИНЖЕНЕРИНГ БЛАГОЕВГРАД ЕООД печели 31% от строителните разходи на
+                      Община Благоевград за 2020–2024.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Доставка на месо и месни продукти — болница</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00184-2024-0028 · <a href="#authority" data-page="authority">УМБАЛ „Свети Иван Рилски"</a> → <a href="#">МЕСНИ ПРОДУКТИ — БЪЛГАРИЯ ЕООД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Без процедура</span>
+                  <span class="flag">Концентрация</span>
+                </span>
+                <span class="money">2,84 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">52<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Без конкурентна процедура</span><br><span class="small muted">+25 точки</span></div>
+                    <div class="why">„Договаряне без обявление" — обосновка: „специфичен ред".</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Концентрация</span><br><span class="small muted">+15 точки</span></div>
+                    <div class="why">
+                      МЕСНИ ПРОДУКТИ — БЪЛГАРИЯ ЕООД печели 58% от хранителните доставки на тази
+                      болница за 2024 г.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Изграждане на спортна зала — Видин</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00159-2023-0014 · <a href="#authority" data-page="authority">Министерство на младежта и спорта</a> → <a href="#">БАЛКАН КОМФОРТ Д.М.С. ООД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Без процедура</span>
+                </span>
+                <span class="money">3,2 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">48<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Без конкурентна процедура</span><br><span class="small muted">+25 точки</span></div>
+                    <div class="why">
+                      „Пряко договаряне" — обосновка не е публикувана в регистъра. БАЛКАН КОМФОРТ
+                      Д.М.С. ООД е спечелила 14 от 17 договора с ММС с този тип процедура.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Поддръжка на пътища — район Югоизток</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00044-2024-0142 · <a href="#authority" data-page="authority">АПИ</a> → <a href="#company" data-page="company">ГБС Инфраструктурно строителство АД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Една оферта</span>
+                  <span class="flag">Концентрация</span>
+                </span>
+                <span class="money">42,8 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">46<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Една оферта</span><br><span class="small muted">+20 точки</span></div>
+                    <div class="why">1 оферта при открита процедура.</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Концентрация</span><br><span class="small muted">+15 точки</span></div>
+                    <div class="why">ГБС държи 45% от строителните разходи на АПИ за 2024.</div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details class="row">
+              <summary>
+                <span class="expander"></span>
+                <span>
+                  <strong>Сметосъбиране и сметоизвозване — 2024–2027</strong>
+                  <span class="small muted" style="display:block; margin-top:2px;">
+                    UNP 00081-2024-0038 · <a href="#authority" data-page="authority">Община Кърджали</a> → <a href="#">САНИТАРИЯ — РОДОПИ ЕООД</a>
+                  </span>
+                </span>
+                <span>
+                  <span class="flag">Една оферта</span>
+                  <span class="flag">Концентрация</span>
+                </span>
+                <span class="money">28,5 млн. лв.</span>
+                <span style="text-align:right;"><span class="score">42<span class="of">/100</span></span></span>
+              </summary>
+              <div class="body">
+                <h4>Защо този договор е във върха на класирането</h4>
+                <div class="signals">
+                  <div class="signal">
+                    <div class="name"><span class="flag">Една оферта</span><br><span class="small muted">+20 точки</span></div>
+                    <div class="why">Открита процедура с 1 оферта.</div>
+                  </div>
+                  <div class="signal">
+                    <div class="name"><span class="flag">Концентрация</span><br><span class="small muted">+15 точки</span></div>
+                    <div class="why">
+                      САНИТАРИЯ — РОДОПИ ЕООД е спечелила 3 от 3-те договора за смет на общината
+                      за последните 9 години.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+          </div>
+
+          <div class="paging">
+            <span>Показани 1–10 от 1 247</span>
+            <div class="ctrl">
+              <a href="#" aria-disabled="true">‹ Предишни</a>
+              <a href="#">Следващи ›</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section class="section" aria-labelledby="signal-key">
+        <h2 id="signal-key">Какво означава всеки сигнал</h2>
+        <p class="section-hint">Кратко обяснение на седемте сигнала. <a href="#">Пълна методология →</a></p>
+
+        <div class="two-col">
+          <div>
+            <div class="callout">
+              <h3>Една оферта</h3>
+              <p>В тръжната процедура е подадена само 1 оферта. Не доказва манипулация — пазарите за специфично строителство или местни хранителни доставки могат да са тесни. Активира внимание.</p>
+            </div>
+            <div class="callout">
+              <h3>Без конкурентна процедура</h3>
+              <p>Пряко договаряне или договаряне без обявление. Законът ги допуска при определени условия (спешност, единствен доставчик, технически причини). Систематична употреба или употреба за обикновени покупки заслужава проверка.</p>
+            </div>
+            <div class="callout">
+              <h3>Ръст на стойността</h3>
+              <p>Текущата стойност (след анекси) надхвърля подписаната с над 20%. Известна корупционна схема е „печели ниско, печели от анекси" — но строителството има и легитимни драйвери на ръст.</p>
+            </div>
+            <div class="callout">
+              <h3>Чести анекси</h3>
+              <p>3 или повече анекса по един договор. Често съпровожда сигнала „Ръст".</p>
+            </div>
+          </div>
+          <div>
+            <div class="callout">
+              <h3>Концентрация</h3>
+              <p>Един изпълнител печели над 40% от поръчките на една институция за една година (при поне 5 договора). Може да е рамков договор; може и да е „заловен" възложител.</p>
+            </div>
+            <div class="callout">
+              <h3>ЕС средства без конкуренция</h3>
+              <p>Договор с ЕС финансиране, спечелен с 1 оферта или без конкурентна процедура. По-висока тежест, защото подлежи на ЕС одит.</p>
+            </div>
+            <div class="callout warning">
+              <h3>Споделени собственици</h3>
+              <p>Две или повече компании, които споделят собственик (от Търговския регистър), участват в един търг — или печелят от един възложител. Един от най-силните сигнали за фалшива конкуренция, но и един от най-зависимите от качеството на данните за собственост.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код. Не съхранява лични данни.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
+          <a href="#">Търговски регистър — отворени данни (data.egov.bg)</a><br>
+          <a href="#">Лицензи и условия за ползване</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="#">Методология и речник</a><br>
+          <a href="#">За Сигма / контакти</a><br>
+          <a href="#">Изходен код (GitHub)</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // ---------- Page router (single-file SPA) ----------
+      var PAGES = ['home', 'authority', 'company', 'person', 'flows', 'red-flags'];
+      var TITLES = {
+        'home': 'Сигма — Платформа за прозрачни възлагания',
+        'authority': 'Община Благоевград — Сигма',
+        'company': 'ГБС Инфраструктурно строителство АД — Сигма',
+        'person': 'Илия Стоянов Стоянов — Сигма',
+        'flows': 'Потоци на пари — Сигма',
+        'red-flags': 'Червени флагове — Сигма'
+      };
+
+      var pages = document.querySelectorAll('.page');
+      var navLinks = document.querySelectorAll('.site-nav a[data-page]');
+
+      function showPage(name, pushHistory) {
+        if (PAGES.indexOf(name) === -1) name = 'home';
+
+        pages.forEach(function (p) {
+          p.classList.toggle('is-active', p.dataset.page === name);
+        });
+        navLinks.forEach(function (a) {
+          if (a.dataset.page === name) {
+            a.setAttribute('aria-current', 'page');
+          } else {
+            a.removeAttribute('aria-current');
+          }
+        });
+
+        document.title = TITLES[name] || 'Сигма';
+        window.scrollTo(0, 0);
+
+        if (pushHistory && location.hash !== '#' + name) {
+          try { history.pushState({ page: name }, '', '#' + name); } catch (_) {}
+        }
+      }
+
+      document.addEventListener('click', function (e) {
+        var link = e.target.closest('a[data-page]');
+        if (!link) return;
+        var name = link.dataset.page;
+        if (!name) return;
+        e.preventDefault();
+        showPage(name, true);
+      });
+
+      window.addEventListener('popstate', function () {
+        var name = (location.hash || '#home').slice(1);
+        showPage(name, false);
+      });
+
+      var initial = (location.hash || '#home').slice(1);
+      showPage(initial, false);
+
+      // ---------- Flows page: owners-column toggle ----------
+      var btn = document.getElementById('ownersToggle');
+      if (btn) {
+        var ribbons = document.getElementById('ribbonsCP');
+        var bars = document.getElementById('barsP');
+        var labels = document.getElementById('labelsP');
+        var personLabel = document.querySelector('.personLabel');
+        var on = true;
+        btn.addEventListener('click', function () {
+          on = !on;
+          btn.classList.toggle('on', on);
+          btn.setAttribute('aria-pressed', String(on));
+          var disp = on ? '' : 'none';
+          if (ribbons) ribbons.style.display = disp;
+          if (bars) bars.style.display = disp;
+          if (labels) labels.style.display = disp;
+          if (personLabel) personLabel.style.display = disp;
+          btn.firstElementChild.textContent = on ? '●' : '○';
+        });
+      }
+    })();
+  </script>
+
+</body>
+</html>
