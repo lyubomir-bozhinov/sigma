@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Компании — Сигма</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="index.html" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="index.html">Начало</a>
+        <a href="authorities.html">Институции</a>
+        <a href="companies.html" aria-current="page">Компании</a>
+        <a href="contracts.html">Договори</a>
+        <a href="flows.html">Потоци</a>
+        <a href="methodology.html">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
+        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="crumbs" aria-label="Навигация по нивата">
+    <div class="crumbs-inner">
+      <a href="index.html">Начало</a>
+      <span class="sep">›</span>
+      Компании
+    </div>
+  </nav>
+
+  <main id="main">
+
+    <section class="page-header">
+      <p class="kicker">14 209 изпълнители · 2020–2024</p>
+      <h1>Компании</h1>
+      <p class="lede">
+        Всяка компания, която е спечелила поне един договор по обществена поръчка. По
+        подразбиране списъкът е подреден по обща стойност на спечелените договори.
+      </p>
+    </section>
+
+    <div class="split">
+      <aside aria-label="Филтри">
+
+        <div class="filter-group">
+          <h4>Сектор</h4>
+          <label class="check"><input type="checkbox" checked /> Строителство <span class="muted small">(6 124)</span></label>
+          <label class="check"><input type="checkbox" checked /> Храни <span class="muted small">(8 085)</span></label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Тип субект</h4>
+          <label class="check"><input type="checkbox" checked /> Дружество <span class="muted small">(13 412)</span></label>
+          <label class="check"><input type="checkbox" /> Обединение / ДЗЗД <span class="muted small">(498)</span></label>
+          <label class="check"><input type="checkbox" /> Едноличен търговец <span class="muted small">(287)</span></label>
+          <label class="check"><input type="checkbox" /> Чуждестранно <span class="muted small">(12)</span></label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Брой договори</h4>
+          <label class="check"><input type="radio" name="cnt" checked /> Всички</label>
+          <label class="check"><input type="radio" name="cnt" /> 1 договор</label>
+          <label class="check"><input type="radio" name="cnt" /> 2–5</label>
+          <label class="check"><input type="radio" name="cnt" /> 6–20</label>
+          <label class="check"><input type="radio" name="cnt" /> 21–100</label>
+          <label class="check"><input type="radio" name="cnt" /> 100+</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Година (на договор)</h4>
+          <label class="check"><input type="checkbox" checked /> 2024</label>
+          <label class="check"><input type="checkbox" checked /> 2023</label>
+          <label class="check"><input type="checkbox" checked /> 2022</label>
+          <label class="check"><input type="checkbox" checked /> 2021</label>
+          <label class="check"><input type="checkbox" checked /> 2020</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>ЕС финансиране</h4>
+          <label class="check"><input type="radio" name="eu" checked /> Всички</label>
+          <label class="check"><input type="radio" name="eu" /> Само договори с ЕС финансиране</label>
+        </div>
+
+        <p class="small muted" style="margin-top:24px;">
+          Атрибуцията е по сключен договор. Обединение се отчита като един субект — членовете
+          ще се появят с активирането на регистъра на собствеността. <a href="#">Виж методологията</a>.
+        </p>
+      </aside>
+
+      <section>
+
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
+          <p class="muted small" style="margin:0;">
+            Показани са <strong>1 248</strong> от <strong>14 209</strong> компании според филтрите по-горе.
+          </p>
+          <p class="muted small" style="margin:0;">
+            Подреди по:
+            <a href="?sort=spent" aria-current="true"><strong>спечелено</strong></a> ·
+            <a href="?sort=count">брой договори</a> ·
+            <a href="?sort=authorities">брой институции</a> ·
+            <a href="?sort=name">име (А–Я)</a>
+          </p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Компания</th>
+              <th scope="col">Сектор</th>
+              <th scope="col" class="num">Спечелено</th>
+              <th scope="col" class="num">Договори</th>
+              <th scope="col" class="num">Институции</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="company.html">ГБС ИНФРАСТРУКТУРНО СТРОИТЕЛСТВО АД</a><br><span class="small muted">ЕИК 130928907 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">1,87 млрд. лв.<span class="sub">957 млн. €</span></td>
+              <td class="money">214</td>
+              <td class="money">38</td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="company.html">ТРЕЙС ГРУП ХОЛД АД</a><br><span class="small muted">ЕИК 123682269 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">1,42 млрд. лв.<span class="sub">726 млн. €</span></td>
+              <td class="money">187</td>
+              <td class="money">47</td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="company.html">ХИДРОСТРОЙ АД</a><br><span class="small muted">ЕИК 121273739 · Варна</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">1,18 млрд. лв.<span class="sub">604 млн. €</span></td>
+              <td class="money">163</td>
+              <td class="money">29</td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="company.html">ДЖИ ПИ ГРУП АД</a><br><span class="small muted">ЕИК 175327028 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">894 млн. лв.<span class="sub">457 млн. €</span></td>
+              <td class="money">128</td>
+              <td class="money">22</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="company.html">АВТОМАГИСТРАЛИ — ЧЕРНО МОРЕ АД</a><br><span class="small muted">ЕИК 814190577 · Шумен</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">812 млн. лв.<span class="sub">415 млн. €</span></td>
+              <td class="money">41</td>
+              <td class="money">7</td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><a href="company.html">ПОНССТРОЙИНЖЕНЕРИНГ ЕАД</a><br><span class="small muted">ЕИК 130081393 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">684 млн. лв.<span class="sub">350 млн. €</span></td>
+              <td class="money">156</td>
+              <td class="money">33</td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td><a href="company.html">ГЕОСТРОЙ АД</a><br><span class="small muted">ЕИК 121849078 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">521 млн. лв.<span class="sub">266 млн. €</span></td>
+              <td class="money">98</td>
+              <td class="money">19</td>
+            </tr>
+            <tr>
+              <td class="rank">8</td>
+              <td>
+                <a href="company.html">ОБЕДИНЕНИЕ „АМ-ХЕМУС 2021“ ДЗЗД</a>
+                <span class="chip" style="margin-left:6px;">обединение</span>
+                <br><span class="small muted">ЕИК 207284103 · 3 участника</span>
+              </td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">412 млн. лв.<span class="sub">211 млн. €</span></td>
+              <td class="money">3</td>
+              <td class="money">1</td>
+            </tr>
+            <tr>
+              <td class="rank">9</td>
+              <td><a href="company.html">ЕВРО МИЙТ ЕНД МИЛК ЕООД</a><br><span class="small muted">ЕИК 101658372 · Благоевград</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">312 млн. лв.<span class="sub">159 млн. €</span></td>
+              <td class="money">442</td>
+              <td class="money">187</td>
+            </tr>
+            <tr>
+              <td class="rank">10</td>
+              <td><a href="company.html">ИНЖСТРОЙИНЖЕНЕРИНГ ЕООД</a><br><span class="small muted">ЕИК 175027727 · Пловдив</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">287 млн. лв.<span class="sub">147 млн. €</span></td>
+              <td class="money">74</td>
+              <td class="money">14</td>
+            </tr>
+            <tr>
+              <td class="rank">11</td>
+              <td><a href="company.html">СВИНЕКОМПЛЕКС НИКОЛОВО АД</a><br><span class="small muted">ЕИК 117001599 · Русе</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">198 млн. лв.<span class="sub">101 млн. €</span></td>
+              <td class="money">312</td>
+              <td class="money">143</td>
+            </tr>
+            <tr>
+              <td class="rank">12</td>
+              <td><a href="company.html">ПЪТСТРОЙ-92 АД</a><br><span class="small muted">ЕИК 825240501 · Пловдив</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">184 млн. лв.<span class="sub">94 млн. €</span></td>
+              <td class="money">87</td>
+              <td class="money">21</td>
+            </tr>
+            <tr>
+              <td class="rank">13</td>
+              <td><a href="company.html">БУЛПЛАН АД</a><br><span class="small muted">ЕИК 130284057 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">167 млн. лв.<span class="sub">85 млн. €</span></td>
+              <td class="money">63</td>
+              <td class="money">17</td>
+            </tr>
+            <tr>
+              <td class="rank">14</td>
+              <td><a href="company.html">КАЛОЯН — БУЛГАРИЯ ООД</a><br><span class="small muted">ЕИК 832068841 · София</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">142 млн. лв.<span class="sub">73 млн. €</span></td>
+              <td class="money">198</td>
+              <td class="money">94</td>
+            </tr>
+            <tr>
+              <td class="rank">15</td>
+              <td><a href="company.html">СТРАБАГ ЕАД</a><br><span class="small muted">ЕИК 130408873 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">128 млн. лв.<span class="sub">65 млн. €</span></td>
+              <td class="money">42</td>
+              <td class="money">11</td>
+            </tr>
+            <tr>
+              <td class="rank">16</td>
+              <td><a href="company.html">КАУФЛАНД БЪЛГАРИЯ ЕООД И КО КД</a><br><span class="small muted">ЕИК 131129282 · София</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">112 млн. лв.<span class="sub">57 млн. €</span></td>
+              <td class="money">156</td>
+              <td class="money">68</td>
+            </tr>
+            <tr>
+              <td class="rank">17</td>
+              <td><a href="company.html">ВАМИКС ООД</a><br><span class="small muted">ЕИК 121797378 · София</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">98 млн. лв.<span class="sub">50 млн. €</span></td>
+              <td class="money">128</td>
+              <td class="money">61</td>
+            </tr>
+            <tr>
+              <td class="rank">18</td>
+              <td><a href="company.html">ГРАДУС-1 ЕООД</a><br><span class="small muted">ЕИК 131336011 · София</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">87 млн. лв.<span class="sub">44 млн. €</span></td>
+              <td class="money">142</td>
+              <td class="money">72</td>
+            </tr>
+            <tr>
+              <td class="rank">19</td>
+              <td><a href="company.html">ПЛАНЕКС ЕООД</a><br><span class="small muted">ЕИК 121146780 · Варна</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">82 млн. лв.<span class="sub">42 млн. €</span></td>
+              <td class="money">37</td>
+              <td class="money">9</td>
+            </tr>
+            <tr>
+              <td class="rank">20</td>
+              <td><a href="company.html">МЕСОКОМБИНАТ — ДОБРИЧ АД</a><br><span class="small muted">ЕИК 124020812 · Добрич</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">74 млн. лв.<span class="sub">38 млн. €</span></td>
+              <td class="money">98</td>
+              <td class="money">48</td>
+            </tr>
+            <tr>
+              <td class="rank">21</td>
+              <td><a href="company.html">БУЛКОНС ПЪРВОМАЙ АД</a><br><span class="small muted">ЕИК 115008772 · Пловдив</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">68 млн. лв.<span class="sub">35 млн. €</span></td>
+              <td class="money">112</td>
+              <td class="money">56</td>
+            </tr>
+            <tr>
+              <td class="rank">22</td>
+              <td><a href="company.html">КОЛХИДА-СОФИЯ АД</a><br><span class="small muted">ЕИК 121788490 · София</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">62 млн. лв.<span class="sub">32 млн. €</span></td>
+              <td class="money">29</td>
+              <td class="money">8</td>
+            </tr>
+            <tr>
+              <td class="rank">23</td>
+              <td><a href="company.html">МЕТАЛИК АД</a><br><span class="small muted">ЕИК 824033568 · Велико Търново</span></td>
+              <td><span class="chip">строителство</span></td>
+              <td class="money">54 млн. лв.<span class="sub">28 млн. €</span></td>
+              <td class="money">24</td>
+              <td class="money">7</td>
+            </tr>
+            <tr>
+              <td class="rank">24</td>
+              <td><a href="company.html">ДЕЛТА ХОЛДИНГ ЕООД</a><br><span class="small muted">ЕИК 832086929 · София</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">48 млн. лв.<span class="sub">25 млн. €</span></td>
+              <td class="money">87</td>
+              <td class="money">42</td>
+            </tr>
+            <tr>
+              <td class="rank">25</td>
+              <td><a href="company.html">ЕТ „ЦВЕТАН ВОЙНОВ“</a><br><span class="small muted">ЕИК 825389745 · Пловдив</span></td>
+              <td><span class="chip">храни</span></td>
+              <td class="money">42 млн. лв.<span class="sub">21 млн. €</span></td>
+              <td class="money">62</td>
+              <td class="money">28</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="paging">
+          <div>Страница <strong>1</strong> от <strong>50</strong> · 25 на страница</div>
+          <div class="ctrl">
+            <a href="#" aria-disabled="true" style="opacity:.4;">‹ Предишна</a>
+            <a href="?page=2">Следваща ›</a>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:32px;">
+          <h3>Какво означава „спечелено"?</h3>
+          <p style="margin:0;">
+            Сумата от стойностите при сключване на договорите, по които компанията е изпълнител.
+            Когато договорът е възложен на обединение, цялата сума се отчита на обединението
+            като един субект — членовете ще се появят като отделна перспектива заедно с
+            активирането на регистъра на собствеността.
+          </p>
+        </div>
+
+      </section>
+    </div>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
+          <a href="#">Лицензи и условия за ползване</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="methodology.html">Методология и речник</a><br>
+          <a href="#">За Сигма / контакти</a><br>
+          <a href="#">Изходен код (GitHub)</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

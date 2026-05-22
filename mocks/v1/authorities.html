@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Институции — Сигма</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="index.html" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="index.html">Начало</a>
+        <a href="authorities.html" aria-current="page">Институции</a>
+        <a href="companies.html">Компании</a>
+        <a href="contracts.html">Договори</a>
+        <a href="flows.html">Потоци</a>
+        <a href="methodology.html">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
+        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="crumbs" aria-label="Навигация по нивата">
+    <div class="crumbs-inner">
+      <a href="index.html">Начало</a>
+      <span class="sep">›</span>
+      Институции
+    </div>
+  </nav>
+
+  <main id="main">
+
+    <section class="page-header">
+      <p class="kicker">2 851 възложители · 2020–2024</p>
+      <h1>Институции</h1>
+      <p class="lede">
+        Всяка институция, която е възложила поне един договор. Подреди ги по похарченото
+        общо, по брой договори или по средна стойност. Филтрите се запазват в адреса —
+        можеш да споделиш изгледа като линк.
+      </p>
+    </section>
+
+    <div class="split">
+      <aside aria-label="Филтри">
+
+        <div class="filter-group">
+          <h4>Тип на институцията</h4>
+          <label class="check"><input type="checkbox" checked /> Министерство <span class="muted small">(18)</span></label>
+          <label class="check"><input type="checkbox" checked /> Община <span class="muted small">(265)</span></label>
+          <label class="check"><input type="checkbox" checked /> Агенция / изпълнителна <span class="muted small">(41)</span></label>
+          <label class="check"><input type="checkbox" checked /> Държавна компания <span class="muted small">(72)</span></label>
+          <label class="check"><input type="checkbox" /> Болница / здравеопазване <span class="muted small">(312)</span></label>
+          <label class="check"><input type="checkbox" /> Училище / университет <span class="muted small">(508)</span></label>
+          <label class="check"><input type="checkbox" /> Друго <span class="muted small">(1 635)</span></label>
+          <p class="small muted" style="margin-top:6px;">Класификация по име · <a href="#">методология</a></p>
+        </div>
+
+        <div class="filter-group">
+          <h4>Сектор</h4>
+          <label class="check"><input type="checkbox" checked /> Строителство</label>
+          <label class="check"><input type="checkbox" checked /> Храни</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Година на подписване</h4>
+          <label class="check"><input type="checkbox" checked /> 2024</label>
+          <label class="check"><input type="checkbox" checked /> 2023</label>
+          <label class="check"><input type="checkbox" checked /> 2022</label>
+          <label class="check"><input type="checkbox" checked /> 2021</label>
+          <label class="check"><input type="checkbox" checked /> 2020</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>ЕС финансиране</h4>
+          <label class="check"><input type="radio" name="eu" checked /> Всички</label>
+          <label class="check"><input type="radio" name="eu" /> Само с ЕС финансиране</label>
+          <label class="check"><input type="radio" name="eu" /> Само без ЕС финансиране</label>
+        </div>
+
+        <p class="small muted" style="margin-top:24px;">
+          Филтрите се прилагат към всеки агрегат на тази страница. <a href="authorities.html">Изчисти</a>.
+        </p>
+      </aside>
+
+      <section>
+
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
+          <p class="muted small" style="margin:0;">
+            Показани са <strong>396</strong> от <strong>2 851</strong> институции според филтрите по-горе.
+          </p>
+          <p class="muted small" style="margin:0;">
+            Подреди по:
+            <a href="?sort=spent" aria-current="true"><strong>похарчено</strong></a> ·
+            <a href="?sort=count">брой договори</a> ·
+            <a href="?sort=avg">средна стойност</a> ·
+            <a href="?sort=name">име (А–Я)</a>
+          </p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Институция</th>
+              <th scope="col">Тип</th>
+              <th scope="col" class="num">Похарчено</th>
+              <th scope="col" class="num">Договори</th>
+              <th scope="col" class="num">Средна стойност</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td><a href="authority.html">Министерство на регионалното развитие и благоустройството</a><br><span class="small muted">София · централно</span></td>
+              <td><span class="chip">министерство</span></td>
+              <td class="money">4,12 млрд. лв.<span class="sub">2,11 млрд. €</span></td>
+              <td class="money">1 423</td>
+              <td class="money">2,9 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td><a href="authority.html">Агенция „Пътна инфраструктура“</a><br><span class="small muted">София · изпълнителна агенция</span></td>
+              <td><span class="chip">агенция</span></td>
+              <td class="money">3,74 млрд. лв.<span class="sub">1,91 млрд. €</span></td>
+              <td class="money">587</td>
+              <td class="money">6,4 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td><a href="authority.html">Столична община</a><br><span class="small muted">София-град</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">2,80 млрд. лв.<span class="sub">1,43 млрд. €</span></td>
+              <td class="money">3 218</td>
+              <td class="money">870 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td><a href="authority.html">Министерство на транспорта и съобщенията</a><br><span class="small muted">София · централно</span></td>
+              <td><span class="chip">министерство</span></td>
+              <td class="money">2,18 млрд. лв.<span class="sub">1,12 млрд. €</span></td>
+              <td class="money">412</td>
+              <td class="money">5,3 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td><a href="authority.html">Национална компания „Железопътна инфраструктура“</a><br><span class="small muted">София · държавна компания</span></td>
+              <td><span class="chip">държ. компания</span></td>
+              <td class="money">1,93 млрд. лв.<span class="sub">986 млн. €</span></td>
+              <td class="money">298</td>
+              <td class="money">6,5 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td><a href="authority.html">Министерство на здравеопазването</a><br><span class="small muted">София · централно</span></td>
+              <td><span class="chip">министерство</span></td>
+              <td class="money">980 млн. лв.<span class="sub">501 млн. €</span></td>
+              <td class="money">2 187</td>
+              <td class="money">448 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td><a href="authority.html">Община Пловдив</a><br><span class="small muted">Пловдив</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">740 млн. лв.<span class="sub">378 млн. €</span></td>
+              <td class="money">1 042</td>
+              <td class="money">710 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">8</td>
+              <td><a href="authority.html">Държавна агенция „Електронно управление“</a><br><span class="small muted">София · агенция</span></td>
+              <td><span class="chip">агенция</span></td>
+              <td class="money">648 млн. лв.<span class="sub">331 млн. €</span></td>
+              <td class="money">187</td>
+              <td class="money">3,5 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">9</td>
+              <td><a href="authority.html">Община Варна</a><br><span class="small muted">Варна</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">612 млн. лв.<span class="sub">313 млн. €</span></td>
+              <td class="money">894</td>
+              <td class="money">685 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">10</td>
+              <td><a href="authority.html">Община Бургас</a><br><span class="small muted">Бургас</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">498 млн. лв.<span class="sub">255 млн. €</span></td>
+              <td class="money">756</td>
+              <td class="money">659 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">11</td>
+              <td><a href="authority.html">Министерство на отбраната</a><br><span class="small muted">София · централно</span></td>
+              <td><span class="chip">министерство</span></td>
+              <td class="money">487 млн. лв.<span class="sub">249 млн. €</span></td>
+              <td class="money">624</td>
+              <td class="money">780 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">12</td>
+              <td><a href="authority.html">Министерство на младежта и спорта</a><br><span class="small muted">София · централно</span></td>
+              <td><span class="chip">министерство</span></td>
+              <td class="money">412 млн. лв.<span class="sub">211 млн. €</span></td>
+              <td class="money">298</td>
+              <td class="money">1,38 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">13</td>
+              <td><a href="authority.html">„Български пощи“ ЕАД</a><br><span class="small muted">София · държавна компания</span></td>
+              <td><span class="chip">държ. компания</span></td>
+              <td class="money">374 млн. лв.<span class="sub">191 млн. €</span></td>
+              <td class="money">412</td>
+              <td class="money">907 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">14</td>
+              <td><a href="authority.html">Община Стара Загора</a><br><span class="small muted">Стара Загора</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">352 млн. лв.<span class="sub">180 млн. €</span></td>
+              <td class="money">587</td>
+              <td class="money">600 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">15</td>
+              <td><a href="authority.html">УМБАЛ „Александровска“ ЕАД</a><br><span class="small muted">София · болница</span></td>
+              <td><span class="chip">болница</span></td>
+              <td class="money">298 млн. лв.<span class="sub">152 млн. €</span></td>
+              <td class="money">2 134</td>
+              <td class="money">140 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">16</td>
+              <td><a href="authority.html">Община Русе</a><br><span class="small muted">Русе</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">287 млн. лв.<span class="sub">147 млн. €</span></td>
+              <td class="money">512</td>
+              <td class="money">561 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">17</td>
+              <td><a href="authority.html">Изпълнителна агенция „Медицински надзор“</a><br><span class="small muted">София · агенция</span></td>
+              <td><span class="chip">агенция</span></td>
+              <td class="money">261 млн. лв.<span class="sub">133 млн. €</span></td>
+              <td class="money">187</td>
+              <td class="money">1,40 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">18</td>
+              <td><a href="authority.html">Софийски университет „Св. Климент Охридски“</a><br><span class="small muted">София · университет</span></td>
+              <td><span class="chip">образование</span></td>
+              <td class="money">248 млн. лв.<span class="sub">127 млн. €</span></td>
+              <td class="money">684</td>
+              <td class="money">363 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">19</td>
+              <td><a href="authority.html">Община Благоевград</a><br><span class="small muted">Благоевград</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">214 млн. лв.<span class="sub">109 млн. €</span></td>
+              <td class="money">387</td>
+              <td class="money">552 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">20</td>
+              <td><a href="authority.html">Топлофикация София ЕАД</a><br><span class="small muted">София · държавна компания</span></td>
+              <td><span class="chip">държ. компания</span></td>
+              <td class="money">198 млн. лв.<span class="sub">101 млн. €</span></td>
+              <td class="money">142</td>
+              <td class="money">1,39 млн. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">21</td>
+              <td><a href="authority.html">Военномедицинска академия</a><br><span class="small muted">София · болница</span></td>
+              <td><span class="chip">болница</span></td>
+              <td class="money">187 млн. лв.<span class="sub">96 млн. €</span></td>
+              <td class="money">1 248</td>
+              <td class="money">150 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">22</td>
+              <td><a href="authority.html">Община Плевен</a><br><span class="small muted">Плевен</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">174 млн. лв.<span class="sub">89 млн. €</span></td>
+              <td class="money">412</td>
+              <td class="money">422 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">23</td>
+              <td><a href="authority.html">Министерство на образованието и науката</a><br><span class="small muted">София · централно</span></td>
+              <td><span class="chip">министерство</span></td>
+              <td class="money">168 млн. лв.<span class="sub">86 млн. €</span></td>
+              <td class="money">512</td>
+              <td class="money">328 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">24</td>
+              <td><a href="authority.html">Община Велико Търново</a><br><span class="small muted">Велико Търново</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">156 млн. лв.<span class="sub">80 млн. €</span></td>
+              <td class="money">298</td>
+              <td class="money">523 хил. лв.</td>
+            </tr>
+            <tr>
+              <td class="rank">25</td>
+              <td><a href="authority.html">Община Шумен</a><br><span class="small muted">Шумен</span></td>
+              <td><span class="chip">община</span></td>
+              <td class="money">142 млн. лв.<span class="sub">73 млн. €</span></td>
+              <td class="money">261</td>
+              <td class="money">544 хил. лв.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="paging">
+          <div>Страница <strong>1</strong> от <strong>16</strong> · 25 на страница</div>
+          <div class="ctrl">
+            <a href="#" aria-disabled="true" style="opacity:.4;">‹ Предишна</a>
+            <a href="?page=2">Следваща ›</a>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:32px;">
+          <h3>Какво означава „похарчено"?</h3>
+          <p style="margin:0;">
+            Сумата от стойностите при сключване на всички договори на дадена институция за
+            периода 2020–2024. Не отчита анекси и не включва договори под прага за публикуване
+            в АОП. Стойностите се съхраняват в евро и се показват в лева. Виж <a href="#">методология</a>.
+          </p>
+        </div>
+
+      </section>
+    </div>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
+          <a href="#">Лицензи и условия за ползване</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="methodology.html">Методология и речник</a><br>
+          <a href="#">За Сигма / контакти</a><br>
+          <a href="#">Изходен код (GitHub)</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Договори — Сигма</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Page-local: contracts list uses a two-line cell for parties + meta */
+    .contract-row td.parties { line-height: 1.45; }
+    .contract-row td.parties .from { display: block; font-weight: 700; }
+    .contract-row td.parties .arrow { color: var(--text-muted); margin: 0 6px; }
+    .contract-row td.parties .to { display: block; color: var(--text); font-weight: 700; margin-top: 2px; }
+    .contract-row td.parties .who { color: var(--text-muted); font-weight: 400; font-size: 13px; }
+    .contract-row td.meta { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .contract-row td.meta .pr { display: inline-block; font-weight: 700; color: var(--text); }
+    .contract-row td.meta .dot { color: var(--border); margin: 0 6px; }
+    .contract-row td.subj { line-height: 1.4; }
+    .contract-row td.subj .title { font-weight: 700; }
+    .contract-row td.subj .unp { display: block; color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); margin-top: 2px; }
+    .contract-row td.subj .eu { display: inline-block; background: var(--accent-bg); border: 1px solid var(--info); color: var(--link-hover); font-size: 11px; font-weight: 700; padding: 0 6px; margin-left: 6px; vertical-align: middle; line-height: 1.5; text-transform: uppercase; letter-spacing: 0.04em; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="index.html" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="index.html">Начало</a>
+        <a href="authorities.html">Институции</a>
+        <a href="companies.html">Компании</a>
+        <a href="contracts.html" aria-current="page">Договори</a>
+        <a href="flows.html">Потоци</a>
+        <a href="methodology.html">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
+        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="crumbs" aria-label="Навигация по нивата">
+    <div class="crumbs-inner">
+      <a href="index.html">Начало</a>
+      <span class="sep">›</span>
+      Договори
+    </div>
+  </nav>
+
+  <main id="main">
+
+    <section class="page-header">
+      <p class="kicker">129 134 договора · обособени позиции включени · 2020–2024</p>
+      <h1>Договори</h1>
+      <p class="lede">
+        Всеки сключен договор от обществена поръчка. Всеки агрегат другаде на платформата —
+        сума за институция, сума за компания, поток между двете — се разлага до точно този
+        списък. Филтрите се запазват в адреса.
+      </p>
+    </section>
+
+    <div class="split">
+      <aside aria-label="Филтри">
+
+        <div class="filter-group">
+          <h4>Година (подписан)</h4>
+          <label class="check"><input type="checkbox" checked /> 2024 <span class="muted small">(28 412)</span></label>
+          <label class="check"><input type="checkbox" checked /> 2023 <span class="muted small">(27 188)</span></label>
+          <label class="check"><input type="checkbox" checked /> 2022 <span class="muted small">(26 947)</span></label>
+          <label class="check"><input type="checkbox" checked /> 2021 <span class="muted small">(24 213)</span></label>
+          <label class="check"><input type="checkbox" checked /> 2020 <span class="muted small">(22 374)</span></label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Сектор</h4>
+          <label class="check"><input type="checkbox" checked /> Строителство <span class="muted small">(41 218)</span></label>
+          <label class="check"><input type="checkbox" checked /> Храни <span class="muted small">(87 916)</span></label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Процедура</h4>
+          <label class="check"><input type="checkbox" checked /> Открита</label>
+          <label class="check"><input type="checkbox" checked /> Публично състезание</label>
+          <label class="check"><input type="checkbox" checked /> Договаряне с обявление</label>
+          <label class="check"><input type="checkbox" /> Договаряне без обявление</label>
+          <label class="check"><input type="checkbox" checked /> Пряко договаряне</label>
+          <label class="check"><input type="checkbox" /> Ограничена</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Стойност при сключване</h4>
+          <label class="check"><input type="radio" name="val" checked /> Всички</label>
+          <label class="check"><input type="radio" name="val" /> Под 100 хил. лв.</label>
+          <label class="check"><input type="radio" name="val" /> 100 хил. – 1 млн.</label>
+          <label class="check"><input type="radio" name="val" /> 1 – 10 млн.</label>
+          <label class="check"><input type="radio" name="val" /> 10 – 100 млн.</label>
+          <label class="check"><input type="radio" name="val" /> Над 100 млн.</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>CPV група</h4>
+          <label class="check"><input type="checkbox" /> 45000000 — Строителни работи</label>
+          <label class="check"><input type="checkbox" /> 15000000 — Хранителни продукти</label>
+          <label class="check"><input type="checkbox" /> 71000000 — Архитектурни и инженерни услуги</label>
+          <label class="check"><input type="checkbox" /> 33000000 — Медицинско оборудване</label>
+          <p class="small muted" style="margin-top:6px;"><a href="#">Виж всички CPV кодове</a></p>
+        </div>
+
+        <div class="filter-group">
+          <h4>ЕС финансиране</h4>
+          <label class="check"><input type="radio" name="eu" checked /> Всички</label>
+          <label class="check"><input type="radio" name="eu" /> Само с ЕС финансиране</label>
+          <label class="check"><input type="radio" name="eu" /> Само без ЕС финансиране</label>
+        </div>
+
+        <div class="filter-group">
+          <h4>Институция</h4>
+          <input type="search" placeholder="Напр. „Столична община“" style="width:100%; padding:6px 8px; font:14px var(--font-sans); border:1px solid var(--border);" />
+        </div>
+
+        <div class="filter-group">
+          <h4>Компания</h4>
+          <input type="search" placeholder="Име или ЕИК" style="width:100%; padding:6px 8px; font:14px var(--font-sans); border:1px solid var(--border);" />
+        </div>
+
+        <p class="small muted" style="margin-top:24px;">
+          <a href="contracts.html">Изчисти филтрите</a> ·
+          <a href="#">Изтегли CSV за този изглед</a>
+        </p>
+      </aside>
+
+      <section>
+
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
+          <p class="muted small" style="margin:0;">
+            Намерени <strong>129 134</strong> договора. Обща стойност: <strong>47,8 млрд. лв.</strong>
+          </p>
+          <p class="muted small" style="margin:0;">
+            Подреди по:
+            <a href="?sort=date" aria-current="true"><strong>дата (нови)</strong></a> ·
+            <a href="?sort=date-asc">дата (стари)</a> ·
+            <a href="?sort=value-desc">стойност ↓</a> ·
+            <a href="?sort=value-asc">стойност ↑</a>
+          </p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th scope="col" style="width:32px;">#</th>
+              <th scope="col">Договор</th>
+              <th scope="col">Възложител · Изпълнител</th>
+              <th scope="col">Процедура · Дата</th>
+              <th scope="col" class="num">Стойност</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="contract-row">
+              <td class="rank">1</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Инженеринг — проектиране и строителство на АМ „Хемус“, лот 6</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00044-2024-0312 · CPV 45233140</span>
+              </td>
+              <td class="parties">
+                <span class="from">Агенция „Пътна инфраструктура“ <span class="who">възложител</span></span>
+                <span class="to">ГБС Инфраструктурно строителство АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 4 оферти
+                <br>14.10.2024
+              </td>
+              <td class="money">187 млн. лв.<span class="sub">96 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">2</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на хранителни продукти за нуждите на детските заведения</a>
+                <span class="unp">УНП 00087-2024-0142 · CPV 15800000</span>
+              </td>
+              <td class="parties">
+                <span class="from">Столична община <span class="who">възложител</span></span>
+                <span class="to">Евро Мийт енд Милк ЕООД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 3 оферти
+                <br>11.09.2024
+              </td>
+              <td class="money">8,4 млн. лв.<span class="sub">4,3 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">3</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Изграждане на нов терминал в района на летище София — Етап 2</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00012-2024-0089 · CPV 45213330</span>
+              </td>
+              <td class="parties">
+                <span class="from">Министерство на транспорта <span class="who">възложител</span></span>
+                <span class="to">ОБЕДИНЕНИЕ „АМ-Хемус 2021“ ДЗЗД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 2 оферти
+                <br>04.08.2024
+              </td>
+              <td class="money">142 млн. лв.<span class="sub">73 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">4</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на лекарствени продукти за лечебни заведения</a>
+                <span class="unp">УНП 00231-2024-0024 · CPV 33600000</span>
+              </td>
+              <td class="parties">
+                <span class="from">Министерство на здравеопазването <span class="who">възложител</span></span>
+                <span class="to">Делта Холдинг ЕООД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Публично състезание</span>
+                <span class="dot">·</span> 6 оферти
+                <br>27.07.2024
+              </td>
+              <td class="money">4,2 млн. лв.<span class="sub">2,1 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">5</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Рехабилитация на ул. „Граф Игнатиев“ — Етап 3</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00087-2024-0124 · CPV 45233252</span>
+              </td>
+              <td class="parties">
+                <span class="from">Столична община <span class="who">възложител</span></span>
+                <span class="to">Трейс Груп Холд АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 5 оферти
+                <br>18.06.2024
+              </td>
+              <td class="money">12,8 млн. лв.<span class="sub">6,5 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">6</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на месо и месни продукти за нуждите на училищата</a>
+                <span class="unp">УНП 00120-2024-0067 · CPV 15110000</span>
+              </td>
+              <td class="parties">
+                <span class="from">Община Пловдив <span class="who">възложител</span></span>
+                <span class="to">Свинекомплекс Николово АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 4 оферти
+                <br>02.06.2024
+              </td>
+              <td class="money">2,8 млн. лв.<span class="sub">1,4 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">7</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Строителство на нов корпус на УМБАЛ „Александровска“</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00484-2024-0008 · CPV 45215100</span>
+              </td>
+              <td class="parties">
+                <span class="from">УМБАЛ „Александровска“ ЕАД <span class="who">възложител</span></span>
+                <span class="to">Хидрострой АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 3 оферти
+                <br>22.05.2024
+              </td>
+              <td class="money">38 млн. лв.<span class="sub">19,4 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">8</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на хляб и хлебни изделия за нуждите на ВМА</a>
+                <span class="unp">УНП 00337-2024-0042 · CPV 15810000</span>
+              </td>
+              <td class="parties">
+                <span class="from">Военномедицинска академия <span class="who">възложител</span></span>
+                <span class="to">Булконс Първомай АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Публично състезание</span>
+                <span class="dot">·</span> 7 оферти
+                <br>14.05.2024
+              </td>
+              <td class="money">1,2 млн. лв.<span class="sub">614 хил. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">9</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Изграждане на пречиствателна станция за отпадни води — гр. Шумен</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00207-2024-0019 · CPV 45252100</span>
+              </td>
+              <td class="parties">
+                <span class="from">Община Шумен <span class="who">възложител</span></span>
+                <span class="to">Понсстройинженеринг ЕАД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 3 оферти
+                <br>08.05.2024
+              </td>
+              <td class="money">27 млн. лв.<span class="sub">13,8 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">10</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на млечни продукти за детски ясли и градини</a>
+                <span class="unp">УНП 00109-2024-0058 · CPV 15500000</span>
+              </td>
+              <td class="parties">
+                <span class="from">Община Варна <span class="who">възложител</span></span>
+                <span class="to">Калоян — България ООД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 5 оферти
+                <br>22.04.2024
+              </td>
+              <td class="money">1,8 млн. лв.<span class="sub">920 хил. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">11</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Реконструкция и доизграждане на ВиК мрежи — гр. Стара Загора</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00164-2024-0014 · CPV 45231300</span>
+              </td>
+              <td class="parties">
+                <span class="from">Община Стара Загора <span class="who">възложител</span></span>
+                <span class="to">Геострой АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 4 оферти
+                <br>15.04.2024
+              </td>
+              <td class="money">18,4 млн. лв.<span class="sub">9,4 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">12</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на готова храна за пациенти — ВМА София</a>
+                <span class="unp">УНП 00337-2024-0027 · CPV 15894200</span>
+              </td>
+              <td class="parties">
+                <span class="from">Военномедицинска академия <span class="who">възложител</span></span>
+                <span class="to">Вамикс ООД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 3 оферти
+                <br>08.04.2024
+              </td>
+              <td class="money">2,4 млн. лв.<span class="sub">1,2 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">13</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Изграждане на спортна зала — гр. Благоевград</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00057-2024-0011 · CPV 45212220</span>
+              </td>
+              <td class="parties">
+                <span class="from">Община Благоевград <span class="who">възложител</span></span>
+                <span class="to">ДЖИ Пи Груп АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 2 оферти
+                <br>27.03.2024
+              </td>
+              <td class="money">14,2 млн. лв.<span class="sub">7,3 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">14</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Доставка на пакетирани храни за военнослужещи — 2024</a>
+                <span class="unp">УНП 00164-2024-0009 · CPV 15890000</span>
+              </td>
+              <td class="parties">
+                <span class="from">Министерство на отбраната <span class="who">възложител</span></span>
+                <span class="to">Градус-1 ЕООД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 8 оферти
+                <br>14.03.2024
+              </td>
+              <td class="money">3,8 млн. лв.<span class="sub">1,9 млн. €</span></td>
+            </tr>
+            <tr class="contract-row">
+              <td class="rank">15</td>
+              <td class="subj">
+                <a href="contract.html" class="title">Рехабилитация на път III-871 Кърджали — Маджарово, Лот 1</a>
+                <span class="eu">ЕС</span>
+                <span class="unp">УНП 00044-2024-0094 · CPV 45233141</span>
+              </td>
+              <td class="parties">
+                <span class="from">Агенция „Пътна инфраструктура“ <span class="who">възложител</span></span>
+                <span class="to">Пътстрой-92 АД <span class="who">изпълнител</span></span>
+              </td>
+              <td class="meta">
+                <span class="pr">Открита</span>
+                <span class="dot">·</span> 3 оферти
+                <br>04.03.2024
+              </td>
+              <td class="money">22 млн. лв.<span class="sub">11,3 млн. €</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="paging">
+          <div>Страница <strong>1</strong> от <strong>8 609</strong> · 15 на страница</div>
+          <div class="ctrl">
+            <a href="#" aria-disabled="true" style="opacity:.4;">‹ Предишна</a>
+            <a href="?page=2">Следваща ›</a>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:32px;">
+          <h3>Какво е „договор" в Сигма</h3>
+          <p style="margin:0 0 6px 0;">
+            Един възложен договор за обществена поръчка, на ниво обособена позиция (лот).
+            Договори с няколко лота се показват като толкова реда, колкото са лотовете, и
+            всеки от тях е адресируем поотделно. Стойностите се пазят в евро и се
+            показват в лева, освен ако не е посочено друго.
+          </p>
+          <p style="margin:0;">
+            <strong>Брой оферти</strong> е броят на получените предложения по преписката;
+            самите оферти и техните стойности не са в АОП и затова на тази платформа няма
+            изглед „по оферент".
+          </p>
+        </div>
+
+      </section>
+    </div>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
+          <a href="#">Лицензи и условия за ползване</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="methodology.html">Методология и речник</a><br>
+          <a href="#">За Сигма / контакти</a><br>
+          <a href="#">Изходен код (GitHub)</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

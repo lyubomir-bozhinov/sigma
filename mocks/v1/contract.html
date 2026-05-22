@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Инженеринг АМ „Хемус“ Лот 6 — Сигма</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Page-local: value-history block */
+    .value-history {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      margin: 8px 0 4px;
+    }
+    .value-history .vh {
+      padding: 14px 18px 16px 0;
+      border-right: 1px solid var(--border-soft);
+      position: relative;
+    }
+    .value-history .vh:last-child { border-right: 0; }
+    .value-history .vh .step {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .value-history .vh .num {
+      font-size: 22px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+      display: block;
+      line-height: 1.1;
+    }
+    .value-history .vh .sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .value-history .vh.now .step { color: var(--accent); }
+    .value-history .vh.now { background: var(--accent-bg); padding-left: 14px; }
+    .value-history .delta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .lot-table tbody tr.current td { background: var(--accent-bg); }
+    .lot-table tbody tr.current td:first-child { border-left: 4px solid var(--accent); padding-left: 8px; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header-inner">
+      <a class="brand" href="index.html" aria-label="Сигма — начална страница">
+        <span class="brand-mark">Сигма</span>
+        <span class="brand-sub">Платформа за прозрачни възлагания</span>
+      </a>
+      <nav class="site-nav" aria-label="Главна навигация">
+        <a href="index.html">Начало</a>
+        <a href="authorities.html">Институции</a>
+        <a href="companies.html">Компании</a>
+        <a href="contracts.html" aria-current="page">Договори</a>
+        <a href="flows.html">Потоци</a>
+        <a href="methodology.html">Методология</a>
+      </nav>
+      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
+        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
+        <button type="submit">Търси</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="crumbs" aria-label="Навигация по нивата">
+    <div class="crumbs-inner">
+      <a href="index.html">Начало</a>
+      <span class="sep">›</span>
+      <a href="contracts.html">Договори</a>
+      <span class="sep">›</span>
+      00044-2024-0312
+    </div>
+  </nav>
+
+  <main id="main">
+
+    <section class="page-header">
+      <p class="kicker">УНП 00044-2024-0312 · Договор № АПИ-2024-1118 · обособена позиция Лот 6</p>
+      <h1>Инженеринг — проектиране и строителство на АМ „Хемус“, Лот 6: участък от км 122+260 до км 137+800</h1>
+      <p class="lede">
+        Сключен на 14 октомври 2024 г. между Агенция „Пътна инфраструктура“ и
+        ГБС Инфраструктурно строителство АД. Един от шестте лота по обявление
+        00044-2024-0008.
+      </p>
+    </section>
+
+    <section class="section" aria-labelledby="values">
+      <h2 id="values">Стойности във времето</h2>
+      <p class="section-hint">
+        Договорът минава през три стойности: прогноза на възложителя, окончателна цена при
+        подписване и текуща (включваща анекси). Тук показваме и трите. „Стойност" в
+        списъците и агрегатите по подразбиране е стойността при сключване.
+      </p>
+
+      <div class="value-history">
+        <div class="vh">
+          <div class="step">Прогнозна (обявление)</div>
+          <strong class="num">192 млн. лв.</strong>
+          <div class="sub">98,2 млн. €</div>
+        </div>
+        <div class="vh">
+          <div class="step">При сключване</div>
+          <strong class="num">187 млн. лв.</strong>
+          <div class="sub">95,6 млн. €</div>
+          <div class="delta">−2,6% спрямо прогнозната</div>
+        </div>
+        <div class="vh now">
+          <div class="step">Текуща (с анекси)</div>
+          <strong class="num">187 млн. лв.</strong>
+          <div class="sub">95,6 млн. €</div>
+          <div class="delta">няма анекси</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="who">
+      <h2 id="who">Възложител и изпълнител</h2>
+      <div class="two-col">
+        <div>
+          <h4>Възложител</h4>
+          <p style="font-size:18px; font-weight:700; margin:6px 0 2px;">
+            <a href="authority.html">Агенция „Пътна инфраструктура“</a>
+          </p>
+          <p class="small muted" style="margin:0 0 8px;">
+            <span class="chip">агенция</span> София · изпълнителна агенция към МРРБ
+          </p>
+          <ul class="linklist">
+            <li><a href="authority.html">→ Всички 587 договора на АПИ (3,74 млрд. лв.)</a></li>
+            <li><a href="contracts.html?ai=001">→ Договори на АПИ с ГБС (28 договора · 412 млн. лв.)</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Изпълнител</h4>
+          <p style="font-size:18px; font-weight:700; margin:6px 0 2px;">
+            <a href="company.html">ГБС Инфраструктурно строителство АД</a>
+          </p>
+          <p class="small muted" style="margin:0 0 8px;">
+            ЕИК <span class="mono">130928907</span> · София ·
+            <span class="chip">строителство</span>
+          </p>
+          <ul class="linklist">
+            <li><a href="company.html">→ Всички 214 договора на ГБС (1,87 млрд. лв.)</a></li>
+            <li><a href="contracts.html?bi=001">→ Договори на ГБС с АПИ (28 договора · 412 млн. лв.)</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="facts">
+      <h2 id="facts">Подробности</h2>
+
+      <dl class="facts">
+        <div class="row">
+          <dt>Номер на договор</dt>
+          <dd>АПИ-2024-1118</dd>
+        </div>
+        <div class="row">
+          <dt>УНП на преписката</dt>
+          <dd><span class="mono">00044-2024-0312</span> <span class="muted small">· <a href="#">отвори в АОП</a></span></dd>
+        </div>
+        <div class="row">
+          <dt>Обособена позиция</dt>
+          <dd>Лот 6 от 6 · виж <a href="#lots">всички лотове</a> на преписката</dd>
+        </div>
+        <div class="row">
+          <dt>Предмет</dt>
+          <dd>
+            Инженеринг — изготвяне на работен проект и изпълнение на строителство на
+            участък от АМ „Хемус“ с обща дължина 15,54 км, включително пътно тяло,
+            пътни съоръжения, отводняване и пътна сигнализация.
+          </dd>
+        </div>
+        <div class="row">
+          <dt>Обект</dt>
+          <dd>Строителство <span class="muted small">· обектът включва доставки и услуги по проектиране</span></dd>
+        </div>
+        <div class="row">
+          <dt>CPV</dt>
+          <dd>
+            <span class="mono">45233140</span> Строителни работи по автомагистрали
+            <span class="muted small">· основен</span><br>
+            <span class="mono">71300000</span> Инженерни услуги
+            <span class="muted small">· допълнителен</span>
+          </dd>
+        </div>
+        <div class="row">
+          <dt>Сектор</dt>
+          <dd>Строителство</dd>
+        </div>
+        <div class="row">
+          <dt>Процедура</dt>
+          <dd>Открита процедура по ЗОП</dd>
+        </div>
+        <div class="row">
+          <dt>Брой оферти</dt>
+          <dd>
+            4 <span class="muted small">· виж <a href="#">методологията</a> — самите оферти и техните стойности не са в АОП</span>
+          </dd>
+        </div>
+        <div class="row">
+          <dt>ЕС финансиране</dt>
+          <dd>
+            <span class="flag info">да</span>
+            <span class="muted small">· оперативна програма „Транспортна свързаност“ 2021–2027</span>
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="section" aria-labelledby="dates">
+      <h2 id="dates">Дати и срокове</h2>
+      <dl class="facts">
+        <div class="row">
+          <dt>Краен срок за оферти</dt>
+          <dd>22 юли 2024 г.</dd>
+        </div>
+        <div class="row">
+          <dt>Подписан на</dt>
+          <dd>14 октомври 2024 г.</dd>
+        </div>
+        <div class="row">
+          <dt>Срок за изпълнение</dt>
+          <dd>36 месеца от подписване</dd>
+        </div>
+        <div class="row">
+          <dt>Очакван край</dt>
+          <dd>14 октомври 2027 г. <span class="muted small">· няма регистрирани удължавания</span></dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="section" aria-labelledby="lots">
+      <h2 id="lots">Обособени позиции по преписката</h2>
+      <p class="section-hint">
+        Преписка <span class="mono">00044-2024-0008</span> е разделена на 6 лота, всеки сключен
+        с отделен изпълнител. Този договор е Лот 6. Другите лотове се отварят като
+        отделни записи в платформата.
+      </p>
+      <table class="lot-table">
+        <thead>
+          <tr>
+            <th scope="col" style="width:60px;">Лот</th>
+            <th scope="col">Предмет</th>
+            <th scope="col">Изпълнител</th>
+            <th scope="col" class="num">При сключване</th>
+            <th scope="col" class="num">Подписан</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rank">1</td>
+            <td><a href="contract.html">км 5+400 — км 16+540</a></td>
+            <td><a href="company.html">Трейс Груп Холд АД</a></td>
+            <td class="money">142 млн. лв.</td>
+            <td class="money">22.08.2024</td>
+          </tr>
+          <tr>
+            <td class="rank">2</td>
+            <td><a href="contract.html">км 16+540 — км 36+800</a></td>
+            <td><a href="company.html">Хидрострой АД</a></td>
+            <td class="money">198 млн. лв.</td>
+            <td class="money">04.09.2024</td>
+          </tr>
+          <tr>
+            <td class="rank">3</td>
+            <td><a href="contract.html">км 36+800 — км 60+250</a></td>
+            <td><a href="company.html">Автомагистрали — Черно море АД</a></td>
+            <td class="money">228 млн. лв.</td>
+            <td class="money">11.09.2024</td>
+          </tr>
+          <tr>
+            <td class="rank">4</td>
+            <td><a href="contract.html">км 60+250 — км 87+800</a></td>
+            <td><a href="company.html">Понсстройинженеринг ЕАД</a></td>
+            <td class="money">312 млн. лв.</td>
+            <td class="money">18.09.2024</td>
+          </tr>
+          <tr>
+            <td class="rank">5</td>
+            <td><a href="contract.html">км 87+800 — км 122+260</a></td>
+            <td><a href="company.html">ДЖИ Пи Груп АД</a></td>
+            <td class="money">274 млн. лв.</td>
+            <td class="money">02.10.2024</td>
+          </tr>
+          <tr class="current">
+            <td class="rank">6</td>
+            <td><strong>км 122+260 — км 137+800</strong> <span class="muted small">(текущ)</span></td>
+            <td><strong>ГБС Инфраструктурно строителство АД</strong></td>
+            <td class="money">187 млн. лв.</td>
+            <td class="money">14.10.2024</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="small muted" style="margin-top:8px;">
+        Преписката общо: <strong>1,34 млрд. лв.</strong> при сключване на всичките шест лота.
+      </p>
+    </section>
+
+    <section class="section" aria-labelledby="provenance">
+      <h2 id="provenance">Произход на данните</h2>
+      <p>
+        Този запис е съставен изцяло от публикуваните в АОП документи към преписката,
+        нормализирани от Сигма. Имената на институцията и компанията са показани в
+        стандартизиран вид (вж. <a href="#">методология за каноничните имена</a>); ЕИК и УНП
+        се запазват буквално.
+      </p>
+      <ul class="linklist">
+        <li><a href="#">Преписка <span class="mono">00044-2024-0008</span> в АОП</a> <span class="sub">обявление, протоколи, договор и приложения</span></li>
+        <li><a href="#">PDF на договор АПИ-2024-1118</a> <span class="sub">сканиран от АОП · 4,2 MB</span></li>
+        <li><a href="#">JSON запис в Сигма</a> <span class="sub">машиночетим, всички полета</span></li>
+      </ul>
+      <p class="source" style="margin-top:16px;">
+        Източник: Регистър на обществените поръчки (АОП) към 31 декември 2024 г.
+        Сигма не редактира съдържанието на договора и не интерпретира клаузите.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div>
+        <h4>Сигма</h4>
+        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код.</p>
+        <p class="freshness">Данни към 31 декември 2024 г.</p>
+      </div>
+      <div>
+        <h4>Източници</h4>
+        <p>
+          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
+          <a href="#">Лицензи и условия за ползване</a>
+        </p>
+      </div>
+      <div>
+        <h4>Платформа</h4>
+        <p>
+          <a href="methodology.html">Методология и речник</a><br>
+          <a href="#">За Сигма / контакти</a><br>
+          <a href="#">Изходен код (GitHub)</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
