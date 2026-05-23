@@ -5,53 +5,80 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Инженеринг АМ „Хемус“ Лот 6 — Сигма</title>
   <link rel="stylesheet" href="assets/styles.css" />
+  <script src="assets/site.js" defer></script>
   <style>
-    /* Page-local: value-history block */
+    /* Page-local: value-history — mirrors .totals metric strip rhythm */
     .value-history {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      margin: 8px 0 4px;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      margin: var(--s-7) 0;
     }
     .value-history .vh {
-      padding: 14px 18px 16px 0;
-      border-right: 1px solid var(--border-soft);
-      position: relative;
+      padding: var(--s-6) var(--s-6) var(--s-6) 0;
+      border-right: 1px solid var(--rule);
+      min-width: 0;
     }
-    .value-history .vh:last-child { border-right: 0; }
+    .value-history .vh + .vh { padding-left: var(--s-6); }
+    .value-history .vh:last-child { border-right: 0; padding-right: 0; }
     .value-history .vh .step {
-      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--s-2);
+      font: 10px/1.2 var(--font-mono);
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      font-weight: 700;
-      margin-bottom: 6px;
+      color: var(--ink-soft);
+      margin: 0 0 var(--s-3);
     }
     .value-history .vh .num {
-      font-size: 22px;
-      font-weight: 700;
+      display: block;
+      font: 400 32px/1 var(--font-serif);
       font-variant-numeric: tabular-nums;
       letter-spacing: -0.01em;
-      display: block;
-      line-height: 1.1;
+      color: var(--ink);
     }
     .value-history .vh .sub {
+      display: block;
+      margin-top: var(--s-2);
       font-size: 13px;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-    .value-history .vh.now .step { color: var(--accent); }
-    .value-history .vh.now { background: var(--accent-bg); padding-left: 14px; }
-    .value-history .delta {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 4px;
+      color: var(--ink-soft);
       font-variant-numeric: tabular-nums;
     }
-    .lot-table tbody tr.current td { background: var(--accent-bg); }
-    .lot-table tbody tr.current td:first-child { border-left: 4px solid var(--accent); padding-left: 8px; }
+    .value-history .vh .delta {
+      display: block;
+      margin-top: var(--s-2);
+      font: 11px/1.3 var(--font-mono);
+      letter-spacing: 0.06em;
+      color: var(--ink-soft);
+      font-variant-numeric: tabular-nums;
+    }
+    /* Current cell — editorial red eyebrow with accent rule prefix (matches .kicker) */
+    .value-history .vh.now .step { color: var(--accent); }
+    .value-history .vh.now .step::before {
+      content: "";
+      width: 18px;
+      height: 1px;
+      background: var(--accent);
+    }
+    /* Flag — opt-in, only when there is an unusual increase via anexes to flag */
+    .value-history .vh.flag .num { color: var(--accent); }
+    .value-history .vh.flag .delta { color: var(--accent); }
+    .lot-table tbody tr.current td { background: var(--paper); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+    .lot-table tbody tr.current td:first-child { padding-left: 8px; }
+    @media (max-width: 760px) {
+      .value-history { grid-template-columns: 1fr; }
+      .value-history .vh {
+        border-right: 0;
+        border-bottom: 1px solid var(--rule);
+        padding: var(--s-5) 0;
+      }
+      .value-history .vh + .vh { padding-left: 0; }
+      .value-history .vh:last-child { border-bottom: 0; padding-bottom: 0; }
+      .value-history .vh:first-child { padding-top: 0; }
+    }
   </style>
 </head>
 <body>
@@ -70,13 +97,21 @@
         <a href="contracts.html" aria-current="page">Договори</a>
         <a href="flows.html">Потоци</a>
         <a href="methodology.html">Методология</a>
+        <button class="nav-search" type="button" aria-label="Търсене" data-search-toggle aria-expanded="false" aria-controls="searchDrawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+        </button>
       </nav>
-      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
-        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
-        <button type="submit">Търси</button>
-      </form>
     </div>
   </header>
+
+  <div class="search-drawer" id="searchDrawer" hidden>
+    <form class="search-drawer-form" role="search" action="search.html" method="get">
+      <span class="search-drawer-prompt" aria-hidden="true">›</span>
+      <input type="search" name="q" placeholder="Институция, компания, ЕИК или № на договор…" aria-label="Търсене" autocomplete="off" />
+      <button type="submit">Намери</button>
+      <button type="button" class="search-drawer-close" aria-label="Затвори търсенето">×</button>
+    </form>
+  </div>
 
   <nav class="crumbs" aria-label="Навигация по нивата">
     <div class="crumbs-inner">
@@ -333,28 +368,10 @@
 
   </main>
 
-  <footer class="site-footer">
+  <footer class="site-footer" role="contentinfo">
     <div class="site-footer-inner">
-      <div>
-        <h4>Сигма</h4>
-        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код.</p>
-        <p class="freshness">Данни към 31 декември 2024 г.</p>
-      </div>
-      <div>
-        <h4>Източници</h4>
-        <p>
-          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
-          <a href="#">Лицензи и условия за ползване</a>
-        </p>
-      </div>
-      <div>
-        <h4>Платформа</h4>
-        <p>
-          <a href="methodology.html">Методология и речник</a><br>
-          <a href="#">За Сигма / контакти</a><br>
-          <a href="#">Изходен код (GitHub)</a>
-        </p>
-      </div>
+      <span>Източник: АОП · 2020–2024 · обновени 31.12.2024</span>
+      <a href="methodology.html">Методология</a>
     </div>
   </footer>
 

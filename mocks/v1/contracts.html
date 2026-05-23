@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Договори — Сигма</title>
   <link rel="stylesheet" href="assets/styles.css" />
+  <script src="assets/site.js" defer></script>
   <style>
     /* Page-local: contracts list uses a two-line cell for parties + meta */
     .contract-row td.parties { line-height: 1.45; }
@@ -37,13 +38,21 @@
         <a href="contracts.html" aria-current="page">Договори</a>
         <a href="flows.html">Потоци</a>
         <a href="methodology.html">Методология</a>
+        <button class="nav-search" type="button" aria-label="Търсене" data-search-toggle aria-expanded="false" aria-controls="searchDrawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+        </button>
       </nav>
-      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
-        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
-        <button type="submit">Търси</button>
-      </form>
     </div>
   </header>
+
+  <div class="search-drawer" id="searchDrawer" hidden>
+    <form class="search-drawer-form" role="search" action="search.html" method="get">
+      <span class="search-drawer-prompt" aria-hidden="true">›</span>
+      <input type="search" name="q" placeholder="Институция, компания, ЕИК или № на договор…" aria-label="Търсене" autocomplete="off" />
+      <button type="submit">Намери</button>
+      <button type="button" class="search-drawer-close" aria-label="Затвори търсенето">×</button>
+    </form>
+  </div>
 
   <nav class="crumbs" aria-label="Навигация по нивата">
     <div class="crumbs-inner">
@@ -68,95 +77,96 @@
     <div class="split">
       <aside aria-label="Филтри">
 
-        <div class="filter-group">
-          <h4>Година (подписан)</h4>
-          <label class="check"><input type="checkbox" checked /> 2024 <span class="muted small">(28 412)</span></label>
-          <label class="check"><input type="checkbox" checked /> 2023 <span class="muted small">(27 188)</span></label>
-          <label class="check"><input type="checkbox" checked /> 2022 <span class="muted small">(26 947)</span></label>
-          <label class="check"><input type="checkbox" checked /> 2021 <span class="muted small">(24 213)</span></label>
-          <label class="check"><input type="checkbox" checked /> 2020 <span class="muted small">(22 374)</span></label>
-        </div>
+        <details class="filter-group" open>
+          <summary>Година</summary>
+          <label class="check"><input type="checkbox" checked /> 2024 <span class="muted small">28 412</span></label>
+          <label class="check"><input type="checkbox" checked /> 2023 <span class="muted small">27 188</span></label>
+          <label class="check"><input type="checkbox" checked /> 2022 <span class="muted small">26 947</span></label>
+          <label class="check"><input type="checkbox" checked /> 2021 <span class="muted small">24 213</span></label>
+          <label class="check"><input type="checkbox" checked /> 2020 <span class="muted small">22 374</span></label>
+        </details>
 
-        <div class="filter-group">
-          <h4>Сектор</h4>
-          <label class="check"><input type="checkbox" checked /> Строителство <span class="muted small">(41 218)</span></label>
-          <label class="check"><input type="checkbox" checked /> Храни <span class="muted small">(87 916)</span></label>
-        </div>
+        <details class="filter-group" open>
+          <summary>Сектор</summary>
+          <label class="check"><input type="checkbox" checked /> Строителство <span class="muted small">41 218</span></label>
+          <label class="check"><input type="checkbox" checked /> Храни <span class="muted small">87 916</span></label>
+        </details>
 
-        <div class="filter-group">
-          <h4>Процедура</h4>
+        <details class="filter-group">
+          <summary>Процедура</summary>
           <label class="check"><input type="checkbox" checked /> Открита</label>
           <label class="check"><input type="checkbox" checked /> Публично състезание</label>
           <label class="check"><input type="checkbox" checked /> Договаряне с обявление</label>
           <label class="check"><input type="checkbox" /> Договаряне без обявление</label>
           <label class="check"><input type="checkbox" checked /> Пряко договаряне</label>
           <label class="check"><input type="checkbox" /> Ограничена</label>
-        </div>
+        </details>
 
-        <div class="filter-group">
-          <h4>Стойност при сключване</h4>
+        <details class="filter-group">
+          <summary>Стойност при сключване</summary>
           <label class="check"><input type="radio" name="val" checked /> Всички</label>
           <label class="check"><input type="radio" name="val" /> Под 100 хил. лв.</label>
           <label class="check"><input type="radio" name="val" /> 100 хил. – 1 млн.</label>
           <label class="check"><input type="radio" name="val" /> 1 – 10 млн.</label>
           <label class="check"><input type="radio" name="val" /> 10 – 100 млн.</label>
           <label class="check"><input type="radio" name="val" /> Над 100 млн.</label>
-        </div>
+        </details>
 
-        <div class="filter-group">
-          <h4>CPV група</h4>
+        <details class="filter-group">
+          <summary>CPV група</summary>
           <label class="check"><input type="checkbox" /> 45000000 — Строителни работи</label>
           <label class="check"><input type="checkbox" /> 15000000 — Хранителни продукти</label>
           <label class="check"><input type="checkbox" /> 71000000 — Архитектурни и инженерни услуги</label>
           <label class="check"><input type="checkbox" /> 33000000 — Медицинско оборудване</label>
-          <p class="small muted" style="margin-top:6px;"><a href="#">Виж всички CPV кодове</a></p>
-        </div>
+          <p class="small muted" style="margin-top: var(--s-2);"><a href="#">Виж всички CPV</a></p>
+        </details>
 
-        <div class="filter-group">
-          <h4>ЕС финансиране</h4>
+        <details class="filter-group">
+          <summary>ЕС финансиране</summary>
           <label class="check"><input type="radio" name="eu" checked /> Всички</label>
           <label class="check"><input type="radio" name="eu" /> Само с ЕС финансиране</label>
           <label class="check"><input type="radio" name="eu" /> Само без ЕС финансиране</label>
-        </div>
+        </details>
 
-        <div class="filter-group">
-          <h4>Институция</h4>
-          <input type="search" placeholder="Напр. „Столична община“" style="width:100%; padding:6px 8px; font:14px var(--font-sans); border:1px solid var(--border);" />
-        </div>
+        <details class="filter-group">
+          <summary>Институция</summary>
+          <input type="search" placeholder="Напр. Столична община" style="width:100%; padding:6px 8px; font:14px var(--font-sans); border:1px solid var(--rule); background: var(--paper);" />
+        </details>
 
-        <div class="filter-group">
-          <h4>Компания</h4>
-          <input type="search" placeholder="Име или ЕИК" style="width:100%; padding:6px 8px; font:14px var(--font-sans); border:1px solid var(--border);" />
-        </div>
+        <details class="filter-group">
+          <summary>Компания</summary>
+          <input type="search" placeholder="Име или ЕИК" style="width:100%; padding:6px 8px; font:14px var(--font-sans); border:1px solid var(--rule); background: var(--paper);" />
+        </details>
 
-        <p class="small muted" style="margin-top:24px;">
+        <p class="small muted" style="margin-top: var(--s-4);">
           <a href="contracts.html">Изчисти филтрите</a> ·
-          <a href="#">Изтегли CSV за този изглед</a>
+          <a href="#">Изтегли CSV</a>
         </p>
       </aside>
 
       <section>
 
-        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
-          <p class="muted small" style="margin:0;">
-            Намерени <strong>129 134</strong> договора. Обща стойност: <strong>47,8 млрд. лв.</strong>
+        <div class="list-controls">
+          <p class="muted small">
+            Намерени <strong>129 134</strong> договора · <strong>47,8 млрд. лв.</strong>
           </p>
-          <p class="muted small" style="margin:0;">
-            Подреди по:
-            <a href="?sort=date" aria-current="true"><strong>дата (нови)</strong></a> ·
-            <a href="?sort=date-asc">дата (стари)</a> ·
+          <p class="muted small">
+            Подреди:
+            <a href="?sort=date" aria-current="true"><strong>нови</strong></a> ·
+            <a href="?sort=date-asc">стари</a> ·
             <a href="?sort=value-desc">стойност ↓</a> ·
             <a href="?sort=value-asc">стойност ↑</a>
           </p>
         </div>
 
+        <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th scope="col" style="width:32px;">#</th>
               <th scope="col">Договор</th>
               <th scope="col">Възложител · Изпълнител</th>
-              <th scope="col">Процедура · Дата</th>
+              <th scope="col" class="col-secondary">Процедура · Дата</th>
               <th scope="col" class="num">Стойност</th>
             </tr>
           </thead>
@@ -172,7 +182,7 @@
                 <span class="from">Агенция „Пътна инфраструктура“ <span class="who">възложител</span></span>
                 <span class="to">ГБС Инфраструктурно строителство АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 4 оферти
                 <br>14.10.2024
@@ -189,7 +199,7 @@
                 <span class="from">Столична община <span class="who">възложител</span></span>
                 <span class="to">Евро Мийт енд Милк ЕООД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 3 оферти
                 <br>11.09.2024
@@ -207,7 +217,7 @@
                 <span class="from">Министерство на транспорта <span class="who">възложител</span></span>
                 <span class="to">ОБЕДИНЕНИЕ „АМ-Хемус 2021“ ДЗЗД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 2 оферти
                 <br>04.08.2024
@@ -224,7 +234,7 @@
                 <span class="from">Министерство на здравеопазването <span class="who">възложител</span></span>
                 <span class="to">Делта Холдинг ЕООД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Публично състезание</span>
                 <span class="dot">·</span> 6 оферти
                 <br>27.07.2024
@@ -242,7 +252,7 @@
                 <span class="from">Столична община <span class="who">възложител</span></span>
                 <span class="to">Трейс Груп Холд АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 5 оферти
                 <br>18.06.2024
@@ -259,7 +269,7 @@
                 <span class="from">Община Пловдив <span class="who">възложител</span></span>
                 <span class="to">Свинекомплекс Николово АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 4 оферти
                 <br>02.06.2024
@@ -277,7 +287,7 @@
                 <span class="from">УМБАЛ „Александровска“ ЕАД <span class="who">възложител</span></span>
                 <span class="to">Хидрострой АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 3 оферти
                 <br>22.05.2024
@@ -294,7 +304,7 @@
                 <span class="from">Военномедицинска академия <span class="who">възложител</span></span>
                 <span class="to">Булконс Първомай АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Публично състезание</span>
                 <span class="dot">·</span> 7 оферти
                 <br>14.05.2024
@@ -312,7 +322,7 @@
                 <span class="from">Община Шумен <span class="who">възложител</span></span>
                 <span class="to">Понсстройинженеринг ЕАД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 3 оферти
                 <br>08.05.2024
@@ -329,7 +339,7 @@
                 <span class="from">Община Варна <span class="who">възложител</span></span>
                 <span class="to">Калоян — България ООД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 5 оферти
                 <br>22.04.2024
@@ -347,7 +357,7 @@
                 <span class="from">Община Стара Загора <span class="who">възложител</span></span>
                 <span class="to">Геострой АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 4 оферти
                 <br>15.04.2024
@@ -364,7 +374,7 @@
                 <span class="from">Военномедицинска академия <span class="who">възложител</span></span>
                 <span class="to">Вамикс ООД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 3 оферти
                 <br>08.04.2024
@@ -382,7 +392,7 @@
                 <span class="from">Община Благоевград <span class="who">възложител</span></span>
                 <span class="to">ДЖИ Пи Груп АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 2 оферти
                 <br>27.03.2024
@@ -399,7 +409,7 @@
                 <span class="from">Министерство на отбраната <span class="who">възложител</span></span>
                 <span class="to">Градус-1 ЕООД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 8 оферти
                 <br>14.03.2024
@@ -417,7 +427,7 @@
                 <span class="from">Агенция „Пътна инфраструктура“ <span class="who">възложител</span></span>
                 <span class="to">Пътстрой-92 АД <span class="who">изпълнител</span></span>
               </td>
-              <td class="meta">
+              <td class="meta col-secondary">
                 <span class="pr">Открита</span>
                 <span class="dot">·</span> 3 оферти
                 <br>04.03.2024
@@ -426,6 +436,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <div class="paging">
           <div>Страница <strong>1</strong> от <strong>8 609</strong> · 15 на страница</div>
@@ -455,28 +466,10 @@
 
   </main>
 
-  <footer class="site-footer">
+  <footer class="site-footer" role="contentinfo">
     <div class="site-footer-inner">
-      <div>
-        <h4>Сигма</h4>
-        <p>Платформа за прозрачни възлагания. Безплатна, с отворен код.</p>
-        <p class="freshness">Данни към 31 декември 2024 г.</p>
-      </div>
-      <div>
-        <h4>Източници</h4>
-        <p>
-          <a href="#">Регистър на обществените поръчки (АОП)</a><br>
-          <a href="#">Лицензи и условия за ползване</a>
-        </p>
-      </div>
-      <div>
-        <h4>Платформа</h4>
-        <p>
-          <a href="methodology.html">Методология и речник</a><br>
-          <a href="#">За Сигма / контакти</a><br>
-          <a href="#">Изходен код (GitHub)</a>
-        </p>
-      </div>
+      <span>Източник: АОП · 2020–2024 · обновени 31.12.2024</span>
+      <a href="methodology.html">Методология</a>
     </div>
   </footer>
 

@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Сигма — Платформа за прозрачни възлагания</title>
   <link rel="stylesheet" href="assets/styles.css" />
+  <script src="assets/site.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Към съдържанието</a>
@@ -23,13 +24,21 @@
         <a href="contracts.html">Договори</a>
         <a href="flows.html">Потоци</a>
         <a href="methodology.html">Методология</a>
+        <button class="nav-search" type="button" aria-label="Търсене" data-search-toggle aria-expanded="false" aria-controls="searchDrawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+        </button>
       </nav>
-      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
-        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
-        <button type="submit">Търси</button>
-      </form>
     </div>
   </header>
+
+  <div class="search-drawer" id="searchDrawer" hidden>
+    <form class="search-drawer-form" role="search" action="search.html" method="get">
+      <span class="search-drawer-prompt" aria-hidden="true">›</span>
+      <input type="search" name="q" placeholder="Институция, компания, ЕИК или № на договор…" aria-label="Търсене" autocomplete="off" />
+      <button type="submit">Намери</button>
+      <button type="button" class="search-drawer-close" aria-label="Затвори търсенето">×</button>
+    </form>
+  </div>
 
   <main id="main">
     <section class="page-header">

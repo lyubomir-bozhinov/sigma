@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Потоци на пари — Сигма</title>
   <link rel="stylesheet" href="assets/styles.css" />
+  <script src="assets/site.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Към съдържанието</a>
@@ -22,13 +23,21 @@
         <a href="contracts.html">Договори</a>
         <a href="flows.html" aria-current="page">Потоци</a>
         <a href="methodology.html">Методология</a>
+        <button class="nav-search" type="button" aria-label="Търсене" data-search-toggle aria-expanded="false" aria-controls="searchDrawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+        </button>
       </nav>
-      <form class="site-search" role="search" aria-label="Търсене" action="search.html">
-        <input type="search" name="q" placeholder="Търси институция, компания или номер на договор…" />
-        <button type="submit">Търси</button>
-      </form>
     </div>
   </header>
+
+  <div class="search-drawer" id="searchDrawer" hidden>
+    <form class="search-drawer-form" role="search" action="search.html" method="get">
+      <span class="search-drawer-prompt" aria-hidden="true">›</span>
+      <input type="search" name="q" placeholder="Институция, компания, ЕИК или № на договор…" aria-label="Търсене" autocomplete="off" />
+      <button type="submit">Намери</button>
+      <button type="button" class="search-drawer-close" aria-label="Затвори търсенето">×</button>
+    </form>
+  </div>
 
   <div class="crumbs">
     <div class="crumbs-inner">
@@ -402,28 +411,10 @@
 
   </main>
 
-  <footer class="site-footer">
+  <footer class="site-footer" role="contentinfo">
     <div class="site-footer-inner">
-      <div>
-        <h4>Сигма</h4>
-        <p>Платформа за прозрачни възлагания.</p>
-        <p class="freshness">Данни към 31 декември 2024 г.</p>
-      </div>
-      <div>
-        <h4>Източници</h4>
-        <p>
-          <a href="#">АОП регистър</a><br>
-          <a href="#">Лицензи</a>
-        </p>
-      </div>
-      <div>
-        <h4>Платформа</h4>
-        <p>
-          <a href="methodology.html">Методология</a><br>
-          <a href="#">За Сигма</a><br>
-          <a href="#">Изходен код</a>
-        </p>
-      </div>
+      <span>Източник: АОП · 2020–2024 · обновени 31.12.2024</span>
+      <a href="methodology.html">Методология</a>
     </div>
   </footer>
 
