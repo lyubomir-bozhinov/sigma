@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Сигма — Преглед на възлаганията 2020–2024</title>
+  <style>
+    /* ──────────────────────────────────────────────────────────
+       Experimental: IB pitch-book aesthetic applied to Sigma index.
+       Warm paper, dark ink, single red accent, serif display with
+       italic em-emphasis, mono eyebrows + numerics. Strict 8-pt
+       spacing scale; hairline rules; no shadows on content blocks.
+       ────────────────────────────────────────────────────────── */
+
+    :root {
+      /* Palette — OKLch */
+      --paper:      oklch(98.5% 0.008 80);
+      --paper-warm: oklch(96% 0.012 78);
+      --paper-deep: oklch(94% 0.014 78);
+      --ink:        oklch(18% 0.012 70);
+      --ink-mid:    oklch(38% 0.010 70);
+      --ink-soft:   oklch(56% 0.008 70);
+      --rule:       oklch(86% 0.008 75);
+      --rule-soft:  oklch(91% 0.008 75);
+      --accent:     oklch(48% 0.18 28);
+      --accent-bg:  oklch(94% 0.04 28);
+      --pos:        oklch(45% 0.10 165);
+
+      /* Type */
+      --serif: 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+      --sans:  system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --mono:  ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+      /* Spacing scale — strict 8pt */
+      --s-1:  4px;
+      --s-2:  8px;
+      --s-3: 12px;
+      --s-4: 16px;
+      --s-5: 24px;
+      --s-6: 32px;
+      --s-7: 48px;
+      --s-8: 64px;
+      --s-9: 96px;
+
+      /* Page rhythm */
+      --page-max: 1280px;
+      --gutter:    64px;
+    }
+
+    @media (max-width: 880px) {
+      :root { --gutter: 28px; }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font: 15px/1.5 var(--sans);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: var(--accent); }
+
+    h1, h2, h3, h4 { margin: 0; font-weight: 400; }
+
+    /* ── Masthead ─────────────────────────────────────────── */
+    .mast {
+      max-width: var(--page-max);
+      margin: 0 auto;
+      padding: 28px var(--gutter) 14px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--s-5);
+      border-bottom: 1px solid var(--rule);
+      font: 11px/1.3 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-mid);
+      flex-wrap: wrap;
+    }
+    .mast .brand {
+      font: 400 22px/1 var(--serif);
+      letter-spacing: 0.01em;
+      color: var(--ink);
+      text-transform: none;
+    }
+    .mast nav { display: flex; gap: var(--s-6); flex-wrap: wrap; }
+    .mast nav a { text-decoration: none; color: var(--ink-mid); }
+    .mast nav a[aria-current="page"] { color: var(--ink); border-bottom: 2px solid var(--ink); padding-bottom: 4px; }
+    .mast nav a:hover { color: var(--accent); }
+
+    /* ── Page (the "paper") ───────────────────────────────── */
+    .page {
+      max-width: var(--page-max);
+      margin: 0 auto;
+      padding: 0 var(--gutter) var(--s-9);
+    }
+
+    /* ── Hero / cover ─────────────────────────────────────── */
+    .cover {
+      padding: var(--s-8) 0 var(--s-7);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--s-2);
+      color: var(--accent);
+      font: 11px/1 var(--mono);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 24px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    .display {
+      margin-top: var(--s-4);
+      max-width: 18ch;
+      font: 400 clamp(48px, 7vw, 96px)/0.92 var(--serif);
+      letter-spacing: -0.035em;
+      color: var(--ink);
+    }
+    .display em { color: var(--accent); font-style: italic; }
+
+    .lede {
+      margin-top: var(--s-5);
+      max-width: 60ch;
+      font: 17px/1.55 var(--sans);
+      color: var(--ink-mid);
+    }
+
+    /* ── Hero search — quiet editorial prompt ─────────────────
+       Sits between cover and metric strip. Deliberately UN-ribboned
+       (no top rule, no internal vertical dividers, hairline-soft
+       bottom only) so it reads as a continuation of the cover voice
+       rather than as a peer to the metric strip below. */
+    .hero-search {
+      margin-top: var(--s-6);
+      padding-bottom: var(--s-2);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      column-gap: var(--s-5);
+      row-gap: var(--s-3);
+      align-items: end;
+    }
+    .hero-search .he-eyebrow {
+      grid-column: 1 / -1;
+      margin: 0;
+    }
+    .hero-search .he-input {
+      display: flex;
+      align-items: baseline;
+      gap: var(--s-3);
+      min-width: 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--ink);
+    }
+    .hero-search .he-input::before {
+      content: "›";
+      color: var(--accent);
+      font: 400 28px/1 var(--serif);
+      flex: 0 0 auto;
+    }
+    .hero-search input {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font: 400 28px/1.2 var(--serif);
+      letter-spacing: -0.01em;
+      padding: 0;
+      outline: none;
+    }
+    .hero-search input::placeholder { color: var(--ink-soft); font-style: italic; }
+    .hero-search button {
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--paper);
+      padding: 12px var(--s-5);
+      font: 500 12px/1 var(--mono);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      cursor: pointer;
+      white-space: nowrap;
+      align-self: end;
+    }
+    .hero-search button:hover { background: var(--accent); border-color: var(--accent); }
+
+    @media (max-width: 760px) {
+      .hero-search { grid-template-columns: 1fr; }
+      .hero-search button { width: 100%; }
+    }
+
+    /* ── Metric strip ─────────────────────────────────────── */
+    .metric-strip {
+      margin: var(--s-7) 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+    @media (max-width: 760px) {
+      .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric-strip .metric:nth-child(2) { border-right: 0; }
+      .metric-strip .metric:nth-child(1), .metric-strip .metric:nth-child(2) { border-bottom: 1px solid var(--rule); }
+    }
+    .metric {
+      padding: var(--s-6) var(--s-6) var(--s-6) 0;
+      border-right: 1px solid var(--rule);
+      min-width: 0;
+    }
+    .metric + .metric { padding-left: var(--s-6); }
+    .metric:last-child { border-right: 0; padding-right: 0; }
+    .metric .label {
+      display: block;
+      font: 10px/1.2 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .metric .value {
+      display: block;
+      margin-top: var(--s-3);
+      font: 400 36px/1 var(--serif);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .metric .unit { font-size: 18px; color: var(--ink-mid); margin-left: 4px; letter-spacing: 0; }
+    .metric .delta {
+      display: block;
+      margin-top: var(--s-3);
+      font: 11px/1.4 var(--mono);
+      color: var(--ink-soft);
+    }
+
+    /* ── Section heading row ──────────────────────────────── */
+    .section {
+      margin-top: var(--s-8);
+    }
+    .section-head {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--s-3);
+      padding-bottom: var(--s-4);
+      border-bottom: 1px solid var(--ink);
+      margin-bottom: var(--s-5);
+    }
+    @media (min-width: 960px) {
+      .section-head { grid-template-columns: 1.4fr 1fr; align-items: end; gap: var(--s-7); }
+    }
+    .section-head h2 {
+      font: 400 clamp(28px, 3.6vw, 44px)/1 var(--serif);
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+    .section-head h2 em { color: var(--accent); font-style: italic; }
+    .section-head .section-hint {
+      font: 14px/1.55 var(--sans);
+      color: var(--ink-mid);
+      max-width: 48ch;
+    }
+    .section-head .section-hint a { color: var(--ink); }
+
+    /* ── Two-column institution lists ─────────────────────── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--s-7);
+    }
+    @media (min-width: 880px) {
+      .grid-2 { grid-template-columns: 1fr 1fr; gap: var(--s-8); }
+    }
+
+    .list-block .list-eyebrow {
+      font: 11px/1 var(--mono);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding-bottom: var(--s-2);
+      border-bottom: 1px solid var(--ink);
+      margin-bottom: var(--s-2);
+    }
+    .list-block ul.entity-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .entity-list li {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: baseline;
+      gap: var(--s-4);
+      padding: var(--s-3) 0;
+      border-bottom: 1px solid var(--rule-soft);
+    }
+    .entity-list li a {
+      text-decoration: none;
+      color: var(--ink);
+      font: 15px/1.35 var(--sans);
+    }
+    .entity-list li a:hover { color: var(--accent); }
+    .entity-list .v {
+      font: 14px/1 var(--mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--ink-mid);
+      white-space: nowrap;
+    }
+    .list-foot {
+      margin-top: var(--s-3);
+      font: 12px/1.4 var(--mono);
+      letter-spacing: 0.02em;
+      color: var(--ink-soft);
+    }
+    .list-foot a { color: var(--ink-mid); }
+
+    /* ── Fin table — Top 10 companies ─────────────────────── */
+    .table-wrap {
+      overflow: auto;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+    table.fin {
+      width: 100%;
+      border-collapse: collapse;
+      font: 13px/1.4 var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .fin thead th {
+      text-align: left;
+      padding: 10px 14px 10px 0;
+      border-bottom: 1px solid var(--ink);
+      color: var(--ink-mid);
+      font-weight: 500;
+      font-size: 10.5px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .fin thead th:first-child { padding-left: var(--s-3); }
+    .fin thead th.num { text-align: right; }
+    .fin tbody td {
+      padding: 12px 14px 12px 0;
+      border-bottom: 1px solid var(--rule-soft);
+      vertical-align: top;
+    }
+    .fin tbody td:first-child { padding-left: var(--s-3); }
+    .fin tbody td.num { text-align: right; white-space: nowrap; }
+    .fin tbody tr:hover td { background: var(--paper-warm); }
+    .fin .rank { color: var(--ink-soft); width: 28px; }
+    .fin .co {
+      font: 14px/1.35 var(--sans);
+      color: var(--ink);
+    }
+    .fin .co a { color: var(--ink); text-decoration: none; }
+    .fin .co a:hover { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; }
+    .fin .co .meta {
+      display: block;
+      margin-top: 2px;
+      font: 11px/1.3 var(--mono);
+      letter-spacing: 0.04em;
+      color: var(--ink-soft);
+      text-transform: uppercase;
+    }
+    .fin .money {
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .fin .money .eur {
+      display: block;
+      margin-top: 2px;
+      font-weight: 400;
+      color: var(--ink-soft);
+      font-size: 11px;
+    }
+    .fin tr.target td {
+      background: color-mix(in oklch, var(--accent) 6%, transparent);
+    }
+    .fin tr.target td.co { color: var(--accent); }
+    .fin tr.target td.co a { color: var(--accent); }
+
+    .source-line {
+      margin-top: var(--s-3);
+      font: 11px/1.4 var(--mono);
+      letter-spacing: 0.04em;
+      color: var(--ink-soft);
+    }
+
+    /* ── Methodology grid-2 (disclosures style) ───────────── */
+    .method-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--s-6);
+    }
+    @media (min-width: 880px) {
+      .method-grid { grid-template-columns: 1fr 1.2fr; gap: var(--s-8); }
+    }
+    .method-grid .heading h3 {
+      font: 400 clamp(24px, 3vw, 38px)/1 var(--serif);
+      letter-spacing: -0.02em;
+    }
+    .method-grid .heading h3 em { color: var(--accent); font-style: italic; }
+    .method-grid .heading .eyebrow { margin-bottom: var(--s-3); }
+    .method-grid .body p {
+      font: 14.5px/1.6 var(--sans);
+      color: var(--ink-mid);
+      margin: 0 0 var(--s-3);
+    }
+    .method-grid .body p:last-child { margin-bottom: 0; }
+    .method-grid .body strong { color: var(--ink); font-weight: 600; }
+
+    /* ── Foot ─────────────────────────────────────────────── */
+    .foot {
+      max-width: var(--page-max);
+      margin: var(--s-8) auto 0;
+      padding: var(--s-4) var(--gutter) var(--s-5);
+      border-top: 1px solid var(--ink);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--s-4);
+      font: 11px/1.4 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .foot .sep { color: var(--rule); padding: 0 6px; }
+    .foot a { color: var(--ink-mid); text-decoration: none; }
+    .foot a:hover { color: var(--accent); }
+
+    /* ── Skip link ────────────────────────────────────────── */
+    .skip { position: absolute; left: -9999px; top: -9999px; }
+    .skip:focus { left: var(--s-2); top: var(--s-2); background: var(--accent); color: var(--paper); padding: var(--s-2) var(--s-3); z-index: 100; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Към съдържанието</a>
+
+  <header class="mast" role="banner">
+    <a href="../../index.html" class="brand" aria-label="Сигма — начална страница">
+      Сигма
+    </a>
+    <nav aria-label="Главна навигация">
+      <a href="#" aria-current="page">Начало</a>
+      <a href="../../authorities.html">Институции</a>
+      <a href="../../companies.html">Компании</a>
+      <a href="../../contracts.html">Договори</a>
+      <a href="../../flows.html">Потоци</a>
+      <a href="../../methodology.html">Методология</a>
+    </nav>
+  </header>
+
+  <main id="main" class="page">
+
+    <!-- Cover -->
+    <section class="cover" aria-labelledby="cover-title">
+      <span class="eyebrow">Обзор на пазара · 2020–2024</span>
+      <h1 id="cover-title" class="display">Къде отиват <em>парите</em> на държавата?</h1>
+      <p class="lede">
+        Сигма показва кой какво купува от държавата и на кого плаща, в две сектора —
+        строителство и храни. Без регистрация, без интерпретация. Всяко число може да
+        бъде проследено до конкретния договор.
+      </p>
+    </section>
+
+    <!-- Hero search — prompt sitting between cover and metric strip -->
+    <form class="hero-search" role="search" action="../../search.html" aria-label="Търсене в Сигма">
+      <span class="eyebrow he-eyebrow">Започни от търсене</span>
+      <div class="he-input">
+        <input
+          type="search"
+          name="q"
+          placeholder="Институция, компания, ЕИК или № на договор…"
+          aria-label="Търсене"
+        />
+      </div>
+      <button type="submit">Намери</button>
+    </form>
+
+    <!-- Metric strip — overview of the data -->
+    <dl class="metric-strip" aria-label="Обзор на данните">
+      <div class="metric">
+        <span class="label">Договори и позиции</span>
+        <span class="value">129 134</span>
+        <span class="delta">+ 14% спрямо 2019</span>
+      </div>
+      <div class="metric">
+        <span class="label">Обща стойност при подписване</span>
+        <span class="value">47,8<span class="unit">млрд. лв.</span></span>
+        <span class="delta">≈ 24,4 млрд. €</span>
+      </div>
+      <div class="metric">
+        <span class="label">Институции възложители</span>
+        <span class="value">2 851</span>
+        <span class="delta">265 общини · 12 министерства</span>
+      </div>
+      <div class="metric">
+        <span class="label">Компании изпълнители</span>
+        <span class="value">14 209</span>
+        <span class="delta">в два сектора</span>
+      </div>
+    </dl>
+
+    <!-- Find your institution -->
+    <section class="section" aria-labelledby="find-yours">
+      <header class="section-head">
+        <h2 id="find-yours">Намери своята <em>институция</em></h2>
+        <p class="section-hint">
+          Започни оттук, ако те интересува конкретно министерство, община, агенция или
+          болница. Списъкът показва най-големите по обем на поръчките през 2020–2024 г.
+        </p>
+      </header>
+
+      <div class="grid-2">
+        <div class="list-block">
+          <div class="list-eyebrow">Министерства и централни ведомства</div>
+          <ul class="entity-list">
+            <li><a href="../../authority.html">Министерство на регионалното развитие</a><span class="v">4,10 млрд. лв.</span></li>
+            <li><a href="../../authority.html">Агенция „Пътна инфраструктура"</a><span class="v">3,70 млрд. лв.</span></li>
+            <li><a href="../../authority.html">Министерство на транспорта</a><span class="v">2,20 млрд. лв.</span></li>
+            <li><a href="../../authority.html">Национална компания „Железопътна инфраструктура"</a><span class="v">1,90 млрд. лв.</span></li>
+            <li><a href="../../authority.html">Министерство на здравеопазването</a><span class="v">980 млн. лв.</span></li>
+            <li><a href="../../authority.html">Министерство на младежта и спорта</a><span class="v">412 млн. лв.</span></li>
+          </ul>
+        </div>
+
+        <div class="list-block">
+          <div class="list-eyebrow">Общини</div>
+          <ul class="entity-list">
+            <li><a href="../../authority.html">Столична община</a><span class="v">2,80 млрд. лв.</span></li>
+            <li><a href="../../authority.html">Община Пловдив</a><span class="v">740 млн. лв.</span></li>
+            <li><a href="../../authority.html">Община Варна</a><span class="v">612 млн. лв.</span></li>
+            <li><a href="../../authority.html">Община Бургас</a><span class="v">498 млн. лв.</span></li>
+            <li><a href="../../authority.html">Община Стара Загора</a><span class="v">352 млн. лв.</span></li>
+            <li><a href="../../authority.html">Община Благоевград</a><span class="v">214 млн. лв.</span></li>
+          </ul>
+          <p class="list-foot"><a href="../../authorities.html">Виж пълния списък на 265 общини →</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Top 10 companies -->
+    <section class="section" aria-labelledby="top-bene">
+      <header class="section-head">
+        <h2 id="top-bene">Топ 10 печеливши <em>компании</em></h2>
+        <p class="section-hint">
+          Компании, наредени по обща стойност на спечелените договори за периода 2020–2024.
+          <a href="../../companies.html">Виж пълния списък →</a>
+        </p>
+      </header>
+
+      <div class="table-wrap">
+        <table class="fin">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Компания</th>
+              <th class="num">Спечелени</th>
+              <th class="num">Договори</th>
+              <th class="num">Институции</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="target">
+              <td class="rank">01</td>
+              <td class="co"><a href="../../company.html">ГБС Инфраструктурно строителство АД</a><span class="meta">ЕИК 130928907 · Строителство</span></td>
+              <td class="num money">1,87 млрд. лв.<span class="eur">957 млн. €</span></td>
+              <td class="num">214</td>
+              <td class="num">38</td>
+            </tr>
+            <tr>
+              <td class="rank">02</td>
+              <td class="co"><a href="../../company.html">Трейс Груп Холд АД</a><span class="meta">ЕИК 123682269 · Строителство</span></td>
+              <td class="num money">1,42 млрд. лв.<span class="eur">726 млн. €</span></td>
+              <td class="num">187</td>
+              <td class="num">47</td>
+            </tr>
+            <tr>
+              <td class="rank">03</td>
+              <td class="co"><a href="../../company.html">Хидрострой АД</a><span class="meta">ЕИК 121273739 · Строителство</span></td>
+              <td class="num money">1,18 млрд. лв.<span class="eur">604 млн. €</span></td>
+              <td class="num">163</td>
+              <td class="num">29</td>
+            </tr>
+            <tr>
+              <td class="rank">04</td>
+              <td class="co"><a href="../../company.html">Джи Пи Груп АД</a><span class="meta">ЕИК 175327028 · Строителство</span></td>
+              <td class="num money">894 млн. лв.<span class="eur">457 млн. €</span></td>
+              <td class="num">128</td>
+              <td class="num">22</td>
+            </tr>
+            <tr>
+              <td class="rank">05</td>
+              <td class="co"><a href="../../company.html">Автомагистрали — Черно море АД</a><span class="meta">ЕИК 814190577 · Строителство</span></td>
+              <td class="num money">812 млн. лв.<span class="eur">415 млн. €</span></td>
+              <td class="num">41</td>
+              <td class="num">7</td>
+            </tr>
+            <tr>
+              <td class="rank">06</td>
+              <td class="co"><a href="../../company.html">Понсстройинженеринг ЕАД</a><span class="meta">ЕИК 130081393 · Строителство</span></td>
+              <td class="num money">684 млн. лв.<span class="eur">350 млн. €</span></td>
+              <td class="num">156</td>
+              <td class="num">33</td>
+            </tr>
+            <tr>
+              <td class="rank">07</td>
+              <td class="co"><a href="../../company.html">Геострой АД</a><span class="meta">ЕИК 121849078 · Строителство</span></td>
+              <td class="num money">521 млн. лв.<span class="eur">266 млн. €</span></td>
+              <td class="num">98</td>
+              <td class="num">19</td>
+            </tr>
+            <tr>
+              <td class="rank">08</td>
+              <td class="co"><a href="../../company.html">Евро Мийт енд Милк ЕООД</a><span class="meta">ЕИК 101658372 · Храни</span></td>
+              <td class="num money">312 млн. лв.<span class="eur">159 млн. €</span></td>
+              <td class="num">442</td>
+              <td class="num">187</td>
+            </tr>
+            <tr>
+              <td class="rank">09</td>
+              <td class="co"><a href="../../company.html">Инжстройинженеринг ЕООД</a><span class="meta">ЕИК 175027727 · Строителство</span></td>
+              <td class="num money">287 млн. лв.<span class="eur">147 млн. €</span></td>
+              <td class="num">74</td>
+              <td class="num">14</td>
+            </tr>
+            <tr>
+              <td class="rank">10</td>
+              <td class="co"><a href="../../company.html">Свинекомплекс Николово АД</a><span class="meta">ЕИК 117001599 · Храни</span></td>
+              <td class="num money">198 млн. лв.<span class="eur">101 млн. €</span></td>
+              <td class="num">312</td>
+              <td class="num">143</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source-line">Източник: АОП, периодична извадка към 31.12.2024. Превалутирано по фиксинг лв./€ 1,95583.</p>
+    </section>
+
+    <!-- Methodology -->
+    <section class="section" aria-labelledby="method-title">
+      <header class="section-head">
+        <h2 id="method-title">Как се чете <em>тази платформа</em></h2>
+        <p class="section-hint">
+          Сигма обединява публични данни от регистъра на обществените поръчки. Кратко за
+          обхвата, за единицата на анализ и за това какво <em>не</em> може да се види.
+        </p>
+      </header>
+
+      <div class="method-grid">
+        <div class="heading">
+          <span class="eyebrow">Обхват</span>
+          <h3>Какво показва <em>Сигма</em></h3>
+        </div>
+        <div class="body">
+          <p>
+            <strong>Кой възлага, на кого, какво и за колко.</strong> Всяко число тук
+            се разлага до конкретните договори, които го съставят — нищо не е
+            обобщено без проследимост.
+          </p>
+          <p>
+            Покритието е за два сектора: строителство и храни. Периодът е 2020–2024 г.,
+            с обновяване на тримесечие.
+          </p>
+        </div>
+      </div>
+
+      <div class="method-grid" style="margin-top: var(--s-7);">
+        <div class="heading">
+          <span class="eyebrow">Единица на анализ</span>
+          <h3>Атомен запис: <em>договорът</em></h3>
+        </div>
+        <div class="body">
+          <p>
+            Всеки агрегат на тази платформа — сума за институция, сума за компания,
+            поток между двете — се разлага до конкретните възложени договори.
+          </p>
+          <p>
+            „Брой оферти" се показва само като броя; самите оферти не са в публичните
+            данни. <a href="../../methodology.html">Виж методологията →</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot" role="contentinfo">
+    <span>Източник: АОП <span class="sep">·</span> 2020–2024 <span class="sep">·</span> обновени 31.12.2024</span>
+    <a href="../../methodology.html">Методология</a>
+  </footer>
+
+</body>
+</html>
