@@ -56,8 +56,10 @@ GROUP BY authority_eik;
 --     procedure type, CPV, the procurement-level estimated value, lot count and authority.
 INSERT OR IGNORE INTO tenders
   (id, source_id, title, authority_id, cpv_code, cpv_description, estimated_value, currency,
-   procedure_type, contract_kind, num_lots, status, deadline_at,
-   legal_basis, award_criteria, main_activity, notice_type)
+   procedure_type, contract_kind, num_lots, status, published_at, deadline_at,
+   legal_basis, award_criteria, main_activity, notice_type,
+   place_of_performance, start_date, end_date, duration, duration_unit,
+   eu_programme, green, social, innovation, eauction, cancelled)
 SELECT
   't:' || t.unp,
   t.unp,
@@ -71,11 +73,23 @@ SELECT
   t.contract_kind,
   t.num_lots,
   CASE WHEN EXISTS (SELECT 1 FROM raw_egov_contracts c WHERE c.unp = t.unp) THEN 'awarded' ELSE 'published' END,
+  t.published_at,
   t.deadline,
   t.legal_basis,
   t.award_criteria,
   t.main_activity,
-  t.notice_type
+  t.notice_type,
+  t.place_of_performance,
+  t.start_date,
+  t.end_date,
+  t.duration,
+  t.duration_unit,
+  t.eu_programme,
+  t.green,
+  t.social,
+  t.innovation,
+  t.eauction,
+  t.cancelled
 FROM raw_egov_tenders t
 WHERE t.lot_id IS NULL;
 

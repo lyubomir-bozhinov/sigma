@@ -50,6 +50,17 @@ CREATE TABLE tenders (
   award_criteria  TEXT,                    -- Критерий за възлагане
   main_activity   TEXT,                    -- Основна дейност на възложителя
   notice_type     TEXT,                    -- Вид обявление
+  place_of_performance TEXT,               -- Място на изпълнение
+  start_date      TEXT,                    -- Начална дата
+  end_date        TEXT,                    -- Крайна дата
+  duration        TEXT,                    -- Продължителност
+  duration_unit   TEXT,                    -- Продължителност - мерна единица
+  eu_programme    TEXT,                    -- Европейска програма (tender-level)
+  green           INTEGER,                 -- Екологосъобразна поръчка
+  social          INTEGER,                 -- Постигане на социални цели
+  innovation      INTEGER,                 -- Поръчка за новаторски решения
+  eauction        INTEGER,                 -- Електронен търг
+  cancelled       INTEGER,                 -- Отменена
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -258,7 +269,39 @@ CREATE TABLE raw_egov_tenders (
   lot_id          TEXT,                    -- Идентификатор на обособена позиция (NULL on the header row)
   lot_name        TEXT,                    -- Наименование на обособената позиция
   num_lots        INTEGER,                 -- Брой обособени позиции (on the header row)
-  eu_funded       INTEGER
+  eu_funded       INTEGER,
+  -- full capture — every remaining admin Tenders header (see scripts/load-admin.mjs CATS.tenders)
+  seq_no               TEXT,
+  document_number      TEXT,
+  published_at         TEXT,
+  joint_procurement    INTEGER,
+  central_purchasing   INTEGER,
+  eu_programme         TEXT,
+  secured_financing    INTEGER,
+  framework_notice     INTEGER,
+  dps_notice           INTEGER,
+  accelerated          INTEGER,
+  eauction             INTEGER,
+  strategic            INTEGER,
+  green                INTEGER,
+  social               INTEGER,
+  innovation           INTEGER,
+  options              INTEGER,
+  renewable            INTEGER,
+  reserved             INTEGER,
+  variants             INTEGER,
+  place_of_performance TEXT,
+  duration             TEXT,
+  duration_unit        TEXT,
+  start_date           TEXT,
+  end_date             TEXT,
+  einvoicing           INTEGER,
+  epayment             INTEGER,
+  eordering            INTEGER,
+  corrections_count    INTEGER,
+  cancelled            INTEGER,
+  correction_number    TEXT,
+  ted_link             TEXT
 );
 
 -- One row per amendment (изменение / анекс); derive-amendments.sql rolls these onto contracts.
@@ -291,7 +334,24 @@ CREATE TABLE raw_egov_amendments (
   description      TEXT,                  -- Описание на измененията
   reason           TEXT,                  -- Причини за изменение (ЗОП основание)
   circumstances    TEXT,                  -- Обстоятелства
-  sme              TEXT
+  sme              TEXT,
+  -- full capture — every remaining admin Annexes header (see scripts/load-admin.mjs CATS.annexes)
+  tender_ext_id            TEXT,
+  procedure_type           TEXT,
+  cpv_code                 TEXT,
+  cpv_description          TEXT,
+  authority_type           TEXT,
+  main_activity            TEXT,
+  lot_id                   TEXT,
+  awarded_to_group         INTEGER,
+  contractor_country       TEXT,
+  winner_owner_nationality TEXT,
+  winner_size              TEXT,
+  eu_programme             TEXT,
+  outside_zop              INTEGER,
+  exemption_legal_basis    TEXT,
+  correction_number        TEXT,
+  ted_link                 TEXT
 );
 
 -- ===================================================================================

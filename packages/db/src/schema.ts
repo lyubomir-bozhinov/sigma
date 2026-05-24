@@ -34,6 +34,17 @@ export interface TenderRow {
   award_criteria: string | null;
   main_activity: string | null;
   notice_type: string | null;
+  place_of_performance: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  duration: string | null;
+  duration_unit: string | null;
+  eu_programme: string | null;
+  green: number | null;
+  social: number | null;
+  innovation: number | null;
+  eauction: number | null;
+  cancelled: number | null;
   created_at: string;
 }
 
