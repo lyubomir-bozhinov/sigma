@@ -1,9 +1,11 @@
-import { getTenderById, listRecentTenders, type TenderRow } from '@sigma/db';
+import { getTenderById, listRecentTenders, sectorBreakdown, type TenderRow } from '@sigma/db';
 import {
   type SearchTendersResponse,
+  type SectorsResponse,
   type TenderDetail,
   type TenderSummary,
 } from '@sigma/api-contract';
+import { CPV_SECTORS, sectorForCpv } from '@sigma/config';
 
 export interface Env {
   DB: D1Database;
@@ -18,6 +20,7 @@ function json(data: unknown, init?: ResponseInit): Response {
 }
 
 function toSummary(t: TenderRow): TenderSummary {
+  const sector = sectorForCpv(t.cpv_code);
   return {
     id: t.id,
     title: t.title,
@@ -27,6 +30,8 @@ function toSummary(t: TenderRow): TenderSummary {
     riskScore: null,
     riskBand: null,
     publishedAt: t.published_at,
+    sector: sector ? (sector.short ?? sector.label) : null,
+    sectorCode: sector?.code ?? null,
   };
 }
 
@@ -41,8 +46,31 @@ export default {
     if (url.pathname === '/api/tenders' && request.method === 'GET') {
       const rawLimit = Number(url.searchParams.get('limit') ?? '50');
       const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
-      const rows = await listRecentTenders(env.DB, limit);
+      // ?sector= accepts a 2-digit CPV division, a curated short name, or a full division label.
+      const sectorParam = url.searchParams.get('sector');
+      const division = sectorParam
+        ? (CPV_SECTORS.find((s) => s.code === sectorParam || s.short === sectorParam || s.label === sectorParam)
+            ?.code ?? sectorParam)
+        : null;
+      const rows = await listRecentTenders(env.DB, limit, division);
       const body: SearchTendersResponse = { results: rows.map(toSummary), cursor: null };
+      return json(body);
+    }
+
+    if (url.pathname === '/api/sectors' && request.method === 'GET') {
+      const rows = await sectorBreakdown(env.DB);
+      const byDivision = new Map(rows.map((r) => [r.division, r]));
+      const sectors = CPV_SECTORS.map((s) => {
+        const r = byDivision.get(s.code);
+        return {
+          code: s.code,
+          label: s.short ?? s.label,
+          curated: !!s.curated,
+          contracts: r?.contracts ?? 0,
+          valueEur: Math.round(r?.value_eur ?? 0),
+        };
+      }).sort((a, b) => b.valueEur - a.valueEur);
+      const body: SectorsResponse = { sectors };
       return json(body);
     }
 

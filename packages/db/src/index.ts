@@ -6,11 +6,40 @@ export async function getTenderById(db: D1Database, id: string): Promise<TenderR
   return db.prepare('SELECT * FROM tenders WHERE id = ?1').bind(id).first<TenderRow>();
 }
 
-export async function listRecentTenders(db: D1Database, limit = 50): Promise<TenderRow[]> {
+export async function listRecentTenders(
+  db: D1Database,
+  limit = 50,
+  cpvDivision: string | null = null,
+): Promise<TenderRow[]> {
   const { results } = await db
-    .prepare('SELECT * FROM tenders ORDER BY published_at DESC LIMIT ?1')
-    .bind(limit)
+    .prepare(
+      `SELECT * FROM tenders
+       WHERE (?2 IS NULL OR substr(cpv_code, 1, 2) = ?2)
+       ORDER BY published_at DESC LIMIT ?1`,
+    )
+    .bind(limit, cpvDivision)
     .all<TenderRow>();
+  return results;
+}
+
+export interface SectorBreakdownRow {
+  division: string; // 2-digit CPV division
+  contracts: number;
+  value_eur: number;
+}
+
+// Contract count + clean EUR per CPV division — the data side of the sector facet (@sigma/config
+// maps division → label). Sector is derived from the tender CPV, so there is no sector column.
+export async function sectorBreakdown(db: D1Database): Promise<SectorBreakdownRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT substr(t.cpv_code, 1, 2) AS division, COUNT(*) AS contracts,
+              COALESCE(SUM(c.amount_eur), 0) AS value_eur
+       FROM contracts c JOIN tenders t ON t.id = c.tender_id
+       WHERE t.cpv_code IS NOT NULL AND t.cpv_code <> ''
+       GROUP BY division ORDER BY value_eur DESC`,
+    )
+    .all<SectorBreakdownRow>();
   return results;
 }
 

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@sigma/api-contract": "workspace:*",
+    "@sigma/config": "workspace:*",
     "@sigma/db": "workspace:*",
     "@sigma/shared": "workspace:*"
   }

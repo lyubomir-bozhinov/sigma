@@ -9,6 +9,8 @@ export interface TenderSummary {
   riskScore: number | null;
   riskBand: RiskBand | null;
   publishedAt: string | null;
+  sector: string | null; // curated short name or CPV-division label (via @sigma/config)
+  sectorCode: string | null; // 2-digit CPV division
 }
 
 export interface TenderDetail extends TenderSummary {
@@ -36,9 +38,22 @@ export interface ApiError {
   message: string;
 }
 
+export interface SectorFacet {
+  code: string; // 2-digit CPV division
+  label: string;
+  curated: boolean; // featured sector (also drives the price index)
+  contracts: number;
+  valueEur: number;
+}
+
+export interface SectorsResponse {
+  sectors: SectorFacet[];
+}
+
 export const API_ROUTES = {
   searchTenders: '/api/tenders',
   tenderDetail: (id: string) => `/api/tenders/${id}`,
   riskScore: (id: string) => `/api/tenders/${id}/risk`,
+  sectors: '/api/sectors',
   openData: '/api/open-data/tenders.json',
 } as const;
