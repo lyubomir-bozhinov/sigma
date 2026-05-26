@@ -249,6 +249,18 @@ CREATE TABLE sector_totals (
   value_eur  REAL NOT NULL
 );
 
+-- Global filter-facet counts (year / raw procedure_type / EU) so the list rails never scan 190k rows
+-- per request. `procedure` rows are per raw procedure_type; the loader folds them into the 7
+-- @sigma/config groups (so the SQL stays free of the taxonomy). Counts are unfiltered (the mock shows
+-- global per-facet totals).
+CREATE TABLE facet_counts (
+  facet     TEXT NOT NULL,                 -- 'year' | 'procedure' | 'eu'
+  key       TEXT NOT NULL,                 -- year YYYY | raw procedure_type | '1'/'0'
+  contracts INTEGER NOT NULL,
+  value_eur REAL NOT NULL,
+  PRIMARY KEY (facet, key)
+);
+
 -- Per (authority, bidder). Flows Sankey + table (default, all-sector view).
 CREATE TABLE flow_pairs (
   authority_id   TEXT NOT NULL REFERENCES authorities(id),

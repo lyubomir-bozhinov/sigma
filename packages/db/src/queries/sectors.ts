@@ -18,9 +18,9 @@ export interface SectorTotalRow {
 }
 
 /** All present CPV divisions with contract counts + value, value-desc — the sector facet source. */
-export async function getSectorTotals(db: D1Database): Promise<
-  Array<{ sector: SectorRef; contracts: number; valueEur: number }>
-> {
+export async function getSectorTotals(
+  db: D1Database,
+): Promise<Array<{ sector: SectorRef; contracts: number; valueEur: number }>> {
   const { results } = await db
     .prepare(`SELECT division, contracts, value_eur FROM sector_totals ORDER BY value_eur DESC`)
     .all<SectorTotalRow>();

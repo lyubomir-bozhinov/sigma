@@ -1,24 +1,24 @@
-import { Link } from "react-router";
-import { count, money } from "@sigma/shared";
-import { getHomeData } from "@sigma/db";
-import type { Route } from "./+types/home";
-import { PageHeader } from "../components/PageHeader";
-import { TotalsStrip } from "../components/TotalsStrip";
-import { publicCache } from "../lib/cache";
+import { Link } from 'react-router';
+import { count, money } from '@sigma/shared';
+import { getHomeData } from '@sigma/db';
+import type { Route } from './+types/home';
+import { PageHeader } from '../components/PageHeader';
+import { TotalsStrip } from '../components/TotalsStrip';
+import { publicCache } from '../lib/cache';
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Сигма — Платформа за прозрачни възлагания" },
+    { title: 'Сигма — Платформа за прозрачни възлагания' },
     {
-      name: "description",
+      name: 'description',
       content:
-        "Кой какво купува от държавата и общините и на кого плаща — във всички сектори на обществените поръчки. Без регистрация. Всяко число се проследява до конкретния договор.",
+        'Кой какво купува от държавата и общините и на кого плаща — във всички сектори на обществените поръчки. Без регистрация. Всяко число се проследява до конкретния договор.',
     },
   ];
 }
 
 export function headers() {
-  return { "Cache-Control": publicCache(3600) };
+  return { 'Cache-Control': publicCache(3600) };
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
@@ -52,10 +52,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <TotalsStrip
         label="Обзор на данните"
         totals={[
-          { num: count(totals.contracts), label: "Договора и обособени позиции" },
-          { num: money(totals.valueEur), label: "Обща стойност на договорите" },
-          { num: count(totals.authorities), label: "Институции възложители" },
-          { num: count(totals.bidders), label: "Компании изпълнители" },
+          { num: count(totals.contracts), label: 'Договора и обособени позиции' },
+          { num: money(totals.valueEur), label: 'Обща стойност на договорите' },
+          { num: count(totals.authorities), label: 'Институции възложители' },
+          { num: count(totals.bidders), label: 'Компании изпълнители' },
         ]}
       />
 
@@ -100,7 +100,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </h2>
         <p className="section-hint">
           Компании, наредени по обща стойност на спечелените договори, 2020–2026. Обединенията
-          (ДЗЗД/консорциуми) се броят като един изпълнител. <Link to="/companies">Виж пълния списък →</Link>
+          (ДЗЗД/консорциуми) се броят като един изпълнител.{' '}
+          <Link to="/companies">Виж пълния списък →</Link>
         </p>
         <div className="table-wrap">
           <table>
@@ -108,9 +109,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <tr>
                 <th scope="col">#</th>
                 <th scope="col">Компания</th>
-                <th scope="col" className="num">Спечелени</th>
-                <th scope="col" className="num">Договори</th>
-                <th scope="col" className="num">Институции</th>
+                <th scope="col" className="num">
+                  Спечелени
+                </th>
+                <th scope="col" className="num">
+                  Договори
+                </th>
+                <th scope="col" className="num">
+                  Институции
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -121,12 +128,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     <Link to={`/companies/${c.slug}`}>{c.displayName}</Link>
                     <br />
                     <span className="small muted">
-                      {c.kind === "consortium" ? (
+                      {c.kind === 'consortium' ? (
                         <span className="flag soft">обединение</span>
                       ) : (
                         <>
-                          {c.eik ? `ЕИК ${c.eik}` : "непотвърден ЕИК"}
-                          {c.sector ? ` · ${c.sector.short}` : ""}
+                          {c.eik ? `ЕИК ${c.eik}` : 'непотвърден ЕИК'}
+                          {c.sector ? ` · ${c.sector.short}` : ''}
                         </>
                       )}
                     </span>
@@ -158,8 +165,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <h3 style={{ marginBottom: 8 }}>Атомен запис: договорът</h3>
             <p>
               Всеки агрегат на тази платформа — сума за институция, сума за компания, поток между
-              двете — се разлага до конкретните възложени договори. „Брой оферти" се показва само като
-              броя; самите оферти не са в публичните данни. <Link to="/methodology">Виж методологията →</Link>
+              двете — се разлага до конкретните възложени договори. „Брой оферти" се показва само
+              като броя; самите оферти не са в публичните данни.{' '}
+              <Link to="/methodology">Виж методологията →</Link>
             </p>
           </div>
         </div>

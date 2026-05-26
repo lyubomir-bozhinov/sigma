@@ -378,7 +378,12 @@ export interface FlowsData {
   pairs: FlowPair[];
   sankey: SankeyLayout;
   sectors: SectorRef[]; // options for the sector select
-  scope: { sector: string | null; year: number | null; funding: 'all' | 'eu' | 'national'; top: number };
+  scope: {
+    sector: string | null;
+    year: number | null;
+    funding: 'all' | 'eu' | 'national';
+    top: number;
+  };
 }
 
 // ── Search ──────────────────────────────────────────────────────────────────────────────────────

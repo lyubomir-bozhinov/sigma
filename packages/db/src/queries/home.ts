@@ -38,7 +38,15 @@ export async function getHomeData(db: D1Database): Promise<HomeData> {
         asOf: totalsRow.as_of,
         refreshedAt: totalsRow.refreshed_at,
       }
-    : { contracts: 0, valueEur: 0, authorities: 0, bidders: 0, suspect: 0, asOf: null, refreshedAt: '' };
+    : {
+        contracts: 0,
+        valueEur: 0,
+        authorities: 0,
+        bidders: 0,
+        suspect: 0,
+        asOf: null,
+        refreshedAt: '',
+      };
 
   const placeholders = STATE_TYPES.map(() => '?').join(', ');
   const [companies, ministries, municipalities] = await Promise.all([

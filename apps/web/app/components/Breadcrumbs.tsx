@@ -1,5 +1,5 @@
-import { Fragment } from "react";
-import { Link } from "react-router";
+import { Fragment } from 'react';
+import { Link } from 'react-router';
 
 export interface Crumb {
   label: string;

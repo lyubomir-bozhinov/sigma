@@ -6,7 +6,11 @@ export const PAGE_SIZE = { contracts: 15, companies: 25, authorities: 25 } as co
 
 /** Parse a repeated/CSV multi-value param (`?year=2025&year=2024` or `?year=2025,2024`) to a string[]. */
 export function getMulti(params: URLSearchParams, key: string): string[] {
-  const all = params.getAll(key).flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean);
+  const all = params
+    .getAll(key)
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim())
+    .filter(Boolean);
   return Array.from(new Set(all));
 }
 
@@ -18,7 +22,7 @@ export function withParams(
   const next = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
     next.delete(key);
-    if (value == null || value === "") continue;
+    if (value == null || value === '') continue;
     if (Array.isArray(value)) {
       for (const v of value) if (v) next.append(key, v);
     } else {
@@ -26,7 +30,7 @@ export function withParams(
     }
   }
   const s = next.toString();
-  return s ? `?${s}` : "";
+  return s ? `?${s}` : '';
 }
 
 /** A href with the `sort` swapped (and cursor/page reset — a new sort starts at page 1). */
@@ -50,7 +54,7 @@ export function pageNav(opts: {
   prevCursor: string | null;
 }): PageNav {
   const { base, total, pageSize, nextCursor, prevCursor } = opts;
-  const page = Math.max(1, Number(base.get("page") ?? "1") || 1);
+  const page = Math.max(1, Number(base.get('page') ?? '1') || 1);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   return {
     page,

@@ -1,9 +1,9 @@
-import type { AppLoadContext, EntryContext } from "react-router";
-import { ServerRouter } from "react-router";
-import { isbot } from "isbot";
-import { renderToReadableStream } from "react-dom/server";
-import { NonceContext } from "./nonce";
-import { securityHeaders } from "./lib/security";
+import type { AppLoadContext, EntryContext } from 'react-router';
+import { ServerRouter } from 'react-router';
+import { isbot } from 'isbot';
+import { renderToReadableStream } from 'react-dom/server';
+import { NonceContext } from './nonce';
+import { securityHeaders } from './lib/security';
 
 export default async function handleRequest(
   request: Request,
@@ -14,10 +14,10 @@ export default async function handleRequest(
 ) {
   // Per-request nonce so a strict CSP can allow framework hydration scripts
   // without 'unsafe-inline'. Threaded to <Scripts>/<ScrollRestoration> via context.
-  const nonce = crypto.randomUUID().replace(/-/g, "");
+  const nonce = crypto.randomUUID().replace(/-/g, '');
 
   let shellRendered = false;
-  const userAgent = request.headers.get("user-agent");
+  const userAgent = request.headers.get('user-agent');
 
   const body = await renderToReadableStream(
     <NonceContext.Provider value={nonce}>
@@ -44,7 +44,7 @@ export default async function handleRequest(
     await body.allReady;
   }
 
-  responseHeaders.set("Content-Type", "text/html");
+  responseHeaders.set('Content-Type', 'text/html');
   // CSP enforced in production only; dev relies on Vite's inline scripts / HMR.
   for (const [key, value] of securityHeaders(nonce, import.meta.env.PROD)) {
     responseHeaders.set(key, value);

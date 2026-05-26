@@ -112,6 +112,24 @@ FROM contracts c JOIN tenders t ON t.id = c.tender_id
 WHERE c.amount_eur IS NOT NULL AND COALESCE(t.cpv_code,'') <> ''
 GROUP BY substr(t.cpv_code, 1, 2);
 
+-- ── 4b) facet_counts (year / procedure_type / EU) ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS facet_counts (
+  facet TEXT NOT NULL, key TEXT NOT NULL, contracts INTEGER NOT NULL, value_eur REAL NOT NULL,
+  PRIMARY KEY (facet, key)
+);
+DELETE FROM facet_counts;
+INSERT INTO facet_counts (facet, key, contracts, value_eur)
+SELECT 'year', substr(c.signed_at, 1, 4), COUNT(*), COALESCE(SUM(c.amount_eur), 0)
+FROM contracts c WHERE c.signed_at >= '2020-01-01' AND c.signed_at < '2027-01-01'
+GROUP BY substr(c.signed_at, 1, 4);
+INSERT INTO facet_counts (facet, key, contracts, value_eur)
+SELECT 'procedure', t.procedure_type, COUNT(*), COALESCE(SUM(c.amount_eur), 0)
+FROM contracts c JOIN tenders t ON t.id = c.tender_id
+GROUP BY t.procedure_type;
+INSERT INTO facet_counts (facet, key, contracts, value_eur)
+SELECT 'eu', CASE WHEN c.eu_funded = 1 THEN '1' ELSE '0' END, COUNT(*), COALESCE(SUM(c.amount_eur), 0)
+FROM contracts c GROUP BY CASE WHEN c.eu_funded = 1 THEN '1' ELSE '0' END;
+
 -- ── 5) flow_pairs (per authority → bidder) ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS flow_pairs (
   authority_id TEXT NOT NULL REFERENCES authorities(id), bidder_id TEXT NOT NULL REFERENCES bidders(id),

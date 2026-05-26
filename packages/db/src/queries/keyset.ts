@@ -27,9 +27,19 @@ export function decodeCursor(cursor: string | null | undefined): DecodedCursor |
   const dir = cursor.slice(0, i);
   if (dir !== 'after' && dir !== 'before') return null;
   try {
-    const json = decodeURIComponent(escape(atob(cursor.slice(i + 1).replace(/-/g, '+').replace(/_/g, '/'))));
+    const json = decodeURIComponent(
+      escape(
+        atob(
+          cursor
+            .slice(i + 1)
+            .replace(/-/g, '+')
+            .replace(/_/g, '/'),
+        ),
+      ),
+    );
     const [value, id] = JSON.parse(json) as [string | number, string];
-    if ((typeof value !== 'string' && typeof value !== 'number') || typeof id !== 'string') return null;
+    if ((typeof value !== 'string' && typeof value !== 'number') || typeof id !== 'string')
+      return null;
     return { dir, value, id };
   } catch {
     return null;

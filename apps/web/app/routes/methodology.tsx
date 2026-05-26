@@ -1,9 +1,9 @@
-import type { Route } from "./+types/methodology";
+import type { Route } from './+types/methodology';
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Методология — Sigma" },
-    { name: "description", content: "Как се изчислява рисковият скор (0–100)." },
+    { title: 'Методология — Sigma' },
+    { name: 'description', content: 'Как се изчислява рисковият скор (0–100).' },
   ];
 }
 

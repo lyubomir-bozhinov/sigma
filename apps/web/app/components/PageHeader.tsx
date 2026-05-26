@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
 // Editorial page header: mono accent kicker + serif h1 (may carry an <em> accent) + lede.
 export function PageHeader({

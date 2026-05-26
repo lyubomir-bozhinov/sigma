@@ -1,2 +1,339 @@
-// contracts queries — implemented in its phase (list/detail/flows/search).
-export {};
+// Contracts — the atomic record. The list reads the base `contracts` table (filtered/sorted, keyset
+// page of 15); facet counts come from the precomputed facet_counts/sector_totals; CSV is streamed.
+
+import type { ContractListItem, FacetCount, Page } from '@sigma/api-contract';
+import { CPV_SECTORS, PROCEDURE_GROUPS, procedureGroup } from '@sigma/config';
+import { entityName } from '@sigma/shared';
+import { authoritySlug, bidderIdFromSlug, companySlug, contractSlug } from './identity';
+import { keyset, pageCursors } from './keyset';
+
+export type ContractSort = 'value-desc' | 'value-asc' | 'date-desc' | 'date-asc';
+
+export interface ContractListParams {
+  sort?: ContractSort;
+  years?: string[];
+  sectors?: string[];
+  procedureGroups?: string[];
+  valueBucket?: string | null;
+  eu?: 'eu' | 'national' | null;
+  authority?: string | null; // authority ЕИК (slug)
+  bidder?: string | null; // bidder slug
+  cursor?: string | null;
+  pageSize?: number;
+}
+
+const SORTS: Record<ContractSort, { expr: string; dir: 'asc' | 'desc' }> = {
+  'value-desc': { expr: 'COALESCE(c.amount_eur, -1)', dir: 'desc' },
+  'value-asc': { expr: 'COALESCE(c.amount_eur, 1e18)', dir: 'asc' },
+  'date-desc': { expr: "COALESCE(c.signed_at, '')", dir: 'desc' },
+  'date-asc': { expr: "COALESCE(c.signed_at, '9999-99')", dir: 'asc' },
+};
+
+const VALUE_BUCKETS: Record<string, [number, number | null]> = {
+  lt100k: [0, 100_000],
+  '100k-1m': [100_000, 1_000_000],
+  '1m-10m': [1_000_000, 10_000_000],
+  '10m-100m': [10_000_000, 100_000_000],
+  gt100m: [100_000_000, null],
+};
+
+const qs = (n: number) => Array.from({ length: n }, () => '?').join(', ');
+
+interface ContractRow {
+  id: string;
+  subject: string;
+  unp: string;
+  cpv_code: string | null;
+  eu_funded: number | null;
+  authority_id: string;
+  authority_name: string;
+  bidder_id: string;
+  bidder_name: string;
+  bidder_kind: 'company' | 'consortium';
+  procedure_type: string;
+  signed_at: string | null;
+  bids_received: number | null;
+  amount_eur: number | null;
+}
+
+const SELECT = `
+  SELECT c.id, COALESCE(NULLIF(c.contract_subject, ''), t.title) AS subject, t.source_id AS unp,
+         t.cpv_code, c.eu_funded, t.authority_id, a.name AS authority_name,
+         c.bidder_id, b.name AS bidder_name, b.kind AS bidder_kind,
+         t.procedure_type, c.signed_at, c.bids_received, c.amount_eur`;
+const FROM = `
+  FROM contracts c
+  JOIN tenders t ON t.id = c.tender_id
+  JOIN authorities a ON a.id = t.authority_id
+  JOIN bidders b ON b.id = c.bidder_id`;
+
+/** Build the WHERE fragment (with a leading ' WHERE ') + params shared by list, summary and CSV. */
+function buildFilters(p: ContractListParams): { sql: string; params: unknown[] } {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (p.years?.length) {
+    where.push(`substr(c.signed_at, 1, 4) IN (${qs(p.years.length)})`);
+    params.push(...p.years);
+  }
+  if (p.sectors?.length) {
+    where.push(`substr(t.cpv_code, 1, 2) IN (${qs(p.sectors.length)})`);
+    params.push(...p.sectors);
+  }
+  if (p.procedureGroups?.length) {
+    const types = p.procedureGroups.flatMap(
+      (k) => PROCEDURE_GROUPS.find((g) => g.key === k)?.types ?? [],
+    );
+    if (types.length) {
+      where.push(`t.procedure_type IN (${qs(types.length)})`);
+      params.push(...types);
+    }
+  }
+  const bucket = p.valueBucket ? VALUE_BUCKETS[p.valueBucket] : undefined;
+  if (bucket) {
+    const [lo, hi] = bucket;
+    where.push(hi == null ? `c.amount_eur >= ?` : `(c.amount_eur >= ? AND c.amount_eur < ?)`);
+    params.push(lo);
+    if (hi != null) params.push(hi);
+  }
+  if (p.eu === 'eu') where.push(`c.eu_funded = 1`);
+  else if (p.eu === 'national') where.push(`(c.eu_funded IS NULL OR c.eu_funded = 0)`);
+  if (p.authority) {
+    where.push(`t.authority_id = ?`);
+    params.push('auth:' + p.authority);
+  }
+  if (p.bidder) {
+    const id = bidderIdFromSlug(p.bidder);
+    if (id) {
+      where.push(`c.bidder_id = ?`);
+      params.push(id);
+    }
+  }
+  return { sql: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
+}
+
+function toItem(r: ContractRow): ContractListItem {
+  return {
+    id: contractSlug(r.id),
+    subject: r.subject,
+    unp: r.unp,
+    sectorCode: r.cpv_code ? r.cpv_code.slice(0, 2) : null,
+    euFunded: r.eu_funded === 1,
+    isConsortium: r.bidder_kind === 'consortium',
+    authoritySlug: authoritySlug(r.authority_id),
+    authorityName: r.authority_name,
+    bidderSlug: companySlug(r.bidder_id),
+    bidderName: r.bidder_name,
+    bidderDisplayName: entityName(r.bidder_name, r.bidder_kind),
+    bidderKind: r.bidder_kind,
+    procedureLabel: procedureGroup(r.procedure_type).label,
+    signedAt: r.signed_at,
+    bidsReceived: r.bids_received,
+    valueEur: r.amount_eur,
+  };
+}
+
+export interface ContractListResult extends Page<ContractListItem> {
+  valueEur: number;
+  suspect: number;
+}
+
+export async function listContracts(
+  db: D1Database,
+  p: ContractListParams,
+): Promise<ContractListResult> {
+  const sort = SORTS[p.sort ?? 'value-desc'];
+  const pageSize = p.pageSize ?? 15;
+  const filters = buildFilters(p);
+  const ks = keyset({ sortCol: sort.expr, idCol: 'c.id', dir: sort.dir, cursor: p.cursor });
+
+  const conds = [filters.sql ? filters.sql.slice(7) : '', ks.whereSql]
+    .filter(Boolean)
+    .join(' AND ');
+  const sql = `${SELECT}, ${sort.expr} AS sort_value ${FROM}${conds ? ' WHERE ' + conds : ''} ${ks.orderSql} LIMIT ?`;
+  const { results } = await db
+    .prepare(sql)
+    .bind(...filters.params, ...ks.params, pageSize + 1)
+    .all<ContractRow & { sort_value: string | number }>();
+
+  const hasMore = results.length > pageSize;
+  let rows = results.slice(0, pageSize);
+  if (ks.reverse) rows = rows.reverse();
+
+  const summary = await contractsSummary(db, p);
+  const cursors = pageCursors({
+    rows: rows.map((r) => ({ sortValue: r.sort_value, id: r.id })),
+    hasMore,
+    incomingCursor: p.cursor,
+  });
+
+  return {
+    items: rows.map(toItem),
+    total: summary.total,
+    valueEur: summary.valueEur,
+    suspect: summary.suspect,
+    nextCursor: cursors.nextCursor,
+    prevCursor: cursors.prevCursor,
+  };
+}
+
+/** Total rows, clean-EUR sum and suspect tally for the current filter (the list headline). */
+export async function contractsSummary(
+  db: D1Database,
+  p: ContractListParams,
+): Promise<{ total: number; valueEur: number; suspect: number }> {
+  const filters = buildFilters(p);
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS total, COALESCE(SUM(c.amount_eur), 0) AS eur,
+              SUM(CASE WHEN c.amount_eur IS NULL THEN 1 ELSE 0 END) AS suspect ${FROM}${filters.sql}`,
+    )
+    .bind(...filters.params)
+    .first<{ total: number; eur: number; suspect: number }>();
+  return { total: row?.total ?? 0, valueEur: row?.eur ?? 0, suspect: row?.suspect ?? 0 };
+}
+
+export interface ContractFacets {
+  years: FacetCount[];
+  procedures: FacetCount[]; // folded into the 7 @sigma/config groups
+  sectors: FacetCount[]; // present sectors, by contract count
+  eu: { all: number; eu: number; national: number };
+}
+
+/** Rail facets for the contracts list — all from precomputed counts (no per-request scans). */
+export async function getContractFacets(db: D1Database): Promise<ContractFacets> {
+  const facetRows = await db
+    .prepare(`SELECT facet, key, contracts FROM facet_counts`)
+    .all<{ facet: string; key: string; contracts: number }>();
+  const sectorRows = await db
+    .prepare(`SELECT division, contracts FROM sector_totals`)
+    .all<{ division: string; contracts: number }>();
+  const rows = facetRows.results;
+
+  const years = rows
+    .filter((r) => r.facet === 'year')
+    .sort((a, b) => b.key.localeCompare(a.key))
+    .map((r) => ({ value: r.key, label: r.key, count: r.contracts }));
+
+  const procByGroup = new Map<string, number>();
+  for (const r of rows.filter((r) => r.facet === 'procedure')) {
+    const g = procedureGroup(r.key).key;
+    procByGroup.set(g, (procByGroup.get(g) ?? 0) + r.contracts);
+  }
+  const procedures = PROCEDURE_GROUPS.map((g) => ({
+    value: g.key,
+    label: g.label,
+    count: procByGroup.get(g.key) ?? 0,
+  })).filter((f) => f.count > 0);
+
+  const sectorByCode = new Map(sectorRows.results.map((r) => [r.division, r.contracts]));
+  const sectors = CPV_SECTORS.map((s) => ({
+    value: s.code,
+    label: s.short ?? s.label,
+    count: sectorByCode.get(s.code) ?? 0,
+  }))
+    .filter((f) => f.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  const euRows = rows.filter((r) => r.facet === 'eu');
+  const euYes = euRows.find((r) => r.key === '1')?.contracts ?? 0;
+  const euNo = euRows.find((r) => r.key === '0')?.contracts ?? 0;
+
+  return { years, procedures, sectors, eu: { all: euYes + euNo, eu: euYes, national: euNo } };
+}
+
+// ── CSV export — streamed (never buffered): keyset-walks the filtered set in 1k-row chunks ─────────
+
+const CSV_COLUMNS = [
+  'id',
+  'unp',
+  'subject',
+  'authority',
+  'authority_eik',
+  'contractor',
+  'contractor_eik',
+  'kind',
+  'sector_code',
+  'procedure',
+  'signed_at',
+  'value_eur',
+  'eu_funded',
+  'bids_received',
+] as const;
+
+function csvCell(v: unknown): string {
+  if (v == null) return '';
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+interface CsvRow extends ContractRow {
+  rowid: number;
+  authority_eik: string;
+  contractor_eik: string | null;
+}
+
+/** A streamed text/csv Response honouring the same filters; a 190k-row export never materialises. */
+export function streamContractsCsv(db: D1Database, p: ContractListParams): Response {
+  const filters = buildFilters(p);
+  const CHUNK = 1000;
+  let afterRowid = 0;
+  let done = false;
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(CSV_COLUMNS.join(',') + '\n'));
+    },
+    async pull(controller) {
+      if (done) return;
+      const where = filters.sql ? filters.sql + ' AND c.rowid > ?' : ' WHERE c.rowid > ?';
+      const sql = `${SELECT}, c.rowid AS rowid, a.bulstat AS authority_eik, b.eik_normalized AS contractor_eik
+        ${FROM}${where} ORDER BY c.rowid LIMIT ?`;
+      const { results } = await db
+        .prepare(sql)
+        .bind(...filters.params, afterRowid, CHUNK)
+        .all<CsvRow>();
+      if (results.length === 0) {
+        done = true;
+        controller.close();
+        return;
+      }
+      let block = '';
+      for (const r of results) {
+        block +=
+          [
+            contractSlug(r.id),
+            r.unp,
+            r.subject,
+            r.authority_name,
+            r.authority_eik,
+            entityName(r.bidder_name, r.bidder_kind),
+            r.contractor_eik,
+            r.bidder_kind,
+            r.cpv_code ? r.cpv_code.slice(0, 2) : '',
+            procedureGroup(r.procedure_type).label,
+            r.signed_at,
+            r.amount_eur,
+            r.eu_funded === 1 ? '1' : '0',
+            r.bids_received,
+          ]
+            .map(csvCell)
+            .join(',') + '\n';
+        afterRowid = r.rowid;
+      }
+      controller.enqueue(encoder.encode(block));
+      if (results.length < CHUNK) {
+        done = true;
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="sigma-contracts.csv"',
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
+}

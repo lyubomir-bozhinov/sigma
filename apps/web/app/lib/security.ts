@@ -4,19 +4,16 @@
 // the SSR handler; set their headers via static-asset config if needed.
 export function securityHeaders(nonce: string, isProd: boolean): Headers {
   const headers = new Headers({
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "X-Frame-Options": "DENY",
-    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Frame-Options': 'DENY',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
   });
 
   if (isProd) {
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
     headers.set(
-      "Strict-Transport-Security",
-      "max-age=31536000; includeSubDomains; preload",
-    );
-    headers.set(
-      "Content-Security-Policy",
+      'Content-Security-Policy',
       [
         "default-src 'self'",
         `script-src 'self' 'nonce-${nonce}'`,
@@ -28,7 +25,7 @@ export function securityHeaders(nonce: string, isProd: boolean): Headers {
         "form-action 'self'",
         "frame-ancestors 'none'",
         "object-src 'none'",
-      ].join("; "),
+      ].join('; '),
     );
   }
 

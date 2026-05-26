@@ -1,16 +1,16 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { NavLink } from "react-router";
+import { useEffect, useId, useRef, useState } from 'react';
+import { NavLink } from 'react-router';
 
 const NAV = [
-  { to: "/", label: "Начало", end: true },
-  { to: "/authorities", label: "Институции" },
-  { to: "/companies", label: "Компании" },
-  { to: "/contracts", label: "Договори" },
-  { to: "/flows", label: "Потоци" },
-  { to: "/methodology", label: "Методология" },
+  { to: '/', label: 'Начало', end: true },
+  { to: '/authorities', label: 'Институции' },
+  { to: '/companies', label: 'Компании' },
+  { to: '/contracts', label: 'Договори' },
+  { to: '/flows', label: 'Потоци' },
+  { to: '/methodology', label: 'Методология' },
 ];
 
-const PLACEHOLDER = "Институция, компания, ЕИК или № на договор…";
+const PLACEHOLDER = 'Институция, компания, ЕИК или № на договор…';
 
 // Masthead: serif brand + mono nav + a search drawer that slides below. Ports mocks/v1/assets/site.js
 // (open/close, Esc, click-outside, mobile nav collapse) into React state — no external script, so the
@@ -34,15 +34,15 @@ export function SiteHeader() {
   useEffect(() => {
     if (!searchOpen && !navOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== 'Escape') return;
       if (searchOpen) {
         setSearchOpen(false);
         searchToggleRef.current?.focus();
       }
       setNavOpen(false);
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [searchOpen, navOpen]);
 
   // Click outside the search drawer closes it.
@@ -53,16 +53,16 @@ export function SiteHeader() {
       if (drawerRef.current?.contains(t) || searchToggleRef.current?.contains(t)) return;
       setSearchOpen(false);
     };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
   }, [searchOpen]);
 
   // Returning to the desktop layout clears an open mobile nav.
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 961px)");
+    const mq = window.matchMedia('(min-width: 961px)');
     const onChange = (e: MediaQueryListEvent) => e.matches && setNavOpen(false);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
   }, []);
 
   return (
@@ -73,7 +73,11 @@ export function SiteHeader() {
             <span className="brand-mark">Сигма</span>
             <span className="brand-sub">Платформа за прозрачни възлагания</span>
           </NavLink>
-          <nav className={`site-nav${navOpen ? " is-open" : ""}`} id={navId} aria-label="Главна навигация">
+          <nav
+            className={`site-nav${navOpen ? ' is-open' : ''}`}
+            id={navId}
+            aria-label="Главна навигация"
+          >
             {NAV.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setNavOpen(false)}>
                 {item.label}
@@ -91,8 +95,23 @@ export function SiteHeader() {
               onClick={() => setSearchOpen((v) => !v)}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.75" />
-                <line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                <circle
+                  cx="10.5"
+                  cy="10.5"
+                  r="6.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                />
+                <line
+                  x1="15.4"
+                  y1="15.4"
+                  x2="20"
+                  y2="20"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
             <button
@@ -115,7 +134,7 @@ export function SiteHeader() {
 
       <div
         ref={drawerRef}
-        className={`search-drawer${searchOpen ? " is-open" : ""}`}
+        className={`search-drawer${searchOpen ? ' is-open' : ''}`}
         id={drawerId}
         inert={!searchOpen}
       >

@@ -5,13 +5,13 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-} from "react-router";
+} from 'react-router';
 
-import type { Route } from "./+types/root";
-import { useNonce } from "./nonce";
-import { SiteHeader } from "./components/SiteHeader";
-import { SiteFooter } from "./components/SiteFooter";
-import "./app.css";
+import type { Route } from './+types/root';
+import { useNonce } from './nonce';
+import { SiteHeader } from './components/SiteHeader';
+import { SiteFooter } from './components/SiteFooter';
+import './app.css';
 
 // The editorial design uses a system serif/mono/sans stack (see app.css @theme) — no webfont request.
 export const links: Route.LinksFunction = () => [];
@@ -19,7 +19,7 @@ export const links: Route.LinksFunction = () => [];
 // One cheap read for the chrome: the data current-as-of date shown in the footer on every page.
 export async function loader({ context }: Route.LoaderArgs) {
   const row = await context.cloudflare.env.DB.prepare(
-    "SELECT as_of FROM home_totals WHERE id = 1",
+    'SELECT as_of FROM home_totals WHERE id = 1',
   ).first<{ as_of: string | null }>();
   return { asOf: row?.as_of ?? null };
 }
@@ -57,16 +57,14 @@ export default function App({ loaderData }: Route.ComponentProps) {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = "Oops!";
-  let details = "An unexpected error occurred.";
+  let message = 'Oops!';
+  let details = 'An unexpected error occurred.';
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error";
+    message = error.status === 404 ? '404' : 'Error';
     details =
-      error.status === 404
-        ? "The requested page could not be found."
-        : error.statusText || details;
+      error.status === 404 ? 'The requested page could not be found.' : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;

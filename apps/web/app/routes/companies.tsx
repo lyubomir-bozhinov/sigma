@@ -1,0 +1,197 @@
+import { Link, useSearchParams } from 'react-router';
+import { count, money } from '@sigma/shared';
+import { getCompanyFacets, listCompanies, type CompanySort } from '@sigma/db';
+import type { CompanyListItem, EntityKind } from '@sigma/api-contract';
+import type { Route } from './+types/companies';
+import { Breadcrumbs } from '../components/Breadcrumbs';
+import { PageHeader } from '../components/PageHeader';
+import { FilterRail, type FilterGroup } from '../components/FilterRail';
+import { ListControls } from '../components/ListControls';
+import { Pagination } from '../components/Pagination';
+import { DataTable, type Column } from '../components/DataTable';
+import { Callout, Chip } from '../components/ui';
+import { getMulti, pageNav, withParams, PAGE_SIZE } from '../lib/filters';
+import { publicCache } from '../lib/cache';
+
+const COUNT_BUCKETS = [
+  { value: '1', label: '1 договор' },
+  { value: '2-5', label: '2–5' },
+  { value: '6-20', label: '6–20' },
+  { value: '21-100', label: '21–100' },
+  { value: '100+', label: '100+' },
+];
+
+export function meta(_: Route.MetaArgs) {
+  return [
+    { title: 'Компании — Сигма' },
+    {
+      name: 'description',
+      content: 'Всяка компания, спечелила поне един договор по обществена поръчка.',
+    },
+  ];
+}
+
+export function headers() {
+  return { 'Cache-Control': publicCache(1800) };
+}
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const sp = new URL(request.url).searchParams;
+  const params = {
+    sort: (sp.get('sort') as CompanySort) || 'won',
+    kinds: getMulti(sp, 'kind') as EntityKind[],
+    countBucket: sp.get('count'),
+    sectors: getMulti(sp, 'sector'),
+    years: getMulti(sp, 'year'),
+    eu: (sp.get('eu') as 'eu' | 'national' | null) || null,
+    cursor: sp.get('cursor'),
+    pageSize: PAGE_SIZE.companies,
+  };
+  const db = context.cloudflare.env.DB;
+  const [page, facets] = await Promise.all([listCompanies(db, params), getCompanyFacets(db)]);
+  return { page, facets };
+}
+
+function subtitle(c: CompanyListItem) {
+  const place = c.settlement ? ` · ${c.settlement}` : '';
+  if (c.kind === 'consortium') {
+    const members = c.name.includes(';') ? c.name.split(';').length : null;
+    return members ? `${members} участника${place}` : `обединение${place}`;
+  }
+  return `${c.eik ? `ЕИК ${c.eik}` : 'непотвърден ЕИК'}${place}`;
+}
+
+export default function Companies({ loaderData }: Route.ComponentProps) {
+  const { page, facets } = loaderData;
+  const [sp] = useSearchParams();
+  const sort = sp.get('sort') ?? 'won';
+  const nav = pageNav({
+    base: sp,
+    total: page.total,
+    pageSize: PAGE_SIZE.companies,
+    nextCursor: page.nextCursor,
+    prevCursor: page.prevCursor,
+  });
+  const startRank = (nav.page - 1) * PAGE_SIZE.companies;
+  const csvHref = `/companies.csv${withParams(sp, { cursor: null, page: null })}`;
+
+  const groups: FilterGroup[] = [
+    {
+      key: 'sector',
+      label: 'Сектор (CPV)',
+      type: 'checkbox',
+      open: true,
+      selected: getMulti(sp, 'sector'),
+      options: facets.sectors.map((s) => ({ value: s.value, label: s.label })),
+    },
+    {
+      key: 'kind',
+      label: 'Тип субект',
+      type: 'checkbox',
+      open: true,
+      selected: getMulti(sp, 'kind'),
+      options: facets.kinds.map((k) => ({ value: k.value, label: k.label, count: k.count })),
+    },
+    {
+      key: 'count',
+      label: 'Брой договори',
+      type: 'radio',
+      selected: sp.get('count') ? [sp.get('count')!] : [],
+      options: COUNT_BUCKETS,
+    },
+    {
+      key: 'year',
+      label: 'Година',
+      type: 'checkbox',
+      selected: getMulti(sp, 'year'),
+      options: ['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map((y) => ({
+        value: y,
+        label: y,
+      })),
+    },
+    {
+      key: 'eu',
+      label: 'ЕС финансиране',
+      type: 'radio',
+      selected: sp.get('eu') ? [sp.get('eu')!] : [],
+      options: [
+        { value: 'eu', label: 'Само договори с ЕС финансиране' },
+        { value: 'national', label: 'Само без ЕС' },
+      ],
+    },
+  ];
+
+  const columns: Column<CompanyListItem>[] = [
+    { key: 'rank', header: '#', isRank: true, cell: (_r, i) => startRank + i + 1 },
+    {
+      key: 'name',
+      header: 'Компания',
+      isTitle: true,
+      cell: (c) => (
+        <>
+          <Link to={`/companies/${c.slug}`}>{c.displayName}</Link>
+          <br />
+          <span className="small muted">{subtitle(c)}</span>
+        </>
+      ),
+    },
+    {
+      key: 'type',
+      header: 'Тип',
+      secondary: true,
+      cell: (c) => <Chip>{c.kind === 'consortium' ? 'обединение' : 'дружество'}</Chip>,
+    },
+    { key: 'won', header: 'Спечелено', align: 'money', cell: (c) => money(c.wonEur) },
+    { key: 'contracts', header: 'Договори', align: 'money', cell: (c) => count(c.contracts) },
+    { key: 'authorities', header: 'Институции', align: 'money', cell: (c) => count(c.authorities) },
+  ];
+
+  return (
+    <>
+      <Breadcrumbs items={[{ label: 'Начало', to: '/' }, { label: 'Компании' }]} />
+      <main id="main">
+        <PageHeader
+          kicker={`${count(page.total)} изпълнители`}
+          title="Компании"
+          lede="Всяка компания, която е спечелила поне един договор по обществена поръчка. По подразбиране списъкът е подреден по обща стойност на спечелените договори."
+        />
+        <div className="split">
+          <FilterRail groups={groups} sort={sort} clearHref="/companies" csvHref={csvHref} />
+          <section>
+            <ListControls
+              base={sp}
+              activeSort={sort}
+              sorts={[
+                { value: 'won', label: 'спечелено' },
+                { value: 'count', label: 'договори' },
+                { value: 'authorities', label: 'институции' },
+                { value: 'name', label: 'име' },
+              ]}
+              count={
+                <>
+                  Показани са <strong>{page.items.length}</strong> от{' '}
+                  <strong>{count(page.total)}</strong> компании
+                </>
+              }
+            />
+            <DataTable
+              columns={columns}
+              rows={page.items}
+              getKey={(c) => c.slug}
+              caption="Компании по спечелено"
+            />
+            <Pagination nav={nav} pageSize={PAGE_SIZE.companies} />
+            <Callout title={'Какво означава „спечелено“?'}>
+              <p style={{ margin: 0 }}>
+                Сумата от стойностите на договорите (в евро), по които компанията е изпълнител.
+                Когато договорът е възложен на обединение (ДЗЗД/консорциум), цялата сума се отчита
+                на обединението като един изпълнител; разбивка по членове ще се добави след
+                свързване с Търговския регистър.
+              </p>
+            </Callout>
+          </section>
+        </div>
+      </main>
+    </>
+  );
+}

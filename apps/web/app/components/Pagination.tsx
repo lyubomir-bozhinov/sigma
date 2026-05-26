@@ -1,0 +1,43 @@
+import { Link } from 'react-router';
+import { count as fmtCount } from '@sigma/shared';
+import type { PageNav } from '../lib/filters';
+
+// Keyset Prev/Next with a current-page marker + total (no deep page-jumps — those would force OFFSET).
+export function Pagination({
+  nav,
+  pageSize,
+  unit,
+}: {
+  nav: PageNav;
+  pageSize: number;
+  unit?: string;
+}) {
+  return (
+    <div className="paging">
+      <div>
+        Страница <strong>{fmtCount(nav.page)}</strong> от <strong>{fmtCount(nav.pageCount)}</strong>{' '}
+        · {pageSize} на страница{unit ? ` (${unit})` : ''}
+      </div>
+      <div className="ctrl">
+        {nav.prevHref ? (
+          <Link to={nav.prevHref} rel="prev">
+            ‹ Предишна
+          </Link>
+        ) : (
+          <a aria-disabled="true" style={{ opacity: 0.4 }}>
+            ‹ Предишна
+          </a>
+        )}
+        {nav.nextHref ? (
+          <Link to={nav.nextHref} rel="next">
+            Следваща ›
+          </Link>
+        ) : (
+          <a aria-disabled="true" style={{ opacity: 0.4 }}>
+            Следваща ›
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}

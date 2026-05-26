@@ -7,8 +7,18 @@ const EM_DASH = '—'; // shown when a figure is genuinely absent (never a fabri
 const MINUS = '−'; // U+2212 minus, not a hyphen — pairs with tabular-nums
 
 const MONTHS_BG = [
-  'януари', 'февруари', 'март', 'април', 'май', 'юни',
-  'юли', 'август', 'септември', 'октомври', 'ноември', 'декември',
+  'януари',
+  'февруари',
+  'март',
+  'април',
+  'май',
+  'юни',
+  'юли',
+  'август',
+  'септември',
+  'октомври',
+  'ноември',
+  'декември',
 ];
 
 /** Format a number to `dp` decimals with a comma decimal sep; optionally drop a trailing „,0". */
@@ -88,7 +98,10 @@ export function longDate(iso: string | null | undefined): string {
 }
 
 /** A period like `юли 2020 — май 2026` from first/last ISO dates. */
-export function periodRange(first: string | null | undefined, last: string | null | undefined): string {
+export function periodRange(
+  first: string | null | undefined,
+  last: string | null | undefined,
+): string {
   if (!first && !last) return EM_DASH;
   if (first && last) return `${monthYear(first)} — ${monthYear(last)}`;
   return monthYear(first ?? last);
