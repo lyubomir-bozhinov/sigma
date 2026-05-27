@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sigma-web",
+  // Deploys to the existing `sigma` worker (sigma.<subdomain>.workers.dev), replacing the static v1
+  // mock with the SSR explorer. The ETL refresh is a separate worker (sigma-etl).
+  "name": "sigma",
   "compatibility_date": "2025-04-04",
   "main": "./workers/app.ts",
   // The explorer reads D1 directly via @sigma/db (no hop through apps/api). Same `sigma` database +
