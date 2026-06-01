@@ -1,11 +1,15 @@
+import { useEffect, useRef } from 'react';
 import {
   isRouteErrorResponse,
   Link,
   Links,
   Meta,
   Outlet,
+  redirect,
   Scripts,
   ScrollRestoration,
+  useLocation,
+  useNavigation,
 } from 'react-router';
 
 import type { Route } from './+types/root';
@@ -19,7 +23,13 @@ import './app.css';
 export const links: Route.LinksFunction = () => [];
 
 // One cheap read for the chrome: the data current-as-of date shown in the footer on every page.
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
+  // Canonicalise away a trailing slash so `/companies/` (which otherwise silently renders the list
+  // and triggers a hydration mismatch) becomes `/companies`. Root loader runs for every route.
+  const url = new URL(request.url);
+  if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
+    throw redirect(url.pathname.replace(/\/+$/, '') + url.search, 301);
+  }
   const row = await context.cloudflare.env.DB.prepare(
     'SELECT as_of FROM home_totals WHERE id = 1',
   ).first<{ as_of: string | null }>();
@@ -45,9 +55,54 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Thin top progress bar so cross-route navigation doesn't feel dead on slow networks.
+// `useNavigation().state` is 'idle' on the server and the first client render, so the
+// initial markup matches SSR — the bar only appears once a client-side transition starts.
+function RouteProgress() {
+  const busy = useNavigation().state !== 'idle';
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        insetInline: 0,
+        top: 0,
+        height: '2px',
+        background: 'var(--accent)',
+        transformOrigin: 'left',
+        transform: busy ? 'scaleX(1)' : 'scaleX(0)',
+        opacity: busy ? 1 : 0,
+        transition: busy
+          ? 'transform 1.2s ease-out, opacity 0.1s ease'
+          : 'transform 0.1s ease, opacity 0.25s ease 0.15s',
+        zIndex: 1000,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 export default function App({ loaderData }: Route.ComponentProps) {
+  // After a client-side navigation, move focus to the main region so keyboard and
+  // screen-reader users aren't stranded on <body> mid-page (and the skip link stays
+  // reachable). Skip the first run so SSR/hydration and the initial load are untouched.
+  const location = useLocation();
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    const el = document.getElementById('main');
+    if (el) {
+      el.setAttribute('tabindex', '-1');
+      el.focus({ preventScroll: true });
+    }
+  }, [location.pathname]);
+
   return (
     <>
+      <RouteProgress />
       <a className="skip" href="#main">
         Към съдържанието
       </a>
@@ -70,6 +125,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   return (
     <>
+      {/* The boundary bypasses route `meta`, so set the document title here (React hoists it). */}
+      <title>{is404 ? 'Страницата не е намерена — Сигма' : 'Грешка — Сигма'}</title>
       <a className="skip" href="#main">
         Към съдържанието
       </a>

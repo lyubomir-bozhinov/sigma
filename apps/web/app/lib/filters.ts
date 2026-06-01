@@ -14,7 +14,32 @@ export function getMulti(params: URLSearchParams, key: string): string[] {
   return Array.from(new Set(all));
 }
 
-/** Build a new query string from a base, overriding/removing the given keys. Drops empty values. */
+// Canonical serialization order so the same logical state always yields the same URL string —
+// good for history/bookmarks/caching. Keys not listed keep their existing relative order, appended
+// after the known ones. Filter facets first, then search/sort, then the paging cursor markers.
+const PARAM_ORDER = [
+  'q',
+  'type',
+  'kind',
+  'sector',
+  'year',
+  'procedure',
+  'funding',
+  'eu',
+  'value',
+  'authority',
+  'bidder',
+  'top',
+  'count',
+  'sort',
+  'cursor',
+  'page',
+];
+
+/**
+ * Build a new query string from a base, overriding/removing the given keys. Drops empty values and
+ * serializes params in a fixed, stable key order regardless of which control changed.
+ */
 export function withParams(
   base: URLSearchParams,
   overrides: Record<string, string | number | string[] | null | undefined>,
@@ -29,7 +54,16 @@ export function withParams(
       next.set(key, String(value));
     }
   }
-  const s = next.toString();
+  const canonical = new URLSearchParams();
+  const order = (key: string) => {
+    const i = PARAM_ORDER.indexOf(key);
+    return i === -1 ? PARAM_ORDER.length : i;
+  };
+  const keys = Array.from(new Set(Array.from(next.keys()))).sort((a, b) => order(a) - order(b));
+  for (const key of keys) {
+    for (const v of next.getAll(key)) if (v !== '') canonical.append(key, v);
+  }
+  const s = canonical.toString();
   return s ? `?${s}` : '';
 }
 
@@ -54,8 +88,12 @@ export function pageNav(opts: {
   prevCursor: string | null;
 }): PageNav {
   const { base, total, pageSize, nextCursor, prevCursor } = opts;
-  const page = Math.max(1, Number(base.get('page') ?? '1') || 1);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  // ?page is a display/rank marker; real data is cursor-driven. Without a cursor the rows are the
+  // first page, so force page 1. Otherwise clamp to the valid range to avoid impossible "N от M".
+  const page = !base.get('cursor')
+    ? 1
+    : Math.min(Math.max(1, Number(base.get('page') ?? '1') || 1), pageCount);
   return {
     page,
     pageCount,
