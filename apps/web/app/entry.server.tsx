@@ -21,7 +21,12 @@ export default async function handleRequest(
 
   const body = await renderToReadableStream(
     <NonceContext.Provider value={nonce}>
-      <ServerRouter context={routerContext} url={request.url} />
+      {/* `nonce` here also propagates to React Router's streaming `<script>` chunks
+          (window.__reactRouterContext.streamController.enqueue …). Without it, the strict
+          per-request CSP drops those scripts, loader data never reaches the client, and
+          hydration silently dies — taking the header search drawer + filter-form auto-submit
+          with it. */}
+      <ServerRouter context={routerContext} url={request.url} nonce={nonce} />
     </NonceContext.Provider>,
     {
       nonce,
