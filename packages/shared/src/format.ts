@@ -1,10 +1,11 @@
 // Sigma — display formatting. ALL hand-rolled: workerd does not fully carry the `bg-BG` locale data
 // that Intl.NumberFormat / Intl.DateTimeFormat need, so we never rely on Intl for Bulgarian output.
-// Conventions: decimal comma, space thousands separator, Bulgarian magnitude words (хил./млн./млрд.),
+// Conventions: decimal comma, non-breaking-space thousands separator, Bulgarian magnitude words (хил./млн./млрд.),
 // EUR only (the corpus is converted to amount_eur upstream; no FX or лв. at display time).
 
 const EM_DASH = '—'; // shown when a figure is genuinely absent (never a fabricated 0)
 const MINUS = '−'; // U+2212 minus, not a hyphen — pairs with tabular-nums
+const NBSP = ' '; // non-breaking space — keeps a figure from wrapping across the thousands/word gap
 
 const MONTHS_BG = [
   'януари',
@@ -39,12 +40,12 @@ export function money(eur: number | null | undefined): string {
   const neg = eur < 0;
   const v = Math.abs(eur);
   let body: string;
-  if (v < 1000) body = `${Math.round(v)} €`;
-  else if (v < 999_500) body = `${Math.round(v / 1e3)} хил. €`;
-  else if (v < 999_500_000) body = `${dec(v / 1e6, 1, true)} млн. €`;
+  if (v < 1000) body = `${Math.round(v)}${NBSP}€`;
+  else if (v < 999_500) body = `${Math.round(v / 1e3)}${NBSP}хил.${NBSP}€`;
+  else if (v < 999_500_000) body = `${dec(v / 1e6, 1, true)}${NBSP}млн.${NBSP}€`;
   else {
     const b = v / 1e9;
-    body = `${b < 10 ? dec(b, 2, false) : dec(b, 1, true)} млрд. €`;
+    body = `${b < 10 ? dec(b, 2, false) : dec(b, 1, true)}${NBSP}млрд.${NBSP}€`;
   }
   return neg ? `${MINUS}${body}` : body;
 }
@@ -55,7 +56,7 @@ export function count(n: number | null | undefined): string {
   const neg = n < 0;
   const s = Math.abs(Math.round(n))
     .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    .replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
   return neg ? `${MINUS}${s}` : s;
 }
 
@@ -128,6 +129,31 @@ export function entityName(name: string, kind: 'company' | 'consortium'): string
     if (first) return `${first} и др.`;
   }
   return name;
+}
+
+/**
+ * Bulgarian count word: returns `one` when n ends in 1 but not 11 (1, 21, 101… → договор), else
+ * `many` (2, 11, 17… → договора). Returns ONLY the word — format the number separately with count().
+ * Use as plural(n, 'договор', 'договора') / plural(n, 'съвпадение', 'съвпадения').
+ */
+export function plural(n: number, one: string, many: string): string {
+  return n % 10 === 1 && n % 100 !== 11 ? one : many;
+}
+
+/**
+ * Normalize a registry display name for the UI. Conservative — a no-op on already-clean names:
+ * unifies curly/guillemet double-quotes to a straight " , collapses the space-before-closing-quote
+ * that hugs a legal-form suffix („СОФАРМА ТРЕЙДИНГ "АД" → „СОФАРМА ТРЕЙДИНГ" АД"), and drops a single
+ * dangling unbalanced quote. Leaves legitimate quoting around a token (ДЕТСКА ГРАДИНА "ЗДРАВЕЦ") alone.
+ */
+export function cleanName(raw: string): string {
+  let s = raw.trim().replace(/[“”„«»]/g, '"');
+  // ' "АД' (space, quote, legal-form suffix) → '" АД': close the quote on the preceding word.
+  // Negative lookahead, not \b — JS \b is ASCII-only and never fires next to Cyrillic letters.
+  s = s.replace(/\s+"(\s*)(ЕАД|ЕООД|ООД|АД)(?![А-Яа-яA-Za-z])/g, '" $2');
+  // A single unbalanced trailing/leading quote left over: drop it.
+  if ((s.match(/"/g)?.length ?? 0) % 2 === 1) s = s.replace(/^"|"$/, '');
+  return s;
 }
 
 /**

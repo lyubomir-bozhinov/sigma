@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cleanName,
   contractValue,
   count,
   date,
@@ -9,36 +10,39 @@ import {
   monthYear,
   pct,
   periodRange,
+  plural,
   signedPct,
 } from './format';
 
+const NBSP = ' '; // count()/money() use a non-breaking space so figures never wrap
+
 describe('money', () => {
   it('tiers EUR with Bulgarian magnitudes and decimal comma', () => {
-    expect(money(640)).toBe('640 €');
-    expect(money(412_000)).toBe('412 хил. €');
-    expect(money(187_000_000)).toBe('187 млн. €');
-    expect(money(123_600_000)).toBe('123,6 млн. €');
-    expect(money(50_840_000_000)).toBe('50,8 млрд. €'); // ≥10 млрд → one decimal
-    expect(money(4_576_000_000)).toBe('4,58 млрд. €'); //  <10 млрд → two decimals
-    expect(money(1_200_000_000)).toBe('1,20 млрд. €'); // keeps the trailing zero under 10
+    expect(money(640)).toBe(`640${NBSP}€`);
+    expect(money(412_000)).toBe(`412${NBSP}хил.${NBSP}€`);
+    expect(money(187_000_000)).toBe(`187${NBSP}млн.${NBSP}€`);
+    expect(money(123_600_000)).toBe(`123,6${NBSP}млн.${NBSP}€`);
+    expect(money(50_840_000_000)).toBe(`50,8${NBSP}млрд.${NBSP}€`); // ≥10 млрд → one decimal
+    expect(money(4_576_000_000)).toBe(`4,58${NBSP}млрд.${NBSP}€`); //  <10 млрд → two decimals
+    expect(money(1_200_000_000)).toBe(`1,20${NBSP}млрд.${NBSP}€`); // keeps the trailing zero under 10
   });
   it('rounds at tier boundaries without overflowing a tier', () => {
-    expect(money(999)).toBe('999 €');
-    expect(money(1000)).toBe('1 хил. €');
+    expect(money(999)).toBe(`999${NBSP}€`);
+    expect(money(1000)).toBe(`1${NBSP}хил.${NBSP}€`);
   });
   it('suppresses absent values rather than printing 0', () => {
     expect(money(null)).toBe('—');
     expect(money(undefined)).toBe('—');
   });
   it('keeps a sign for negative deltas', () => {
-    expect(money(-1500)).toBe('−2 хил. €');
+    expect(money(-1500)).toBe(`−2${NBSP}хил.${NBSP}€`);
   });
 });
 
 describe('count / pct', () => {
-  it('groups thousands with a space', () => {
-    expect(count(190_429)).toBe('190 429');
-    expect(count(17_448)).toBe('17 448');
+  it('groups thousands with a non-breaking space', () => {
+    expect(count(190_429)).toBe(`190${NBSP}429`);
+    expect(count(17_448)).toBe(`17${NBSP}448`);
     expect(count(7)).toBe('7');
   });
   it('formats ratios as percentages, dropping a trailing ,0', () => {
@@ -73,5 +77,34 @@ describe('entityName / contractValue', () => {
   it('returns amount_eur, or null for a suspect/unconvertible row', () => {
     expect(contractValue({ amount_eur: 98_700_000 })).toBe(98_700_000);
     expect(contractValue({ amount_eur: null })).toBeNull();
+  });
+});
+
+describe('plural', () => {
+  it('picks the Bulgarian count word (1, 21 → singular; 11, 2, 17 → plural)', () => {
+    expect(plural(1, 'договор', 'договора')).toBe('договор');
+    expect(plural(21, 'договор', 'договора')).toBe('договор');
+    expect(plural(11, 'договор', 'договора')).toBe('договора'); // 11 is the exception
+    expect(plural(2, 'съвпадение', 'съвпадения')).toBe('съвпадения');
+    expect(plural(17, 'съвпадение', 'съвпадения')).toBe('съвпадения');
+    expect(plural(0, 'съвпадение', 'съвпадения')).toBe('съвпадения');
+  });
+});
+
+describe('cleanName', () => {
+  it('hugs a closing quote to the word before a legal-form suffix', () => {
+    expect(cleanName('"СОФАРМА ТРЕЙДИНГ "АД')).toBe('"СОФАРМА ТРЕЙДИНГ" АД');
+  });
+  it('unifies curly/guillemet double-quotes to straight', () => {
+    expect(cleanName('„СОФАРМА ТРЕЙДИНГ" ЕАД')).toBe('"СОФАРМА ТРЕЙДИНГ" ЕАД');
+    expect(cleanName('«ЛУКОЙЛ»')).toBe('"ЛУКОЙЛ"');
+  });
+  it('is a conservative no-op on already-clean names', () => {
+    expect(cleanName('ДЕТСКА ГРАДИНА "ЗДРАВЕЦ"')).toBe('ДЕТСКА ГРАДИНА "ЗДРАВЕЦ"');
+    expect(cleanName('СОФАРМА ТРЕЙДИНГ АД')).toBe('СОФАРМА ТРЕЙДИНГ АД');
+    expect(cleanName('ФИРМА "АДАМ" ООД')).toBe('ФИРМА "АДАМ" ООД');
+  });
+  it('trims and never throws', () => {
+    expect(cleanName('  тест  ')).toBe('тест');
   });
 });

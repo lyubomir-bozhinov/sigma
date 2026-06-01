@@ -17,7 +17,7 @@ import type {
   SectorSpend,
 } from '@sigma/api-contract';
 import { CPV_SECTORS, PROCEDURE_GROUPS, procedureGroup } from '@sigma/config';
-import { entityName } from '@sigma/shared';
+import { cleanName, entityName } from '@sigma/shared';
 import { listContracts } from './contracts';
 import { authoritySlug, companySlug, contractSlug } from './identity';
 import { typeLabel } from './rows';
@@ -147,7 +147,7 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
 
   const topAuthorities: AuthorityShare[] = topAuth.results.map((a) => ({
     slug: authoritySlug(a.authority_id),
-    name: a.name,
+    name: cleanName(a.name),
     paidEur: a.paid,
     contracts: a.n,
     sharePct: row.won_eur > 0 ? a.paid / row.won_eur : 0,
@@ -162,8 +162,8 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
 
   return {
     slug: companySlug(bidderId),
-    name: row.name,
-    displayName: entityName(row.name, row.kind),
+    name: cleanName(row.name),
+    displayName: entityName(cleanName(row.name), row.kind),
     kind: row.kind,
     eik: row.eik,
     eikValid: row.eik_valid === 1,
@@ -269,8 +269,8 @@ export async function getAuthority(
 
   const topContractors: CompanyShare[] = topComp.results.map((c) => ({
     slug: companySlug(c.bidder_id),
-    name: c.name,
-    displayName: entityName(c.name, c.kind),
+    name: cleanName(c.name),
+    displayName: entityName(cleanName(c.name), c.kind),
     kind: c.kind,
     wonEur: c.won,
     contracts: c.n,
@@ -308,7 +308,7 @@ export async function getAuthority(
 
   return {
     slug: authoritySlug(authorityId),
-    name: row.name,
+    name: cleanName(row.name),
     eik: authoritySlug(authorityId),
     typeGroup: row.type_group,
     typeLabel: typeLabel(row.type_group),
@@ -450,8 +450,8 @@ export async function getContract(
 
   const authority: ContractParty = {
     slug: authoritySlug(r.authority_id),
-    name: r.authority_name,
-    displayName: r.authority_name,
+    name: cleanName(r.authority_name),
+    displayName: cleanName(r.authority_name),
     typeLabel: typeLabel(r.authority_type_group),
     settlement: r.authority_settlement,
     eik: authoritySlug(r.authority_id),
@@ -461,8 +461,8 @@ export async function getContract(
   };
   const bidder: ContractParty = {
     slug: companySlug(r.bidder_id),
-    name: r.bidder_name,
-    displayName: entityName(r.bidder_name, r.bidder_kind),
+    name: cleanName(r.bidder_name),
+    displayName: entityName(cleanName(r.bidder_name), r.bidder_kind),
     kind: r.bidder_kind,
     typeLabel: null,
     settlement: r.bidder_settlement,
@@ -491,7 +491,7 @@ export async function getContract(
         contractId: l.contract_id ? contractSlug(l.contract_id) : null,
         contractorSlug: l.bidder_id ? companySlug(l.bidder_id) : null,
         contractorName: l.bidder_name
-          ? entityName(l.bidder_name, l.bidder_kind ?? 'company')
+          ? entityName(cleanName(l.bidder_name), l.bidder_kind ?? 'company')
           : null,
         estimatedEur: est,
         signingEur: l.signing_value_eur,

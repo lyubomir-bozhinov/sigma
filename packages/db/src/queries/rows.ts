@@ -3,7 +3,7 @@
 
 import type { AuthorityListItem, CompanyListItem, EntityKind } from '@sigma/api-contract';
 import { ENTITY_TYPES } from '@sigma/config';
-import { entityName } from '@sigma/shared';
+import { cleanName, entityName } from '@sigma/shared';
 import { authoritySlug, companySlug } from './identity';
 import { sectorRef } from './sectors';
 
@@ -43,8 +43,8 @@ export interface CompanyTotalsRow {
 export function toCompanyListItem(r: CompanyTotalsRow): CompanyListItem {
   return {
     slug: companySlug(r.bidder_id),
-    name: r.name,
-    displayName: entityName(r.name, r.kind),
+    name: cleanName(r.name),
+    displayName: entityName(cleanName(r.name), r.kind),
     kind: r.kind,
     eik: r.eik,
     eikValid: r.eik_valid === 1,
@@ -75,7 +75,7 @@ export interface AuthorityTotalsRow {
 export function toAuthorityListItem(r: AuthorityTotalsRow): AuthorityListItem {
   return {
     slug: authoritySlug(r.authority_id),
-    name: r.name,
+    name: cleanName(r.name),
     typeGroup: r.type_group,
     typeLabel: typeLabel(r.type_group),
     settlement: r.settlement,
