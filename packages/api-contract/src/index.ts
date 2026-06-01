@@ -333,7 +333,19 @@ export interface ContractDetail {
   cpvDescription: string | null;
   sector: SectorRef | null;
   procedureLabel: string;
+  /** Gross count of submitted offers (per AOP „Брой оферти") — includes rejected ones. The valid
+   *  count is `bidsReceived - bidsRejected` when both are known; the renderer surfaces that as
+   *  „N допуснати" in the sub-line alongside the headline number. */
   bidsReceived: number | null;
+  /** „Брой отстранени оферти" — disqualified offers. Almost always populated when bidsReceived is
+   *  (≈100% of rows), but the value is 0 on most contracts (only ~2 % had any rejection). */
+  bidsRejected: number | null;
+  /** „Брой оферти от МСП" — offers from small/medium enterprises. ≈86 % populated; on ~54 % of
+   *  contracts there was at least one SME bidder. */
+  bidsSme: number | null;
+  /** „Брой оферти извън ЕИП" — offers from outside the European Economic Area. Populated on ≈30 %
+   *  of rows, but the value is 0 on virtually all of them (only 82 contracts had any). */
+  bidsNonEea: number | null;
   euFunded: boolean | null;
   euProgramme: string | null;
   durationDays: number | null;

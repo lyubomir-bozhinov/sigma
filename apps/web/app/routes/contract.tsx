@@ -1,12 +1,38 @@
 import { Link } from 'react-router';
 import { count, longDate, money, plural, signedPct } from '@sigma/shared';
 import { contractIdFromSlug, getContract } from '@sigma/db';
+import type { ContractDetail } from '@sigma/api-contract';
 import type { Route } from './+types/contract';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
 import { FactsList } from '../components/FactsList';
 import { Chip, Flag, Section, SourceLine } from '../components/ui';
 import { publicCache } from '../lib/cache';
+
+/**
+ * Compose the muted sub-line under „Брой оферти". The AOP feed gives us the gross submitted count
+ * (`bidsReceived`) plus three siblings — `bidsRejected`, `bidsSme`, `bidsNonEea`. We honour what
+ * the source published: a non-NULL field is surfaced even when its value is 0 (an explicit „none"
+ * is a real fact about the tender — e.g. „0 от МСП" means the bidder pool was all large firms).
+ * Only NULL — meaning the source never published the field for this contract — is suppressed.
+ *
+ * Examples (real-data shapes):
+ *   - received=25, rejected=24, sme=18, non_eea=NULL → „1 допусната · 24 отстранени · 18 от МСП"
+ *   - received=67, rejected=0,  sme=0,  non_eea=NULL → „67 допуснати · 0 отстранени · 0 от МСП"
+ *   - received=N,  rejected=NULL, sme=NULL, non_eea=NULL → null (caller falls back to the source note)
+ */
+function bidsBreakdown(c: ContractDetail): string | null {
+  if (c.bidsReceived == null) return null;
+  const parts: string[] = [];
+  if (c.bidsRejected != null) {
+    const admitted = Math.max(0, c.bidsReceived - c.bidsRejected);
+    parts.push(`${count(admitted)} ${plural(admitted, 'допусната', 'допуснати')}`);
+    parts.push(`${count(c.bidsRejected)} ${plural(c.bidsRejected, 'отстранена', 'отстранени')}`);
+  }
+  if (c.bidsSme != null) parts.push(`${count(c.bidsSme)} от МСП`);
+  if (c.bidsNonEea != null) parts.push(`${count(c.bidsNonEea)} извън ЕИП`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
 
 export function meta({ data }: Route.MetaArgs) {
   const c = data?.contract;
@@ -215,7 +241,12 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                   ) : (
                     <span className="muted">не е посочен в данните</span>
                   ),
-                sub: 'самите оферти и техните стойности не са в АОП',
+                // Break the gross count down by status/category — surfaces what „Брой оферти" actually
+                // means (it's the gross submitted count, including rejections — see docs/etl-pipeline.md
+                // and the staging columns at packages/db/migrations/0000_init.sql:363-365). Each clause
+                // only appears when the source published a non-zero value, so contracts without any
+                // rejection/SME data fall back to the original „самите оферти…" footnote.
+                sub: bidsBreakdown(c) ?? 'самите оферти и техните стойности не са в АОП',
               },
               {
                 term: 'ЕС финансиране',

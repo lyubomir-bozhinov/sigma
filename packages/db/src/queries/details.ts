@@ -365,6 +365,9 @@ interface ContractDetailRow {
   current_value_eur: number | null;
   value_flag: string;
   bids_received: number | null;
+  bids_rejected: number | null;
+  bids_sme: number | null;
+  bids_non_eea: number | null;
   // tender
   title: string;
   unp: string;
@@ -397,7 +400,8 @@ export async function getContract(
     .prepare(
       `SELECT c.id, c.tender_id, c.contract_subject, c.contract_number, c.document_number, c.lot_id,
               c.signed_at, c.published_at, c.contract_kind, c.eu_funded, c.eu_programme, c.duration_days,
-              c.amount_eur, c.signing_value_eur, c.current_value_eur, c.value_flag, c.bids_received,
+              c.amount_eur, c.signing_value_eur, c.current_value_eur, c.value_flag,
+              c.bids_received, c.bids_rejected, c.bids_sme, c.bids_non_eea,
               t.title, t.source_id AS unp, t.procedure_type, t.cpv_code, t.cpv_description, t.num_lots,
               t.estimated_value, t.currency AS tender_currency, t.start_date, t.end_date,
               t.authority_id, a.name AS authority_name, a.type_group AS authority_type_group,
@@ -537,6 +541,9 @@ export async function getContract(
     sector: sectorRef(r.cpv_code ? r.cpv_code.slice(0, 2) : null),
     procedureLabel: r.procedure_type === 'неизвестна' ? 'Неизвестна' : r.procedure_type,
     bidsReceived: r.bids_received,
+    bidsRejected: r.bids_rejected,
+    bidsSme: r.bids_sme,
+    bidsNonEea: r.bids_non_eea,
     euFunded: r.eu_funded == null ? null : r.eu_funded === 1,
     euProgramme: r.eu_programme,
     durationDays: r.duration_days,
