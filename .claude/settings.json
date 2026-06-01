@@ -28,9 +28,6 @@
   },
   "model": "opus[1m]",
   "alwaysThinkingEnabled": true,
-  "env": {
-    "CLAUDE_CODE_EFFORT_LEVEL": "max"
-  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": ["context7", "playwright"]
 }
