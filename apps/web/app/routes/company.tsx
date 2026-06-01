@@ -118,9 +118,14 @@ export default function Company({ loaderData }: Route.ComponentProps) {
                 {c.participants.map((p, i) => (
                   <li key={`${p.name}-${i}`}>
                     {p.resolvedSlug ? (
+                      // Already linked to a real company profile (post-TR resolution).
                       <Link to={`/companies/${p.resolvedSlug}`}>{p.name}</Link>
                     ) : (
-                      p.name
+                      // No TR resolution yet — surface the name as a search query so the visitor
+                      // can find any contracts/profiles where this same name participates solo or
+                      // in other consortia. The FTS5 tokenizer down-weights legal-form suffixes
+                      // („ООД", „ЕООД") via BM25, so rare tokens still dominate the ranking.
+                      <Link to={`/search?q=${encodeURIComponent(p.name)}`}>{p.name}</Link>
                     )}
                   </li>
                 ))}
