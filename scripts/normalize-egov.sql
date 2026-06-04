@@ -130,9 +130,17 @@ WHERE c.unp IS NOT NULL
 GROUP BY c.unp;
 
 -- 3) Lots — the lot rows of each procurement (lot_id IS NOT NULL), linked to their tender.
+-- Canonical lot id is `lot:UNP:N` with N the integer lot number. The two feeds disagree on the raw
+-- form — the tender feed numbers lots 1..N, the contract feed (OCDS) uses 'LOT-000N' — so BOTH the
+-- lots id here and the contracts.lot_id below normalise it the same way, or the lots↔contract link
+-- (and the „Обособени позиции" table / current-lot highlight) breaks for the OCDS rows.
 INSERT OR IGNORE INTO lots (id, tender_id, title, cpv_code, estimated_value)
 SELECT
-  'lot:' || t.unp || ':' || t.lot_id,
+  'lot:' || t.unp || ':' || CASE
+    WHEN t.lot_id LIKE 'LOT-%' AND REPLACE(t.lot_id, 'LOT-', '') <> '' AND REPLACE(t.lot_id, 'LOT-', '') NOT GLOB '*[^0-9]*' THEN CAST(REPLACE(t.lot_id, 'LOT-', '') AS INTEGER)
+    WHEN t.lot_id <> '' AND t.lot_id NOT GLOB '*[^0-9]*' THEN CAST(t.lot_id AS INTEGER)
+    ELSE t.lot_id
+  END,
   't:' || t.unp,
   COALESCE(t.lot_name, '(без предмет)'),
   t.cpv_code,
@@ -235,7 +243,11 @@ SELECT
   CASE WHEN COALESCE(x.currency, 'BGN') NOT IN ('BGN', 'EUR')
     THEN (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = x.currency AND f.rate_date = x.contract_date)
     ELSE NULL END,
-  CASE WHEN x.lot_id IS NOT NULL AND TRIM(x.lot_id) <> '' THEN 'lot:' || x.unp || ':' || x.lot_id ELSE NULL END,
+  CASE WHEN x.lot_id IS NOT NULL AND TRIM(x.lot_id) <> '' THEN 'lot:' || x.unp || ':' || CASE
+    WHEN x.lot_id LIKE 'LOT-%' AND REPLACE(x.lot_id, 'LOT-', '') <> '' AND REPLACE(x.lot_id, 'LOT-', '') NOT GLOB '*[^0-9]*' THEN CAST(REPLACE(x.lot_id, 'LOT-', '') AS INTEGER)
+    WHEN x.lot_id <> '' AND x.lot_id NOT GLOB '*[^0-9]*' THEN CAST(x.lot_id AS INTEGER)
+    ELSE x.lot_id
+  END ELSE NULL END,
   x.document_number,
   x.published_at,
   x.contract_subject,
