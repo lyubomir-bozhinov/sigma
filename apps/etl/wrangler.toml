@@ -2,6 +2,9 @@ name = "sigma-etl"
 main = "src/index.ts"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# Public route/custom-domain binding and the BG-located proxy for data.egov.bg are tracked in docs/io-letter-sigma.md item 5.
 
 # Bundle the scoped re-derive script (scripts/refresh-slice.sql) as a text module the Workflow runs.
 # fallthrough keeps wrangler's default text rules (.txt/.html) active alongside this one.
