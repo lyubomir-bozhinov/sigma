@@ -76,6 +76,99 @@ describe('releaseToContracts', () => {
     });
   });
 
+  it('coerces malformed, Infinity, and object numeric feed values to null', () => {
+    const rows = releaseToContracts(
+      {
+        ...release,
+        tender: { ...release.tender, value: { amount: Infinity } },
+        bids: { statistics: [{ measure: 'bids', value: { count: 3 } }] },
+        contracts: [
+          {
+            ...release.contracts![0]!,
+            value: { amount: 'not-a-number', currency: 'eur' },
+          },
+        ],
+      },
+      meta,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      signing_value: null,
+      estimated_value: null,
+      bids_received: null,
+      currency: 'EUR',
+    });
+  });
+
+  it('handles releases missing parties and release date using package publishedDate', () => {
+    const rows = releaseToContracts(
+      {
+        ocid: 'ocds-bg-2026-000999',
+        id: 'release-missing-context',
+        tag: ['contract'],
+        tender: { title: 'Минимална поръчка', value: { amount: 1000 } },
+        contracts: [{ id: 'DOC-MIN', value: { amount: 500, currency: 'bgn' } }],
+      },
+      { ...meta, publishedDate: '2026-05-20T13:30:00Z' },
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      published_at: '2026-05-20',
+      authority_eik: null,
+      authority_name: null,
+      contractor_eik: null,
+      contractor_name: null,
+      currency: 'BGN',
+    });
+  });
+
+  it('flattens a multi-contract release into one row per contract', () => {
+    const rows = releaseToContracts(
+      {
+        ...release,
+        parties: [
+          ...release.parties!,
+          {
+            id: 'S2',
+            name: 'Втори доставчик АД',
+            identifier: { id: '300000008' },
+            roles: ['supplier'],
+          },
+        ],
+        awards: [
+          ...release.awards!,
+          {
+            id: 'A2',
+            title: 'Втора позиция',
+            suppliers: [{ id: 'S2', name: 'Втори доставчик АД', identifier: { id: '300000008' } }],
+          },
+        ],
+        contracts: [
+          release.contracts![0]!,
+          {
+            id: 'DOC-2',
+            awardID: 'A2',
+            dateSigned: '2026-05-13',
+            value: { amount: 250_000, currency: 'usd' },
+          },
+        ],
+      },
+      meta,
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.contract_number)).toEqual(['DOC-1', 'DOC-2']);
+    expect(rows[1]).toMatchObject({
+      contract_subject: 'Втора позиция',
+      contractor_eik: '300000008',
+      contractor_name: 'Втори доставчик АД',
+      signing_value: 250_000,
+      currency: 'USD',
+    });
+  });
+
   it('ignores non-contract releases (e.g. amendments)', () => {
     expect(releaseToContracts({ ...release, tag: ['contractAmendment'] }, meta)).toHaveLength(0);
     expect(releaseToContracts({ ...release, tag: ['tender'], contracts: [] }, meta)).toHaveLength(
@@ -95,5 +188,17 @@ describe('splitSqlStatements', () => {
       "SELECT * FROM t WHERE name LIKE '%;%'",
       'DELETE FROM t',
     ]);
+  });
+  it('does NOT strip a line-comment sequence inside a string literal', () => {
+    const sql =
+      "INSERT INTO t VALUES ('keep -- this text'); -- drop this comment\nDELETE FROM t;\n";
+    expect(splitSqlStatements(sql)).toEqual([
+      "INSERT INTO t VALUES ('keep -- this text')",
+      'DELETE FROM t',
+    ]);
+  });
+  it('splits two statements on one line', () => {
+    const sql = 'SELECT 1; SELECT 2;';
+    expect(splitSqlStatements(sql)).toEqual(['SELECT 1', 'SELECT 2']);
   });
 });

@@ -97,7 +97,8 @@ export function pageNav(opts: {
   return {
     page,
     pageCount,
-    prevHref: prevCursor ? withParams(base, { cursor: prevCursor, page: page - 1 }) : null,
+    prevHref:
+      page > 1 && prevCursor ? withParams(base, { cursor: prevCursor, page: page - 1 }) : null,
     nextHref: nextCursor ? withParams(base, { cursor: nextCursor, page: page + 1 }) : null,
   };
 }

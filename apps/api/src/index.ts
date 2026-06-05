@@ -9,13 +9,29 @@ import { CPV_SECTORS, sectorForCpv } from '@sigma/config';
 
 export interface Env {
   DB: D1Database;
-  CACHE: KVNamespace;
+}
+
+function apiSecurityHeaders(): Record<string, string> {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    // HSTS should be added in prod once HTTPS-only deployment is confirmed.
+    // Exact licence/attribution text is a team/legal decision.
+    'X-Data-Source': 'AOP/TR via data.egov.bg',
+  };
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
+  const headers = new Headers(init?.headers);
+  headers.set('content-type', 'application/json; charset=utf-8');
+  for (const [key, value] of Object.entries(apiSecurityHeaders())) {
+    headers.set(key, value);
+  }
+
   return new Response(JSON.stringify(data), {
-    headers: { 'content-type': 'application/json; charset=utf-8' },
     ...init,
+    headers,
   });
 }
 
@@ -24,8 +40,10 @@ function toSummary(t: TenderRow): TenderSummary {
   return {
     id: t.id,
     title: t.title,
-    authorityName: t.authority_id,
-    estimatedValue: t.estimated_value != null ? { amount: t.estimated_value, currency: 'BGN' } : null,
+    // TODO: JOIN authorities for the real display name once the parked API has a tender DTO/query.
+    authorityName: t.authority_id.replace(/^auth:/, ''),
+    estimatedValue:
+      t.estimated_value != null ? { amount: t.estimated_value, currency: 'BGN' } : null,
     status: t.status,
     riskScore: null,
     riskBand: null,
@@ -49,8 +67,9 @@ export default {
       // ?sector= accepts a 2-digit CPV division, a curated short name, or a full division label.
       const sectorParam = url.searchParams.get('sector');
       const division = sectorParam
-        ? (CPV_SECTORS.find((s) => s.code === sectorParam || s.short === sectorParam || s.label === sectorParam)
-            ?.code ?? sectorParam)
+        ? (CPV_SECTORS.find(
+            (s) => s.code === sectorParam || s.short === sectorParam || s.label === sectorParam,
+          )?.code ?? sectorParam)
         : null;
       const rows = await listRecentTenders(env.DB, limit, division);
       const body: SearchTendersResponse = { results: rows.map(toSummary), cursor: null };

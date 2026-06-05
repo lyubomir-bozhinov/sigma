@@ -12,6 +12,13 @@ const KIND_CATEGORY: Record<string, string> = {
 };
 
 const dateOnly = (s: unknown): string | null => (s ? String(s).slice(0, 10) : null);
+const finiteNum = (v: unknown): number | null => (Number.isFinite(Number(v)) ? Number(v) : null);
+const isoCurrency = (v: unknown): string | null => {
+  const code = String(v ?? '')
+    .trim()
+    .toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+};
 
 // Minimal shapes of the OCDS fields we read (the feed carries far more; we keep it loose on purpose).
 export interface OcdsRelease {
@@ -28,7 +35,7 @@ export interface OcdsRelease {
   buyer?: { id?: string; name?: string };
   tender?: {
     title?: string;
-    value?: { amount?: number };
+    value?: { amount?: unknown };
     mainProcurementCategory?: string;
     procurementMethod?: string;
     procurementMethodDetails?: string;
@@ -39,13 +46,13 @@ export interface OcdsRelease {
     title?: string;
     suppliers?: Array<{ id?: string; name?: string; identifier?: { id?: string } }>;
   }>;
-  bids?: { statistics?: Array<{ measure?: string; value?: number }> };
+  bids?: { statistics?: Array<{ measure?: string; value?: unknown }> };
   contracts?: Array<{
     id?: string;
     awardID?: string;
     title?: string;
     dateSigned?: string;
-    value?: { amount?: number; currency?: string };
+    value?: { amount?: unknown; currency?: unknown };
   }>;
 }
 
@@ -60,6 +67,7 @@ export interface OcdsMeta {
   resourceUri: string;
   year: number | null;
   fetchedAt: string;
+  publishedDate?: string;
 }
 
 // The raw_egov_contracts staging row produced from a "contract"-tagged release (needs_enrichment = 0).
@@ -111,7 +119,7 @@ function relContext(rel: OcdsRelease, meta: OcdsMeta) {
       (rel.parties ?? []).find((p) => (p.roles ?? []).includes('buyer'))?.identifier?.id ??
       null,
     authority_name: rel.buyer?.name || buyerParty?.name || null,
-    published_at: dateOnly(rel.date),
+    published_at: dateOnly(rel.date ?? meta.publishedDate),
   };
 }
 
@@ -139,7 +147,7 @@ export function releaseToContracts(rel: OcdsRelease, meta: OcdsMeta): ContractSt
   const cpv =
     (t.items ?? []).map((i) => i.classification).find((c) => c && /cpv/i.test(c.scheme ?? ''))
       ?.id ?? null;
-  const bids = (rel.bids?.statistics ?? []).find((s) => s.measure === 'bids')?.value ?? null;
+  const bids = finiteNum((rel.bids?.statistics ?? []).find((s) => s.measure === 'bids')?.value);
   return (rel.contracts ?? []).map((c) => {
     const sup = supplierOf(rel, ctx, c.awardID);
     return {
@@ -163,11 +171,11 @@ export function releaseToContracts(rel: OcdsRelease, meta: OcdsMeta): ContractSt
       contract_subject: c.title || sup.awardTitle || null,
       contractor_eik: sup.eik,
       contractor_name: sup.name,
-      signing_value: c.value?.amount ?? null,
-      currency: c.value?.currency ?? null,
+      signing_value: finiteNum(c.value?.amount),
+      currency: isoCurrency(c.value?.currency),
       procedure_type,
       cpv_code: cpv,
-      estimated_value: t.value?.amount ?? null,
+      estimated_value: finiteNum(t.value?.amount),
       needs_enrichment: 0,
     };
   });

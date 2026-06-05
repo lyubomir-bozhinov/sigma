@@ -27,6 +27,7 @@ export function SiteHeader() {
   const drawerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
+  const navToggleRef = useRef<HTMLButtonElement>(null);
 
   // Focus the field when the drawer opens.
   useEffect(() => {
@@ -42,7 +43,10 @@ export function SiteHeader() {
         setSearchOpen(false);
         searchToggleRef.current?.focus();
       }
-      setNavOpen(false);
+      if (navOpen) {
+        setNavOpen(false);
+        navToggleRef.current?.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -118,6 +122,7 @@ export function SiteHeader() {
               </svg>
             </button>
             <button
+              ref={navToggleRef}
               className="nav-toggle"
               type="button"
               aria-label="Меню"

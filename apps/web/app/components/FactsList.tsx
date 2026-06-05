@@ -14,8 +14,8 @@ export function FactsList({ rows, label }: { rows: MaybeFact[]; label?: string }
   const facts = rows.filter((r): r is Fact => typeof r === 'object' && r !== null);
   return (
     <dl className="facts" aria-label={label}>
-      {facts.map((f, i) => (
-        <div className="row" key={i}>
+      {facts.map((f) => (
+        <div className="row" key={String(f.term)}>
           <dt>{f.term}</dt>
           <dd>
             {f.value}

@@ -3,7 +3,7 @@ name: Deploy (web + etl → Cloudflare)
 # Production deploys originate here, not from a developer machine (see AGENTS.md / README.md): the
 # scoped Cloudflare credential lives only in repo secrets. Ships the v1 set — the SSR explorer
 # (`sigma`) and the refresh Workflow (`sigma-etl`). The remote D1 must already be provisioned and its
-# real database_id set in the wrangler configs (see docs/deploy.md). No-ops cleanly without secrets.
+# real database_id set in the wrangler configs (see docs/deploy.md). Fails clearly without secrets.
 #
 # Triggered by a version TAG (cut a release), not by every push to main:
 #   git tag v1.0.0 && git push origin v1.0.0      # → deploys
@@ -28,6 +28,11 @@ jobs:
       # Real D1 database_id substituted into wrangler.deploy.* by scripts/wrangler-render.mjs
       # (committed wrangler.* hold a zero-UUID dummy). See docs/deploy.md.
       SIGMA_D1_ID: ${{ secrets.SIGMA_D1_ID }}
+      # Shared secret for the ETL refresh auth gate (apps/etl). Generate it ONCE with a CSPRNG
+      # (`openssl rand -hex 32`), store it as the repo secret ETL_REFRESH_SECRET; the "Provision ETL
+      # refresh secret" step below pushes it to the Worker as an encrypted Cloudflare secret — it is
+      # never baked into the deploy bundle or committed. Rotate by updating the repo secret + re-running.
+      ETL_REFRESH_SECRET: ${{ secrets.ETL_REFRESH_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -42,10 +47,13 @@ jobs:
         run: |
           missing=()
           [ -z "${CLOUDFLARE_API_TOKEN}" ] && missing+=("CLOUDFLARE_API_TOKEN")
+          [ -z "${CLOUDFLARE_ACCOUNT_ID}" ] && missing+=("CLOUDFLARE_ACCOUNT_ID")
           [ -z "${SIGMA_D1_ID}" ]          && missing+=("SIGMA_D1_ID")
+          # Refuse to ship the refresh Worker without its auth secret (it fails closed otherwise).
+          [ -z "${ETL_REFRESH_SECRET}" ]   && missing+=("ETL_REFRESH_SECRET")
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "Missing repo secrets: ${missing[*]} — skipping deploy."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Missing repo secrets: ${missing[*]} — cannot deploy."
+            exit 1
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
@@ -62,3 +70,11 @@ jobs:
       - name: Deploy refresh Workflow (sigma-etl)
         if: steps.guard.outputs.ok == 'true'
         run: pnpm --filter @sigma/etl run deploy
+
+      # Push the auth secret to the Worker as an encrypted Cloudflare secret (stored separately from
+      # the deploy bundle, not in any config). Runs after deploy so the Worker exists; `wrangler secret
+      # put` reads the value from stdin, is idempotent, and the secret persists across future deploys.
+      # The prior deploy step already rendered apps/etl/wrangler.deploy.toml.
+      - name: Provision ETL refresh secret
+        if: steps.guard.outputs.ok == 'true'
+        run: printf '%s' "$ETL_REFRESH_SECRET" | pnpm --filter @sigma/etl exec wrangler secret put ETL_REFRESH_SECRET --config wrangler.deploy.toml

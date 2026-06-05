@@ -20,8 +20,53 @@ export function headers() {
   return { 'Cache-Control': publicCache(300) };
 }
 
+const MAX_QUERY_CHARS = 160;
+const MAX_QUERY_TOKENS = 8;
+const MAX_HIGHLIGHT_TOKENS = 8;
+const HOMOGLYPHS: Record<string, string> = {
+  a: 'а',
+  c: 'с',
+  e: 'е',
+  o: 'о',
+  p: 'р',
+  x: 'х',
+  y: 'у',
+  k: 'к',
+  m: 'м',
+  t: 'т',
+  A: 'А',
+  B: 'В',
+  C: 'С',
+  E: 'Е',
+  H: 'Н',
+  K: 'К',
+  M: 'М',
+  O: 'О',
+  P: 'Р',
+  T: 'Т',
+  X: 'Х',
+};
+const CYRILLIC = /[\p{Script=Cyrillic}]/u;
+
+function deHomoglyph(q: string): string {
+  return q.replace(/[aceopxykmtABCEHKMOPTX]/g, (ch) => HOMOGLYPHS[ch] ?? ch);
+}
+
+function normalizedTerms(q: string, limit: number): string[] {
+  const terms =
+    q
+      .slice(0, MAX_QUERY_CHARS)
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return terms.slice(0, limit).map((t) => (CYRILLIC.test(t) ? deHomoglyph(t) : t));
+}
+
+function cappedQuery(q: string): string {
+  return normalizedTerms(q, MAX_QUERY_TOKENS).join(' ');
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const q = new URL(request.url).searchParams.get('q') ?? '';
+  const q = cappedQuery(new URL(request.url).searchParams.get('q') ?? '');
   const results = await search(context.cloudflare.env.DB, q);
   return { results };
 }
@@ -37,15 +82,16 @@ function escapeRe(s: string) {
 }
 
 // Wrap query-token matches in <mark>, React-safely (no dangerouslySetInnerHTML).
-function highlight(text: string | null, tokens: string[]): ReactNode {
-  if (!text || tokens.length === 0) return text;
-  const re = new RegExp(`(${tokens.map(escapeRe).join('|')})`, 'giu');
+function highlight(text: string | null, re: RegExp | null): ReactNode {
+  if (!text || !re) return text;
   return text.split(re).map((part, i) => (i % 2 === 1 ? <mark key={i}>{part}</mark> : part));
 }
 
 export default function Search({ loaderData }: Route.ComponentProps) {
   const { results } = loaderData;
-  const tokens = (results.query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) as string[];
+  const tokens = normalizedTerms(results.query, MAX_HIGHLIGHT_TOKENS);
+  const highlightRe =
+    tokens.length > 0 ? new RegExp(`(${tokens.map(escapeRe).join('|')})`, 'giu') : null;
   const hasQuery = results.query.trim().length > 0;
 
   // What the search covers — a description, shown as the lede on the empty-query and no-results
@@ -97,16 +143,17 @@ export default function Search({ loaderData }: Route.ComponentProps) {
                 <Link to={h.href} className="result" key={h.slug + h.title}>
                   <span className="kind">{KIND_LABEL[h.kind]}</span>
                   <span>
-                    <p className="name">{highlight(h.title, tokens)}</p>
+                    <p className="name">{highlight(h.title, highlightRe)}</p>
                     <p className="meta">
                       {h.kind === 'contract' ? (
                         <>
                           {h.ident && (
                             <>
-                              УНП <span className="mono">{highlight(h.ident, tokens)}</span> ·{' '}
+                              УНП <span className="mono">{highlight(h.ident, highlightRe)}</span>{' '}
+                              ·{' '}
                             </>
                           )}
-                          {highlight(h.subtitle, tokens)}
+                          {highlight(h.subtitle, highlightRe)}
                         </>
                       ) : (
                         <>
@@ -116,7 +163,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
                             </>
                           )}
                           {h.ident && h.subtitle && ' · '}
-                          {h.subtitle && highlight(h.subtitle, tokens)}
+                          {h.subtitle && highlight(h.subtitle, highlightRe)}
                         </>
                       )}
                     </p>

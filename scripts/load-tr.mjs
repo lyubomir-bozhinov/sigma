@@ -2,8 +2,7 @@
 // Load the Търговски регистър (Trade Register, Агенция по вписванията) open data from data.egov.bg
 // (dataset 2df0c2af-e769-4397-be33-fcbe269806f3) — daily XML deltas, one resource per day, "с
 // включена история и заличени лични данни" (personal IDs hashed). Each <Deed> is a company's current
-// state (by ЕИК) with seat address (+ ЕКАТТЕ), partners/sole owner, managers, and ActualOwners
-// (действителни собственици / beneficial owners, чл. 63 ЗМИП).
+// state (by ЕИК) with seat address (+ ЕКАТТЕ).
 //
 //   node scripts/load-tr.mjs                 # list recent daily resources
 //   node scripts/load-tr.mjs --limit=25      # parse the 25 most-recent days → data/tr-*-load.sql
@@ -12,12 +11,12 @@
 //   flags: --limit=N (default 25; the open feed is daily deltas, so a backfill is a window — the
 //          scheduled apps/etl job accumulates the rest day by day), --apply, --remote, --refresh
 //
-// Wipes are scoped to source 'tr:%'. Personal IDs are NOT stored (only name + country, as published).
+// Wipes are scoped to source 'tr:%'.
 
 import { execFileSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { once } from 'node:events';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -30,17 +29,34 @@ const MAX_BATCH_BYTES = 90_000;
 const MAX_BATCH_ROWS = 500;
 
 const COMPANY_COLS = [
-  'source', 'fetched_at', 'file_date', 'deed_guid', 'uic', 'company_name', 'legal_form', 'deed_status',
-  'subject_of_activity', 'nkid', 'country', 'district', 'district_ekatte', 'municipality',
-  'municipality_ekatte', 'settlement', 'settlement_ekatte', 'post_code', 'street', 'street_number',
+  'source',
+  'fetched_at',
+  'file_date',
+  'deed_guid',
+  'uic',
+  'company_name',
+  'legal_form',
+  'deed_status',
+  'subject_of_activity',
+  'nkid',
+  'country',
+  'district',
+  'district_ekatte',
+  'municipality',
+  'municipality_ekatte',
+  'settlement',
+  'settlement_ekatte',
+  'post_code',
+  'street',
+  'street_number',
 ];
-const OWNER_COLS = [
-  'source', 'fetched_at', 'file_date', 'uic', 'role', 'owner_name', 'owner_indent', 'indent_type',
-  'owner_uic', 'country', 'legal_form', 'position',
-];
-const ACTUAL_COLS = ['source', 'fetched_at', 'file_date', 'uic', 'owner_name', 'indent_type', 'country'];
 
-const sqlLit = (v) => (v === null || v === undefined || v === '' ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
+const sqlLit = (v) =>
+  v === null || v === undefined || v === ''
+    ? 'NULL'
+    : `'${String(v)
+        .replace(/[\x00-\x1F]/g, '')
+        .replace(/'/g, "''")}'`;
 const asArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
 const txt = (v) => {
   if (v === null || v === undefined) return null;
@@ -64,8 +80,18 @@ async function postJSON(method, body) {
   if (!resp.ok) throw new Error(`${method}: HTTP ${resp.status}`);
   return resp.json();
 }
+function cachePath(resourceUri) {
+  const safeUri = String(resourceUri);
+  if (!/^[A-Za-z0-9_.-]+$/.test(safeUri)) throw new Error(`invalid resource_uri: ${resourceUri}`);
+  const file = resolve(cacheDir, `${safeUri}.xml`);
+  const rel = relative(cacheDir, file);
+  if (rel.startsWith('..') || rel === '..' || rel.startsWith(`${sep}`)) {
+    throw new Error(`resource_uri escapes cache dir: ${resourceUri}`);
+  }
+  return file;
+}
 async function downloadXml(resourceUri, refresh) {
-  const cacheFile = resolve(cacheDir, `${resourceUri}.xml`);
+  const cacheFile = cachePath(resourceUri);
   if (!refresh && existsSync(cacheFile)) return readFileSync(cacheFile, 'utf8');
   const resp = await fetch(`https://data.egov.bg/resource/download/${resourceUri}/xml`);
   if (!resp.ok) throw new Error(`download ${resourceUri}: HTTP ${resp.status}`);
@@ -114,44 +140,28 @@ function deedToRows(deed, ctx) {
     if (!nkid && s?.SubjectOfActivityNKID != null) nkid = txt(s.SubjectOfActivityNKID);
   }
   const company = {
-    source: ctx.source, fetched_at: ctx.fetchedAt, file_date: ctx.fileDate, deed_guid: deed['@_GUID'] || null,
-    uic, company_name: deed['@_CompanyName'] || null, legal_form: deed['@_LegalForm'] || null,
-    deed_status: deed['@_DeedStatus'] || null, subject_of_activity: subject, nkid,
+    source: ctx.source,
+    fetched_at: ctx.fetchedAt,
+    file_date: ctx.fileDate,
+    deed_guid: deed['@_GUID'] || null,
+    uic,
+    company_name: deed['@_CompanyName'] || null,
+    legal_form: deed['@_LegalForm'] || null,
+    deed_status: deed['@_DeedStatus'] || null,
+    subject_of_activity: subject,
+    nkid,
     country: addr ? txt(addr.Country) : null,
-    district: addr ? txt(addr.District) : null, district_ekatte: addr ? txt(addr.DistrictEkatte) : null,
-    municipality: addr ? txt(addr.Municipality) : null, municipality_ekatte: addr ? txt(addr.MunicipalityEkatte) : null,
-    settlement: addr ? txt(addr.Settlement) : null, settlement_ekatte: addr ? txt(addr.SettlementEKATTE) : null,
-    post_code: addr ? txt(addr.PostCode) : null, street: addr ? txt(addr.Street) : null,
+    district: addr ? txt(addr.District) : null,
+    district_ekatte: addr ? txt(addr.DistrictEkatte) : null,
+    municipality: addr ? txt(addr.Municipality) : null,
+    municipality_ekatte: addr ? txt(addr.MunicipalityEkatte) : null,
+    settlement: addr ? txt(addr.Settlement) : null,
+    settlement_ekatte: addr ? txt(addr.SettlementEKATTE) : null,
+    post_code: addr ? txt(addr.PostCode) : null,
+    street: addr ? txt(addr.Street) : null,
     street_number: addr ? txt(addr.StreetNumber) : null,
   };
-  const owners = [];
-  const pushOwner = (node, role) => {
-    const subj = node?.Subject || node?.Person;
-    if (!subj) return;
-    const it = subj.IndentType || null;
-    const ind = subj.Indent != null ? String(subj.Indent) : null;
-    owners.push({
-      source: ctx.source, fetched_at: ctx.fetchedAt, file_date: ctx.fileDate, uic, role,
-      owner_name: txt(subj.Name), owner_indent: ind, indent_type: it, owner_uic: it === 'UIC' ? ind : null,
-      country: txt(subj.CountryName), legal_form: subj['@_LegalForm'] || null, position: subj['@_Position'] || null,
-    });
-  };
-  for (const s of subs) {
-    for (const pt of asArray(s?.Partners?.Partner)) pushOwner(pt, 'partner');
-    if (s?.SoleCapitalOwner) pushOwner(s.SoleCapitalOwner, 'sole_capital_owner');
-    for (const m of asArray(s?.Managers?.Manager)) pushOwner(m, 'manager');
-    for (const r of asArray(s?.Representatives?.Representative)) pushOwner(r, 'representative');
-  }
-  const actual = [];
-  for (const s of subs)
-    for (const ao of asArray(s?.ActualOwners?.ActualOwner)) {
-      const per = ao?.Person || ao;
-      actual.push({
-        source: ctx.source, fetched_at: ctx.fetchedAt, file_date: ctx.fileDate, uic,
-        owner_name: txt(per.Name), indent_type: per.IndentType || null, country: txt(per.CountryName),
-      });
-    }
-  return { company, owners, actual };
+  return { company };
 }
 
 async function writeChunk(stream, str) {
@@ -169,7 +179,8 @@ function makeBatcher(out, header) {
   };
   const push = async (tuple) => {
     const tb = Buffer.byteLength(tuple, 'utf8') + 2;
-    if (batch.length && (batch.length >= MAX_BATCH_ROWS || stmtBytes + tb > MAX_BATCH_BYTES)) await flush();
+    if (batch.length && (batch.length >= MAX_BATCH_ROWS || stmtBytes + tb > MAX_BATCH_BYTES))
+      await flush();
     batch.push(tuple);
     stmtBytes += tb;
   };
@@ -189,15 +200,17 @@ async function main() {
   if (!arg('limit') && !all && !apply) {
     process.stderr.write(`\nMost-recent ${resources.length} daily resources:\n`);
     for (const r of resources.slice(0, 25)) process.stderr.write(`  ${r.date}  ${r.uri}\n`);
-    process.stderr.write('\nScope: --limit=N or --all  (+ --apply to load D1). Open feed is daily deltas from 2022-09.\n');
+    process.stderr.write(
+      '\nScope: --limit=N or --all  (+ --apply to load D1). Open feed is daily deltas from 2022-09.\n',
+    );
     return;
   }
-  process.stderr.write(`==> processing ${resources.length} daily files in chunks of ${chunkSize} (deltas)\n`);
+  process.stderr.write(
+    `==> processing ${resources.length} daily files in chunks of ${chunkSize} (deltas)\n`,
+  );
 
   const files = {
     companies: resolve(root, 'data/tr-companies-load.sql'),
-    owners: resolve(root, 'data/tr-owners-load.sql'),
-    actual: resolve(root, 'data/tr-actual-owners-load.sql'),
   };
   const scope = remote ? '--remote' : '--local';
   const runW = (a) => {
@@ -208,12 +221,7 @@ async function main() {
     runW(['d1', 'migrations', 'apply', 'sigma', scope]);
     // one-time clear of this source's staging (chunks below only INSERT, so they accumulate)
     const clear = resolve(root, 'data/tr-clear.sql');
-    writeFileSync(
-      clear,
-      "DELETE FROM raw_tr_companies WHERE source LIKE 'tr:%';\n" +
-        "DELETE FROM raw_tr_owners WHERE source LIKE 'tr:%';\n" +
-        "DELETE FROM raw_tr_actual_owners WHERE source LIKE 'tr:%';\n",
-    );
+    writeFileSync(clear, "DELETE FROM raw_tr_companies WHERE source LIKE 'tr:%';\n");
     runW(['d1', 'execute', 'sigma', scope, '--file', clear]);
   }
 
@@ -226,73 +234,61 @@ async function main() {
   });
   const fetchedAt = new Date().toISOString().replace('.000Z', 'Z');
   let nDeeds = 0;
-  let nOwners = 0;
-  let nActual = 0;
   const chunks = Math.ceil(resources.length / chunkSize) || 1;
+  writeFileSync(files.companies, '');
+  const cOut = createWriteStream(files.companies, { encoding: 'utf8', flags: 'a' });
+  await writeChunk(cOut, '-- Generated by scripts/load-tr.mjs (chunks).\n');
+  const cb = makeBatcher(
+    cOut,
+    `INSERT INTO raw_tr_companies (${COMPANY_COLS.join(', ')}) VALUES\n`,
+  );
 
-  for (let i = 0; i < resources.length; i += chunkSize) {
-    const chunk = resources.slice(i, i + chunkSize);
-    const cOut = createWriteStream(files.companies, { encoding: 'utf8' });
-    const oOut = createWriteStream(files.owners, { encoding: 'utf8' });
-    const aOut = createWriteStream(files.actual, { encoding: 'utf8' });
-    await writeChunk(cOut, '-- Generated by scripts/load-tr.mjs (chunk).\n');
-    await writeChunk(oOut, '-- Generated by scripts/load-tr.mjs (chunk).\n');
-    await writeChunk(aOut, '-- Generated by scripts/load-tr.mjs (chunk).\n');
-    const cb = makeBatcher(cOut, `INSERT INTO raw_tr_companies (${COMPANY_COLS.join(', ')}) VALUES\n`);
-    const ob = makeBatcher(oOut, `INSERT INTO raw_tr_owners (${OWNER_COLS.join(', ')}) VALUES\n`);
-    const ab = makeBatcher(aOut, `INSERT INTO raw_tr_actual_owners (${ACTUAL_COLS.join(', ')}) VALUES\n`);
-    for (const res of chunk) {
-      const ctx = { source: `tr:${res.date}`, fetchedAt, fileDate: res.date };
-      let xml;
-      try {
-        xml = await downloadXml(res.uri, refresh);
-      } catch (e) {
-        process.stderr.write(`!! ${res.date || res.uri}: ${e.message} — skipping\n`);
-        continue;
-      }
-      let deeds;
-      try {
-        const doc = parser.parse(xml);
-        const body = doc.Message?.Body || doc.Body || doc;
-        deeds = asArray((body.Deeds || body).Deed);
-      } catch (e) {
-        process.stderr.write(`!! ${res.date || res.uri}: parse error ${e.message} — skipping\n`);
-        continue;
-      }
-      for (const deed of deeds) {
-        const rows = deedToRows(deed, ctx);
-        if (!rows) continue;
-        await cb.push(`(${COMPANY_COLS.map((c) => sqlLit(rows.company[c])).join(',')})`);
-        nDeeds++;
-        for (const o of rows.owners) {
-          await ob.push(`(${OWNER_COLS.map((c) => sqlLit(o[c])).join(',')})`);
-          nOwners++;
+  try {
+    for (let i = 0; i < resources.length; i += chunkSize) {
+      const chunk = resources.slice(i, i + chunkSize);
+      for (const res of chunk) {
+        const ctx = { source: `tr:${res.date}`, fetchedAt, fileDate: res.date };
+        let xml;
+        try {
+          xml = await downloadXml(res.uri, refresh);
+        } catch (e) {
+          process.stderr.write(`!! ${res.date || res.uri}: ${e.message} — skipping\n`);
+          continue;
         }
-        for (const a of rows.actual) {
-          await ab.push(`(${ACTUAL_COLS.map((c) => sqlLit(a[c])).join(',')})`);
-          nActual++;
+        let deeds;
+        try {
+          const doc = parser.parse(xml);
+          const body = doc.Message?.Body || doc.Body || doc;
+          deeds = asArray((body.Deeds || body).Deed);
+        } catch (e) {
+          process.stderr.write(`!! ${res.date || res.uri}: parse error ${e.message} — skipping\n`);
+          continue;
+        }
+        for (const deed of deeds) {
+          const rows = deedToRows(deed, ctx);
+          if (!rows) continue;
+          await cb.push(`(${COMPANY_COLS.map((c) => sqlLit(rows.company[c])).join(',')})`);
+          nDeeds++;
         }
       }
+      await cb.flush();
+      process.stderr.write(
+        `==> chunk ${Math.floor(i / chunkSize) + 1}/${chunks} — cumulative ${nDeeds.toLocaleString('en-US')} ` +
+          `company rows\n`,
+      );
     }
-    await cb.flush();
-    await ob.flush();
-    await ab.flush();
+  } finally {
     cOut.end();
-    oOut.end();
-    aOut.end();
-    await Promise.all([once(cOut, 'finish'), once(oOut, 'finish'), once(aOut, 'finish')]);
-    if (apply) for (const f of Object.values(files)) runW(['d1', 'execute', 'sigma', scope, '--file', f]);
-    process.stderr.write(
-      `==> chunk ${Math.floor(i / chunkSize) + 1}/${chunks} — cumulative ${nDeeds.toLocaleString('en-US')} ` +
-        `company rows, ${nOwners.toLocaleString('en-US')} owners, ${nActual.toLocaleString('en-US')} beneficial owners\n`,
-    );
+    await once(cOut, 'finish');
   }
+  if (apply)
+    for (const f of Object.values(files)) runW(['d1', 'execute', 'sigma', scope, '--file', f]);
 
   process.stderr.write(
-    `\n==> done: ${nDeeds.toLocaleString('en-US')} company rows, ${nOwners.toLocaleString('en-US')} owners, ` +
-      `${nActual.toLocaleString('en-US')} beneficial owners from ${resources.length} files\n`,
+    `\n==> done: ${nDeeds.toLocaleString('en-US')} company rows from ${resources.length} files\n`,
   );
-  if (!apply) process.stderr.write('(dry run — SQL written to data/tr-*-load.sql; re-run with --apply)\n');
+  if (!apply)
+    process.stderr.write('(dry run — SQL written to data/tr-*-load.sql; re-run with --apply)\n');
 }
 
 main().catch((err) => {

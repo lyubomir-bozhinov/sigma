@@ -12,7 +12,7 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
     <nav className="crumbs" aria-label="Навигация по нивата">
       <div className="crumbs-inner">
         {items.map((c, i) => (
-          <Fragment key={i}>
+          <Fragment key={c.to ?? c.label}>
             {i > 0 && <span className="sep">›</span>}
             {c.to ? <Link to={c.to}>{c.label}</Link> : <span>{c.label}</span>}
           </Fragment>

@@ -297,13 +297,15 @@ code,
 .nav-search {
   background: transparent;
   border: 0;
-  padding: 4px 2px;
+  padding: 3px;
   margin: 0;
   color: var(--ink-mid);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
   line-height: 0;
   border-radius: 0;
   font: inherit;
@@ -318,8 +320,8 @@ code,
 }
 .nav-search svg {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 /* Menu toggle — hidden on desktop; revealed when the nav collapses */
@@ -333,6 +335,7 @@ code,
   margin: 0;
   color: var(--ink-mid);
   cursor: pointer;
+  min-height: 24px;
   font: 500 11px/1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1463,7 +1466,8 @@ details.row .body .signal .why {
   .paging {
     font-size: 10px;
   }
-  .paging .ctrl a {
+  .paging .ctrl a,
+  .paging .ctrl span {
     padding: 6px var(--s-2);
     margin-left: 0;
   }
@@ -1704,6 +1708,15 @@ details.row .body .signal .why {
   padding: 6px var(--s-3);
   border: 1px solid var(--rule);
   text-decoration: none;
+  margin-left: 4px;
+  color: var(--ink-mid);
+  font: 500 10.5px/1.2 var(--font-mono);
+  letter-spacing: 0.14em;
+}
+.paging .ctrl span {
+  display: inline-block;
+  padding: 6px var(--s-3);
+  border: 1px solid var(--rule);
   margin-left: 4px;
   color: var(--ink-mid);
   font: 500 10.5px/1.2 var(--font-mono);
@@ -2099,8 +2112,16 @@ details.row .body .signal .why {
 tbody td,
 .muni-grid a,
 .linklist li,
-.tile h3 {
+.tile h3,
+.participants-list,
+.participants-list li,
+.toc ol li a,
+.section,
+.facts,
+.two-col,
+.callout {
   overflow-wrap: break-word;
+  min-width: 0;
 }
 
 @media (max-width: 600px) {

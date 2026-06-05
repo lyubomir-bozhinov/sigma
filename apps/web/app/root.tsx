@@ -10,6 +10,7 @@ import {
   ScrollRestoration,
   useLocation,
   useNavigation,
+  useNavigationType,
 } from 'react-router';
 
 import type { Route } from './+types/root';
@@ -87,18 +88,22 @@ export default function App({ loaderData }: Route.ComponentProps) {
   // screen-reader users aren't stranded on <body> mid-page (and the skip link stays
   // reachable). Skip the first run so SSR/hydration and the initial load are untouched.
   const location = useLocation();
+  const navigationType = useNavigationType();
   const firstRender = useRef(true);
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
       return;
     }
-    const el = document.getElementById('main');
-    if (el) {
-      el.setAttribute('tabindex', '-1');
-      el.focus({ preventScroll: true });
-    }
-  }, [location.pathname]);
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>('main h1') ?? document.getElementById('main');
+      if (el) {
+        el.setAttribute('tabindex', '-1');
+        el.focus({ preventScroll: navigationType === 'POP' });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.key, navigationType]);
 
   return (
     <>

@@ -77,7 +77,22 @@ function coerce(kind, v) {
 function lit(kind, value) {
   if (value === null) return 'NULL';
   if (kind === 'int' || kind === 'real' || kind === 'bool') return String(value);
-  return `'${String(value).replace(/'/g, "''")}'`;
+  return `'${String(value)
+    .replace(/[\x00-\x1F]/g, '')
+    .replace(/'/g, "''")}'`;
+}
+function readSheetInput(file) {
+  const buf = readFileSync(file);
+  if (/\.xlsx$/i.test(file)) {
+    if (buf.length < 2 || buf[0] !== 0x50 || buf[1] !== 0x4b) {
+      throw new Error(`invalid .xlsx input ${file}: missing ZIP magic`);
+    }
+    return { data: buf, type: 'buffer' };
+  }
+  if (buf.length > 0 && buf[0] === 0x3c) {
+    throw new Error(`invalid spreadsheet input ${file}: XML-like content is not accepted`);
+  }
+  return { data: buf.toString('utf8'), type: 'string' };
 }
 
 // Per category: target table, fixed columns (+ values fn), and [field, header, kind] map.
@@ -266,9 +281,13 @@ function extractCsv(cat, year) {
   const innerZip = `OpenData_${cfg.dir}_${year}.zip`;
   const tmp = resolve(workDir, `${cat}_${year}`);
   mkdirSync(tmp, { recursive: true });
-  execFileSync('unzip', ['-o', '-j', zipFile, `Open_data_resources/${cfg.dir}/${innerZip}`, '-d', tmp], {
-    stdio: 'ignore',
-  });
+  execFileSync(
+    'unzip',
+    ['-o', '-j', zipFile, `Open_data_resources/${cfg.dir}/${innerZip}`, '-d', tmp],
+    {
+      stdio: 'ignore',
+    },
+  );
   execFileSync('unzip', ['-o', '-j', resolve(tmp, innerZip), '-d', tmp], { stdio: 'ignore' });
   return { csv: resolve(tmp, `OpenData_${cfg.dir}.csv`), tmp };
 }
@@ -311,8 +330,8 @@ async function loadCategory(cat, years, apply, remote) {
       continue;
     }
     process.stderr.write(`==> ${cat} ${year}: parsing\n`);
-    // Decode as UTF-8 string first — SheetJS misreads a raw buffer's Cyrillic (wrong codepage).
-    const wb = XLSX.read(readFileSync(csvPath).toString('utf8'), { type: 'string', raw: true, dense: true });
+    const sheetInput = readSheetInput(csvPath);
+    const wb = XLSX.read(sheetInput.data, { type: sheetInput.type, raw: true, dense: true });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
       header: 1,
       raw: true,
@@ -352,7 +371,8 @@ async function loadCategory(cat, years, apply, remote) {
       }
       const tuple = `(${vals.join(',')})`;
       const tb = Buffer.byteLength(tuple, 'utf8') + 2;
-      if (batch.length > 0 && (batch.length >= MAX_BATCH_ROWS || stmtBytes + tb > MAX_BATCH_BYTES)) await flush();
+      if (batch.length > 0 && (batch.length >= MAX_BATCH_ROWS || stmtBytes + tb > MAX_BATCH_BYTES))
+        await flush();
       batch.push(tuple);
       stmtBytes += tb;
       count++;
@@ -364,7 +384,9 @@ async function loadCategory(cat, years, apply, remote) {
 
   out.end();
   await once(out, 'finish');
-  process.stderr.write(`==> ${cat}: ${grand.toLocaleString('en-US')} rows → ${outFile} (max stmt ${maxStmt})\n`);
+  process.stderr.write(
+    `==> ${cat}: ${grand.toLocaleString('en-US')} rows → ${outFile} (max stmt ${maxStmt})\n`,
+  );
 
   if (apply) {
     const scope = remote ? '--remote' : '--local';
@@ -385,7 +407,10 @@ async function main() {
 
   if (apply) {
     const scope = remote ? '--remote' : '--local';
-    execFileSync('wrangler', ['d1', 'migrations', 'apply', 'sigma', scope], { stdio: 'inherit', cwd: apiDir });
+    execFileSync('wrangler', ['d1', 'migrations', 'apply', 'sigma', scope], {
+      stdio: 'inherit',
+      cwd: apiDir,
+    });
   }
   const totals = {};
   for (const cat of cats) totals[cat] = await loadCategory(cat, years, apply, remote);

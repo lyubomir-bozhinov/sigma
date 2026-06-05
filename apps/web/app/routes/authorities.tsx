@@ -51,9 +51,7 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
     nextCursor: page.nextCursor,
     prevCursor: page.prevCursor,
   });
-  // Keyset can hand back a prevCursor even on the first batch; never let „Предишна" land on an empty page.
-  if (nav.page <= 1) nav.prevHref = null;
-  const startRank = (nav.page - 1) * PAGE_SIZE.authorities;
+  const startRank = 0;
   const csvHref = `/authorities.csv${withParams(sp, { cursor: null, page: null, q: null })}`;
   const busy = useNavigation().state !== 'idle';
 

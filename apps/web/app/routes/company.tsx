@@ -10,12 +10,28 @@ import { ContractMiniTable } from '../components/ContractMiniTable';
 import { ShareBar, Chip, Section, SourceLine } from '../components/ui';
 import { publicCache } from '../lib/cache';
 
+function isSingleNaturalPersonProfile(kind: string, legalForm: string | null): boolean {
+  if (kind === 'consortium' || !legalForm) return false;
+  const normalized = legalForm.trim().toUpperCase();
+  return (
+    normalized === 'ЕТ' ||
+    normalized === 'ET' ||
+    normalized.includes('ЕДНОЛИЧЕН ТЪРГОВЕЦ') ||
+    normalized.includes('SOLE TRADER') ||
+    normalized.includes('INDIVIDUAL')
+  );
+}
+
 export function meta({ data }: Route.MetaArgs) {
   const name = data?.company.displayName ?? 'Компания';
-  return [
+  const meta = [
     { title: `${name} — Сигма` },
     { name: 'description', content: `Профил на ${name} в обществените поръчки 2020–2026.` },
   ];
+  if (data?.company && isSingleNaturalPersonProfile(data.company.kind, data.company.legalForm)) {
+    meta.push({ name: 'robots', content: 'noindex' });
+  }
+  return meta;
 }
 
 export function headers() {
@@ -121,11 +137,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
                       // Already linked to a real company profile (post-TR resolution).
                       <Link to={`/companies/${p.resolvedSlug}`}>{p.name}</Link>
                     ) : (
-                      // No TR resolution yet — surface the name as a search query so the visitor
-                      // can find any contracts/profiles where this same name participates solo or
-                      // in other consortia. The FTS5 tokenizer down-weights legal-form suffixes
-                      // („ООД", „ЕООД") via BM25, so rare tokens still dominate the ranking.
-                      <Link to={`/search?q=${encodeURIComponent(p.name)}`}>{p.name}</Link>
+                      p.name
                     )}
                   </li>
                 ))}
@@ -204,7 +216,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             title="Как печели"
             hint="Тип на процедурата, с която компанията е спечелила договорите."
           >
-            <StackedBar slices={c.procedureMix} />
+            <StackedBar slices={c.procedureMix.filter((s) => s.sharePct >= 0.0005)} />
           </Section>
 
           <Section

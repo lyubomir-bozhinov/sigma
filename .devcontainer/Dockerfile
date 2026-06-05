@@ -19,6 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         vim \
         less \
         htop \
+        # Sandboxing engine for Codex's `bwrap` agent isolation. The relaxed
+        # seccomp/apparmor in devcontainer.json runArgs is what lets its user
+        # namespace be created; this just puts bwrap on PATH.
+        bubblewrap \
         # Playwright Chromium runtime deps — enable headless-browser
         # inspection of UI prototypes via the @playwright/mcp MCP server.
         libnspr4 libnss3 libatk1.0-0 libdbus-1-3 \

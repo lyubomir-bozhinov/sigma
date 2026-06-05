@@ -19,8 +19,12 @@ export function SankeyDiagram({ layout }: { layout: SankeyLayout }) {
   );
   const vScale = Math.max(1, perSide / 20);
   // viewBox is "minX minY width height"; stretch only the height to match the vertical scale.
-  const [vbX, vbY, vbW, vbH] = layout.viewBox.split(' ');
-  const viewBox = `${vbX} ${vbY} ${vbW} ${(Number(vbH) * vScale).toFixed(0)}`;
+  const viewBoxParts = layout.viewBox.split(/\s+/).filter(Boolean).map(Number);
+  const [vbX, vbY, vbW, vbH] =
+    viewBoxParts.length === 4 && viewBoxParts.every(Number.isFinite)
+      ? viewBoxParts
+      : [0, 0, 700, layout.height];
+  const viewBox = `${vbX} ${vbY} ${vbW} ${(vbH * vScale).toFixed(0)}`;
 
   return (
     <>
@@ -46,14 +50,14 @@ export function SankeyDiagram({ layout }: { layout: SankeyLayout }) {
           </text>
 
           <g fillRule="evenodd" transform={vScale === 1 ? undefined : `scale(1 ${vScale})`}>
-            {layout.ribbons.map((r, i) => (
-              <path className="link" d={r.d} key={i}>
+            {layout.ribbons.map((r) => (
+              <path className="link" d={r.d} key={`${r.fromName}-${r.toName}-${r.valueEur}`}>
                 <title>{r.title}</title>
               </path>
             ))}
           </g>
 
-          {(layout.nodes as LinkedNode[]).map((n, i) => {
+          {(layout.nodes as LinkedNode[]).map((n) => {
             const isAuth = n.side === 'authority';
             const tx = isAuth ? n.x - 6 : n.x + n.width + 8;
             // Stretch bar geometry + label baseline vertically (font size stays put for legibility).
@@ -94,7 +98,7 @@ export function SankeyDiagram({ layout }: { layout: SankeyLayout }) {
             );
             return n.href ? (
               <a
-                key={i}
+                key={`${n.side}-${n.label}-${n.x}-${n.y}`}
                 href={n.href}
                 className="node-link"
                 aria-label={`${n.label} (${kind}): ${money(n.valueEur)}`}
@@ -103,7 +107,7 @@ export function SankeyDiagram({ layout }: { layout: SankeyLayout }) {
                 {body}
               </a>
             ) : (
-              <g key={i}>{body}</g>
+              <g key={`${n.side}-${n.label}-${n.x}-${n.y}`}>{body}</g>
             );
           })}
         </svg>

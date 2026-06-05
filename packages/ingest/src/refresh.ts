@@ -1,14 +1,47 @@
 // Run the scoped re-derive (scripts/refresh-slice.sql) inside D1. The SQL string is injected by the
 // caller (the Worker imports it as a bundled text asset) so this stays a pure, testable function.
 
-/** Split a multi-statement SQL script into individual statements. Strips `--` line comments, then
- *  splits only on a `;` that ends a line — so a `;` inside a string literal never splits a statement.
- *  (The refresh script also avoids `;`-in-literals, but this is the robust rule.) */
+/** Split a multi-statement SQL script into individual statements. Strips `--` line comments outside
+ *  single-quoted string literals, and splits on `;` only outside literals. */
 export function splitSqlStatements(sql: string): string[] {
-  return (sql.replace(/--[^\n]*/g, '') + '\n')
-    .split(/;[ \t]*\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const statements: string[] = [];
+  let current = '';
+  let inLiteral = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const ch = sql[i]!;
+    const next = sql[i + 1];
+
+    if (!inLiteral && ch === '-' && next === '-') {
+      while (i < sql.length && sql[i] !== '\n') i += 1;
+      if (i < sql.length) current += sql[i];
+      continue;
+    }
+
+    if (ch === "'") {
+      current += ch;
+      if (inLiteral && next === "'") {
+        current += next;
+        i += 1;
+      } else {
+        inLiteral = !inLiteral;
+      }
+      continue;
+    }
+
+    if (!inLiteral && ch === ';') {
+      const statement = current.trim();
+      if (statement.length > 0) statements.push(statement);
+      current = '';
+      continue;
+    }
+
+    current += ch;
+  }
+
+  const statement = current.trim();
+  if (statement.length > 0) statements.push(statement);
+  return statements;
 }
 
 /**

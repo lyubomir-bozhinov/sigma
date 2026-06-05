@@ -1,5 +1,5 @@
 import { Link, useNavigation, useSearchParams } from 'react-router';
-import { count, money } from '@sigma/shared';
+import { count, money, parseConsortiumMembers } from '@sigma/shared';
 import { getCompanyFacets, listCompanies, type CompanySort } from '@sigma/db';
 import type { CompanyListItem, EntityKind } from '@sigma/api-contract';
 import type { Route } from './+types/companies';
@@ -55,7 +55,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 function subtitle(c: CompanyListItem) {
   const place = c.settlement ? ` · ${c.settlement}` : '';
   if (c.kind === 'consortium') {
-    const members = c.name.includes(';') ? c.name.split(';').length : null;
+    const parsed = parseConsortiumMembers(c.name);
+    const members = parsed?.kind === 'list' ? parsed.members.length : null;
     return members ? `${members} участника${place}` : `обединение${place}`;
   }
   return `${c.eik ? `ЕИК ${c.eik}` : 'непотвърден ЕИК'}${place}`;
@@ -72,7 +73,7 @@ export default function Companies({ loaderData }: Route.ComponentProps) {
     nextCursor: page.nextCursor,
     prevCursor: page.prevCursor,
   });
-  const startRank = (nav.page - 1) * PAGE_SIZE.companies;
+  const startRank = 0;
   const csvHref = `/companies.csv${withParams(sp, { cursor: null, page: null, q: null })}`;
   const busy = useNavigation().state !== 'idle';
 

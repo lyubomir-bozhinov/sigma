@@ -24,18 +24,18 @@ export function Pagination({
             ‹ Предишна
           </Link>
         ) : (
-          <a aria-disabled="true" style={{ opacity: 0.4 }}>
+          <span aria-disabled="true" className="disabled" style={{ opacity: 0.4 }}>
             ‹ Предишна
-          </a>
+          </span>
         )}
         {nav.nextHref ? (
           <Link to={nav.nextHref} rel="next">
             Следваща ›
           </Link>
         ) : (
-          <a aria-disabled="true" style={{ opacity: 0.4 }}>
+          <span aria-disabled="true" className="disabled" style={{ opacity: 0.4 }}>
             Следваща ›
-          </a>
+          </span>
         )}
       </div>
     </div>

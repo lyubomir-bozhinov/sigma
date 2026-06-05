@@ -113,7 +113,7 @@ export default function Contracts({ loaderData }: Route.ComponentProps) {
     },
   ];
 
-  const startRank = (nav.page - 1) * PAGE_SIZE.contracts;
+  const startRank = 0;
 
   return (
     <>

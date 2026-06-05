@@ -70,7 +70,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
   const c = loaderData.contract;
   const v = c.value;
   const crumbId = c.unp || c.contractNumber || c.id;
-  const betweenParties = `/contracts?authority=${c.authority.eik}&bidder=${c.bidder.slug}`;
+  const betweenParties = `/contracts?authority=${c.authority.slug}&bidder=${c.bidder.slug}`;
 
   return (
     <>
@@ -157,7 +157,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               </p>
               <ul className="linklist">
                 <li>
-                  <Link to={`/contracts?authority=${c.authority.eik}`}>
+                  <Link to={`/contracts?authority=${c.authority.slug}`}>
                     → Всички {count(c.authority.totalContracts)}{' '}
                     {plural(c.authority.totalContracts, 'договор', 'договора')} на институцията (
                     {money(c.authority.totalEur)})
@@ -411,11 +411,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                   (returns application/json, no HTML), so client-side navigation can't render it —
                   React Router would treat the JSON as a route module and crash. target=_blank
                   opens the raw record in a new tab so the visitor doesn't lose the contract page. */}
-              <a
-                href={`/contracts/${c.id}.json`}
-                target="_blank"
-                rel="noopener"
-              >
+              <a href={`/contracts/${c.id}.json`} target="_blank" rel="noopener">
                 JSON запис в Сигма
               </a>
               <span className="sub">машиночетим, всички полета — /contracts/{c.id}.json</span>
