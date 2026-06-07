@@ -35,7 +35,7 @@ class_name = "RefreshWorkflow"
 crons = ["0 */6 * * *"]
 
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]

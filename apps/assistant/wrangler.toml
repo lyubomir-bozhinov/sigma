@@ -10,7 +10,7 @@ port = 8788
 # `wrangler secret` in production — never committed.
 
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]

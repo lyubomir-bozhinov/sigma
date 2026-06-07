@@ -14,7 +14,7 @@ database_name = "sigma"
 database_id = "00000000-0000-0000-0000-000000000000"
 
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]
