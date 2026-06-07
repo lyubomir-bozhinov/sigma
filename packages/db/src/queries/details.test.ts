@@ -30,7 +30,7 @@ const baseContractRow = {
   num_lots: 2,
   estimated_value: 10000,
   tender_currency: 'EUR',
-  tender_fx_rate: null,
+  tender_fx_rate: null as number | null,
   start_date: null,
   end_date: null,
   authority_id: 'auth:123456789',

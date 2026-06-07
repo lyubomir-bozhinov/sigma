@@ -29,6 +29,8 @@ CREATE TABLE authorities (
   ekatte       TEXT,                       -- settlement ЕКАТТЕ code
   municipality TEXT,                       -- община
   address      TEXT,                       -- registered / seat address
+  contact_email TEXT,
+  contact_phone TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -71,6 +73,8 @@ CREATE TABLE lots (
   title           TEXT NOT NULL,
   cpv_code        TEXT,
   estimated_value REAL,
+  value_amount    REAL,
+  value_currency  TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -89,6 +93,8 @@ CREATE TABLE bidders (
   ekatte       TEXT,                        -- settlement ЕКАТТЕ code
   municipality TEXT,                        -- община
   address      TEXT,                        -- seat address
+  contact_email TEXT,
+  contact_phone TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -458,7 +464,7 @@ CREATE TABLE raw_egov_amendments (
   ted_link                 TEXT
 );
 
--- OCDS parties (data.egov.bg OCDS feed) — full party records: ЕИК + address (city + NUTS region) +
+-- OCDS parties (storage.eop.bg in-bucket OCDS feed) — full party records: ЕИК + address (city + NUTS region) +
 -- roles + contact. Captured by scripts/load-ocds.mjs; normalize-egov.sql enriches authorities/bidders
 -- location from here by ЕИК. Source 'ocds:%'.
 CREATE TABLE raw_ocds_parties (
@@ -498,7 +504,23 @@ CREATE TABLE raw_ocds_award_suppliers (
   supplier_name  TEXT
 );
 
--- Trade Register (Агенция по вписванията; data.egov.bg dataset 2df0c2af-…) — daily XML deltas, by
+-- OCDS lots — per-lot values from the in-bucket release package. tender_id is the OCDS tender.id
+-- used to bridge to raw_egov_tenders.tender_id; ocid is provenance only, not a UNP.
+CREATE TABLE raw_ocds_lots (
+  id             INTEGER PRIMARY KEY,
+  source         TEXT NOT NULL,
+  dataset_uri    TEXT,
+  resource_uri   TEXT,
+  fetched_at     TEXT NOT NULL,
+  ocid           TEXT,
+  tender_id      TEXT,
+  lot_id         TEXT,
+  title          TEXT,
+  value_amount   REAL,
+  value_currency TEXT
+);
+
+-- Trade Register (Агенция по вписванията) — daily XML deltas, by
 -- scripts/load-tr.mjs. One company row per <Deed> (current state).
 -- Source 'tr:<file date>'; latest file_date wins on dedup. Personal IDs are hashed at source.
 CREATE TABLE raw_tr_companies (
@@ -595,6 +617,7 @@ CREATE INDEX idx_egov_eik ON raw_egov_contracts(contractor_eik);
 CREATE INDEX idx_egov_year ON raw_egov_contracts(dataset_year);
 CREATE INDEX idx_egov_needs_enrichment ON raw_egov_contracts(needs_enrichment);
 CREATE INDEX idx_egov_tenders_unp ON raw_egov_tenders(unp);
+CREATE INDEX idx_egov_tenders_tender_id ON raw_egov_tenders(tender_id);
 CREATE INDEX idx_egov_tenders_source ON raw_egov_tenders(source);
 CREATE INDEX idx_egov_amend_contract ON raw_egov_amendments(unp, contract_number);
 CREATE INDEX idx_egov_amend_source ON raw_egov_amendments(source);
@@ -602,6 +625,9 @@ CREATE INDEX idx_ocds_parties_eik ON raw_ocds_parties(eik);
 CREATE INDEX idx_ocds_parties_source ON raw_ocds_parties(source);
 CREATE INDEX idx_ocds_award_suppliers_eik ON raw_ocds_award_suppliers(supplier_eik);
 CREATE INDEX idx_ocds_award_suppliers_source ON raw_ocds_award_suppliers(source);
+CREATE INDEX idx_ocds_lots_source ON raw_ocds_lots(source);
+CREATE INDEX idx_ocds_lots_ocid_lot ON raw_ocds_lots(ocid, lot_id);
+CREATE INDEX idx_ocds_lots_tender_lot ON raw_ocds_lots(tender_id, lot_id);
 CREATE INDEX idx_tr_companies_uic ON raw_tr_companies(uic);
 
 -- ===================================================================================
