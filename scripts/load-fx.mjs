@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Fetch ECB euro reference rates (via the no-auth frankfurter.app API, which serves ECB data)
-// for the SIGNING DATES of the foreign-currency contracts, into the fx_rates table — so
-// scripts/normalize-egov.sql can convert those contracts to canonical EUR at the date-of-signing
-// rate (see packages/db/migrations/0007_data_quality.sql).
+// for the foreign-currency contracts, into the fx_rates table — so scripts/normalize-egov.sql
+// can convert those contracts to canonical EUR at the date-of-signing rate.
 //
 //   node scripts/load-fx.mjs            # fetch → data/fx-load.sql
 //   node scripts/load-fx.mjs --apply    # also load into local D1
@@ -10,8 +9,8 @@
 //
 // The lev (BGN) is a fixed peg (1 EUR = 1.95583 BGN) handled inline in normalize; only the
 // genuinely foreign currencies (USD/CHF/GBP/TRY/SEK/CZK …) need a market rate, and they are few.
-// We store eur_per_unit = EUR for 1 unit of the foreign currency, keyed by the contract date we
-// asked for (frankfurter returns the nearest prior business-day rate for weekends/holidays).
+// ECB publishes business-day rates only, so we load each used currency's full date range and let
+// normalize carry the latest prior rate forward over weekends/holidays, bounded to 10 days.
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -24,9 +23,15 @@ const outFile = resolve(root, 'data/fx-load.sql');
 const apply = process.argv.includes('--apply');
 const remoteFlag = process.argv.includes('--remote') ? '--remote' : '--local';
 const API = 'https://api.frankfurter.app';
+const FX_LOOKBACK_DAYS = 10;
 
 const stripControls = (s) => String(s).replace(/[\x00-\x1F]/g, '');
 const sqlStr = (s) => (s == null ? 'NULL' : `'${stripControls(s).replace(/'/g, "''")}'`);
+const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s));
+const addDays = (iso, days) => {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+};
 
 function d1(sql) {
   const out = execFileSync(
@@ -42,53 +47,69 @@ function d1(sql) {
 }
 
 // EOP is the canonical historical corpus; admin is retained for legacy local staging and OCDS deltas.
-const pairs = d1(
-  'SELECT DISTINCT currency, contract_date FROM raw_egov_contracts ' +
+const ranges = d1(
+  'SELECT currency, MIN(contract_date) AS min_date, MAX(contract_date) AS max_date, ' +
+    'COUNT(DISTINCT contract_date) AS contract_dates FROM raw_egov_contracts ' +
     "WHERE (source LIKE 'eop:%' OR source LIKE 'admin:%' OR source LIKE 'ocds:%') " +
     "AND currency NOT IN ('BGN','EUR') AND contract_date IS NOT NULL " +
-    'ORDER BY currency, contract_date',
+    'GROUP BY currency ORDER BY currency',
 );
-console.log(`foreign (currency, date) pairs to price: ${pairs.length}`);
+console.log(`foreign currency ranges to price: ${ranges.length}`);
 
 const rows = [];
-for (const { currency, contract_date } of pairs) {
+const seen = new Set();
+for (const { currency, min_date, max_date, contract_dates } of ranges) {
   const c = String(currency);
-  const d = String(contract_date);
   if (!/^[A-Z]{3}$/.test(c)) {
-    console.warn(`  ! invalid currency ${currency} ${contract_date}`);
+    console.warn(`  ! invalid currency ${currency}`);
     continue;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-    console.warn(`  ! invalid date ${currency} ${contract_date}`);
+  if (!isIsoDate(min_date) || !isIsoDate(max_date)) {
+    console.warn(`  ! invalid date range ${currency} ${min_date}..${max_date}`);
     continue;
   }
-  const url = `${API}/${encodeURIComponent(d)}?base=${encodeURIComponent(c)}&symbols=${encodeURIComponent('EUR')}`;
-  let rate = null;
+  const start = addDays(String(min_date), -FX_LOOKBACK_DAYS);
+  const end = String(max_date);
+  const url = `${API}/${encodeURIComponent(start)}..${encodeURIComponent(end)}?base=${encodeURIComponent(c)}&symbols=${encodeURIComponent('EUR')}`;
+  let rates = null;
   try {
     const res = await fetch(url);
     const j = await res.json();
-    rate = j?.rates?.EUR ?? null;
+    rates = j?.rates ?? null;
   } catch (e) {
-    console.warn(`  ! ${currency} ${contract_date}: ${e.message}`);
+    console.warn(`  ! ${currency} ${start}..${end}: ${e.message}`);
   }
-  if (rate == null) {
-    console.warn(`  ! no rate for ${currency} ${contract_date}`);
+  if (!rates || typeof rates !== 'object') {
+    console.warn(`  ! no rate series for ${currency} ${start}..${end}`);
     continue;
   }
-  const n = Number(rate);
-  if (!Number.isFinite(n)) {
-    console.warn(`  ! invalid rate for ${currency} ${contract_date}`);
-    continue;
+  let loaded = 0;
+  for (const [rateDate, quote] of Object.entries(rates)) {
+    if (!isIsoDate(rateDate)) {
+      console.warn(`  ! invalid rate date for ${currency}: ${rateDate}`);
+      continue;
+    }
+    const n = Number(quote?.EUR);
+    if (!Number.isFinite(n)) {
+      console.warn(`  ! invalid rate for ${currency} ${rateDate}`);
+      continue;
+    }
+    const key = `${c}:${rateDate}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ currency: c, rate_date: rateDate, rate: n });
+    loaded += 1;
   }
-  rows.push({ currency: c, contract_date: d, rate: n });
-  console.log(`  ${currency} ${contract_date} → ${n} EUR/unit`);
+  console.log(
+    `  ${currency} ${start}..${end} → ${loaded} ECB business-day rates for ${contract_dates} contract dates`,
+  );
 }
 
 const now = new Date().toISOString();
 const values = rows
   .map(
     (r) =>
-      `(${sqlStr(r.currency)}, ${sqlStr(r.contract_date)}, ${r.rate}, 'ecb:frankfurter', ${sqlStr(now)})`,
+      `(${sqlStr(r.currency)}, ${sqlStr(r.rate_date)}, ${r.rate}, 'ecb:frankfurter', ${sqlStr(now)})`,
   )
   .join(',\n  ');
 const sql =

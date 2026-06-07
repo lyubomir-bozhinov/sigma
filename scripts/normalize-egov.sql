@@ -204,8 +204,9 @@ GROUP BY bidder_key;
 --                 | 'ok'
 --    `amount` is the as-recorded display value (current_value when an annex legitimately raised it,
 --    else signing; signing/current fallback for annex_suspect). `amount_eur` is the SAFE-TO-SUM canonical value:
---    BGN→EUR at the fixed peg (÷1.95583), EUR as-is, foreign at the signing-date ECB rate (fx_rates);
---    NULL for value_suspect and any foreign row missing a rate. fx_converted = 1 for foreign rows, and
+--    BGN→EUR at the fixed peg (÷1.95583), EUR as-is, foreign at the latest prior ECB rate within
+--    10 days of signing (fx_rates); NULL for value_suspect and any foreign row missing a bounded
+--    prior rate. fx_converted = 1 for foreign rows, and
 --    fx_rate carries the applied rate on the row (amount * fx_rate = amount_eur), so the original value,
 --    the rate, and the EUR value are all auditable without joining fx_rates.
 INSERT OR IGNORE INTO contracts
@@ -237,12 +238,10 @@ SELECT
     WHEN x.trusted_native IS NULL THEN NULL
     WHEN COALESCE(x.currency, 'BGN') = 'EUR' THEN x.trusted_native
     WHEN COALESCE(x.currency, 'BGN') = 'BGN' THEN x.trusted_native / 1.95583
-    ELSE x.trusted_native * (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = x.currency AND f.rate_date = x.contract_date)
+    ELSE x.trusted_native * x.fx_rate
   END,
   CASE WHEN COALESCE(x.currency, 'BGN') NOT IN ('BGN', 'EUR') THEN 1 ELSE 0 END,
-  CASE WHEN COALESCE(x.currency, 'BGN') NOT IN ('BGN', 'EUR')
-    THEN (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = x.currency AND f.rate_date = x.contract_date)
-    ELSE NULL END,
+  x.fx_rate,
   CASE WHEN x.lot_id IS NOT NULL AND TRIM(x.lot_id) <> '' THEN 'lot:' || x.unp || ':' || CASE
     WHEN x.lot_id LIKE 'LOT-%' AND REPLACE(x.lot_id, 'LOT-', '') <> '' AND REPLACE(x.lot_id, 'LOT-', '') NOT GLOB '*[^0-9]*' THEN CAST(REPLACE(x.lot_id, 'LOT-', '') AS INTEGER)
     WHEN x.lot_id <> '' AND x.lot_id NOT GLOB '*[^0-9]*' THEN CAST(x.lot_id AS INTEGER)
@@ -275,7 +274,20 @@ FROM (
       WHEN 'value_suspect' THEN NULL
       WHEN 'annex_suspect' THEN COALESCE(y.signing_value, y.current_value)
       ELSE COALESCE(y.current_value, y.signing_value)
-    END AS trusted_native
+    END AS trusted_native,
+    -- ECB rates are published on business days only; carry the latest prior rate forward for
+    -- weekend/holiday signings, never future-dated, and cap the fallback at 10 calendar days.
+    CASE WHEN COALESCE(y.currency, 'BGN') NOT IN ('BGN', 'EUR')
+      THEN (
+        SELECT f.eur_per_unit
+        FROM fx_rates f
+        WHERE f.base_currency = y.currency
+          AND f.rate_date <= y.contract_date
+          AND f.rate_date >= date(y.contract_date, '-10 days')
+        ORDER BY f.rate_date DESC
+        LIMIT 1
+      )
+      ELSE NULL END AS fx_rate
   FROM (
     SELECT c.*,
       CASE
