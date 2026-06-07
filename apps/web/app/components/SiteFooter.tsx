@@ -12,6 +12,7 @@ export function SiteFooter({ asOf }: { asOf?: string | null }) {
           {DATA_SOURCE_LICENSE} · 2020–2026{asOf ? ` · обновени ${date(asOf)}` : ''}
         </span>
         <Link to="/methodology">Методология</Link>
+        <Link to="/accessibility">Достъпност</Link>
         <Link to="/privacy">Поверителност</Link>
         <Link to="/impressum">Импресум</Link>
       </div>
