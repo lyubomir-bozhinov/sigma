@@ -10,14 +10,14 @@
 //          --concurrency=N, --apply, --remote
 //
 // Format notes: records are flat objects with English camelCase keys. Object files are
-// small enough to fetch and JSON.parse whole. Wipes are scoped to source 'eop:<cat>:%'.
+// small enough to fetch and JSON.parse whole. Wipes are scoped to the requested source days.
 
 import { execFileSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'apps/api');
@@ -465,13 +465,25 @@ function parseCachedJson(cat, day, text) {
   if (!Array.isArray(json)) throw new Error(`${cat} ${day}: object JSON is not an array`);
   return json;
 }
-async function recordsForDay(cat, day, failures) {
+async function recordsForDay(cat, day, failures, opts = {}) {
   try {
     const keys = await bucketKeysFor(day);
-    if (keys === null) return { records: [], failed: false };
+    if (keys === null) {
+      if (opts.failMissing) {
+        const message = 'bucket not published or unavailable';
+        process.stderr.write(`!! ${cat} ${day}: ${message} — refusing apply\n`);
+        failures.push({ day, cat, error: message });
+        return { records: [], failed: true };
+      }
+      return { records: [], failed: false };
+    }
     const key = keys[cat];
     if (!key) {
       process.stderr.write(`!! ${cat} ${day}: object key missing — skipping\n`);
+      if (opts.failMissing) {
+        failures.push({ day, cat, error: 'object key missing' });
+        return { records: [], failed: true };
+      }
       return { records: [], failed: false };
     }
 
@@ -493,6 +505,19 @@ async function recordsForDay(cat, day, failures) {
   }
 }
 
+async function preflightCategory(cat, days, concurrency, failures) {
+  for (let i = 0; i < days.length; i += concurrency) {
+    const slice = days.slice(i, i + concurrency);
+    await Promise.all(slice.map((day) => recordsForDay(cat, day, failures, { failMissing: true })));
+  }
+}
+
+export function deleteSqlForEopSources(table, cat, days) {
+  if (days.length === 1) return `DELETE FROM ${table} WHERE source = 'eop:${cat}:${days[0]}';\n`;
+  const sources = days.map((day) => `'eop:${cat}:${day}'`).join(',\n  ');
+  return `DELETE FROM ${table} WHERE source IN (\n  ${sources}\n);\n`;
+}
+
 function tupleForRecord(cfg, cat, day, record) {
   if (!cfg.keep(record)) return null;
   const vals = [...cfg.fixedVals(day)];
@@ -503,13 +528,10 @@ function tupleForRecord(cfg, cat, day, record) {
   return `(${vals.join(',')})`;
 }
 
-async function loadCategory(cat, days, concurrency, apply, remote, failures, stats) {
+async function loadCategory(cat, days, concurrency, failures) {
   const cfg = CATS[cat];
   const insertCols = [...cfg.fixed, ...cfg.fields.map((f) => f[0])];
-  const wipe =
-    days.length === 1
-      ? `DELETE FROM ${cfg.table} WHERE source = 'eop:${cat}:${days[0]}';\n`
-      : `DELETE FROM ${cfg.table} WHERE source LIKE 'eop:${cat}:%';\n`;
+  const wipe = deleteSqlForEopSources(cfg.table, cat, days);
 
   // Chunk the output across multiple files so none exceeds Node's ~512MB string cap (wrangler
   // d1 execute --file reads the whole file into one string). Only the FIRST chunk carries the
@@ -574,7 +596,6 @@ async function loadCategory(cat, days, concurrency, apply, remote, failures, sta
     for (let j = 0; j < slice.length; j++) {
       const day = slice[j];
       const result = dayResults[j];
-      if (!result.failed) stats.completedDayCats++;
       let count = 0;
       let dropped = 0;
       for (const record of result.records) {
@@ -599,17 +620,25 @@ async function loadCategory(cat, days, concurrency, apply, remote, failures, sta
     `==> ${cat}: ${grand.toLocaleString('en-US')} rows → ${chunkFiles.length} file(s) (max stmt ${maxStmt})\n`,
   );
 
-  if (apply) {
-    const scope = remote ? '--remote' : '--local';
-    for (const file of chunkFiles) {
-      process.stderr.write(`==> applying ${file}\n`);
-      execFileSync('wrangler', ['d1', 'execute', 'sigma', scope, '--file', file], {
-        stdio: 'inherit',
-        cwd: apiDir,
-      });
-    }
+  return { grand, chunkFiles };
+}
+
+function applyChunkFiles(chunkFiles, remote) {
+  const scope = remote ? '--remote' : '--local';
+  for (const file of chunkFiles) {
+    process.stderr.write(`==> applying ${file}\n`);
+    execFileSync('wrangler', ['d1', 'execute', 'sigma', scope, '--file', file], {
+      stdio: 'inherit',
+      cwd: apiDir,
+    });
   }
-  return grand;
+}
+
+function reportFailures(failures) {
+  process.stderr.write(
+    `\n!! EOP fetch failures (${failures.length}) — re-run these day/category slices:\n`,
+  );
+  for (const f of failures) process.stderr.write(`   ${f.day} ${f.cat}: ${f.error}\n`);
 }
 
 async function main() {
@@ -630,18 +659,47 @@ async function main() {
     `==> EOP load ${from}..${to} (${days.length} days), cats=${cats.join(',')}, concurrency=${concurrency}, base=${BASE_URL}\n`,
   );
   const totals = {};
+  const chunkFilesByCat = {};
   const failures = [];
-  const stats = { completedDayCats: 0 };
-  for (const c of cats) totals[c] = await loadCategory(c, days, concurrency, apply, remote, failures, stats);
+
+  if (apply) {
+    for (const c of cats) await preflightCategory(c, days, concurrency, failures);
+    if (failures.length) {
+      reportFailures(failures);
+      process.stderr.write(
+        '\n!! aborting --apply before generating or applying SQL because fetch failures occurred\n',
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  for (const c of cats) {
+    const result = await loadCategory(c, days, concurrency, failures);
+    totals[c] = result.grand;
+    chunkFilesByCat[c] = result.chunkFiles;
+    if (apply && failures.length) break;
+  }
   if (failures.length) {
-    process.stderr.write(`\n!! EOP fetch failures (${failures.length}) — re-run these day/category slices:\n`);
-    for (const f of failures) process.stderr.write(`   ${f.day} ${f.cat}: ${f.error}\n`);
-    if (stats.completedDayCats === 0) process.exitCode = 1;
+    reportFailures(failures);
+    process.exitCode = 1;
+    if (apply) {
+      process.stderr.write(
+        '\n!! aborting --apply before applying SQL because fetch failures occurred\n',
+      );
+      return;
+    }
+  }
+
+  if (apply) {
+    for (const c of cats) applyChunkFiles(chunkFilesByCat[c], remote);
   }
   process.stderr.write(`\n==> done: ${JSON.stringify(totals)}\n`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
