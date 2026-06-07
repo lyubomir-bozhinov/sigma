@@ -333,6 +333,9 @@ code,
   width: 20px;
   height: 20px;
 }
+.nav-search-text {
+  display: none;
+}
 
 /* Menu toggle — hidden on desktop; revealed when the nav collapses */
 .nav-toggle {

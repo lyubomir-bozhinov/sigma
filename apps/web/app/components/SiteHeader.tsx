@@ -125,6 +125,7 @@ export function SiteHeader() {
                   strokeLinecap="round"
                 />
               </svg>
+              <span className="nav-search-text">Търсене</span>
             </button>
             <button
               ref={navToggleRef}
