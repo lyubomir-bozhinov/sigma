@@ -7,6 +7,11 @@ describe('detectPriceAnomaly', () => {
     expect(detectPriceAnomaly({ item: 'хляб', unit: 'kg', price: 2, refPrice: -1 })).toBeNull();
   });
 
+  it('returns null when the observed price is not finite', () => {
+    expect(detectPriceAnomaly({ item: 'bread', unit: 'kg', price: Number.NaN, refPrice: 10 })).toBeNull();
+    expect(detectPriceAnomaly({ item: 'bread', unit: 'kg', price: Number.POSITIVE_INFINITY, refPrice: 10 })).toBeNull();
+  });
+
   it('scores a normal positive deviation', () => {
     expect(detectPriceAnomaly({ item: 'хляб', unit: 'kg', price: 12, refPrice: 10 })).toEqual({
       item: 'хляб',

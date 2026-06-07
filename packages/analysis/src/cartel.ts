@@ -21,12 +21,13 @@ export function detectCoBidding(tenderId: string, participation: BidParticipatio
     for (let j = i + 1; j < present.length; j++) {
       const a = present[i]!;
       const b = present[j]!;
-      const shared = a.tenderIds.filter((t) => b.tenderIds.includes(t)).length;
-      const union = new Set([...a.tenderIds, ...b.tenderIds]).size;
-      if (union > 0) {
-        pairScore += shared / union;
-        pairs += 1;
-      }
+      const aTenders = new Set(a.tenderIds.filter((t) => t !== tenderId));
+      const bTenders = new Set(b.tenderIds.filter((t) => t !== tenderId));
+      const shared = [...aTenders].filter((t) => bTenders.has(t)).length;
+      const union = new Set([...aTenders, ...bTenders]).size;
+      const ratio = union > 0 ? clamp(shared / union, 0, 1) : 0;
+      pairScore += ratio;
+      pairs += 1;
     }
   }
   if (pairs === 0) return 0;

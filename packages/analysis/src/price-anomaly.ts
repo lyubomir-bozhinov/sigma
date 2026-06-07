@@ -18,6 +18,7 @@ export interface PriceAnomaly {
 /** Returns null when the reference price is unknown or unusable. */
 export function detectPriceAnomaly(obs: PriceObservation): PriceAnomaly | null {
   if (!(obs.refPrice > 0)) return null;
+  if (!Number.isFinite(obs.price)) return null;
   const deviationPct = round2(((obs.price - obs.refPrice) / obs.refPrice) * 100);
   // Severity ramps linearly from 0 at parity to 100 at +/-50% deviation.
   const severity = clamp((Math.abs(deviationPct) / 50) * 100, 0, 100);
