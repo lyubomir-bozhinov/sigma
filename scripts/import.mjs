@@ -208,9 +208,6 @@ function runWorkBackfill() {
   console.log(`==> Sigma import (work DB ${workDb})`);
 
   sqliteFile(workDb, resolve(root, 'packages/db/migrations/0000_init.sql'));
-  sqliteFile(workDb, resolve(root, 'packages/db/migrations/0001_amendments.sql'));
-  sqliteFile(workDb, resolve(root, 'packages/db/migrations/0002_parties.sql'));
-  sqliteFile(workDb, resolve(root, 'packages/db/migrations/0003_tender_eop_id.sql'));
   sqliteFile(workDb, resolve(root, 'scripts/work-staging-schema.sql'));
 
   let loadFlags = explicitRangeFlags();

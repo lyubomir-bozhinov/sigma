@@ -9,8 +9,10 @@
 -- Modelling rationale (cleaning policy, value_flag, consortium model, canonical EUR + FX, the
 -- synthetic-tender rule) lives in docs/etl-pipeline.md and docs/core-scope.md.
 --
--- Layout: (1) domain tables the explorer reads, (2) raw_egov_* staging from the admin export,
--- (3) fx_rates reference, (4) indexes, (5) contract_participants view (parked owner attribution).
+-- Layout: (1) domain tables the explorer reads (+ amendments history + the OCDS parties projection),
+-- (1b) rollups + FTS search, (3) fx_rates / nuts_regions / data_freshness reference, (4) indexes,
+-- (5) contract_participants view (parked owner attribution). No raw_* staging lives here — the
+-- load/transform staging schema is scripts/work-staging-schema.sql (work DB only, never served).
 
 -- ===================================================================================
 -- 1) DOMAIN — what the explorer reads (built by scripts/normalize-egov.sql)
@@ -64,6 +66,7 @@ CREATE TABLE tenders (
   innovation      INTEGER,                 -- Поръчка за новаторски решения
   eauction        INTEGER,                 -- Електронен търг
   cancelled       INTEGER,                 -- Отменена
+  eop_tender_id   TEXT,                    -- raw EOP numeric tenderId; documents deep-link https://app.eop.bg/today/<id> (NOT the УНП / noticeId)
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -165,7 +168,42 @@ CREATE TABLE bidder_members (
   PRIMARY KEY (consortium_id, member_eik)
 );
 
--- Domain amendment history used to roll current_value/annex_count without staging.
+-- Domain amendment history used to roll current_value/annex_count without staging. Natural-keyed so
+-- re-imports are idempotent; built by scripts/promote-amendments.sql from the transient amendment feed.
+CREATE TABLE amendments (
+  id              TEXT PRIMARY KEY,
+  natural_key     TEXT NOT NULL UNIQUE,
+  contract_number TEXT,
+  unp             TEXT,
+  value_before    REAL,
+  value_after     REAL,
+  value_delta     REAL,
+  currency        TEXT,
+  published_at    TEXT,
+  document_number TEXT,
+  description     TEXT,
+  source          TEXT NOT NULL
+);
+CREATE INDEX idx_amendments_contract ON amendments(unp, contract_number);
+
+-- Curated OCDS party projection (served domain/reference data, not raw staging). Built from the
+-- transient raw_ocds_parties by scripts/normalize-egov.sql; feeds authority/bidder nuts/address/contact
+-- enrichment by ЕИК. Keyed ЕИК-first so distinct companies sharing a reused OCDS party slot never collide.
+CREATE TABLE parties (
+  party_key      TEXT PRIMARY KEY,
+  eik            TEXT,
+  source         TEXT NOT NULL,
+  ocid           TEXT,
+  party_id       TEXT,
+  name           TEXT,
+  street_address TEXT,
+  locality       TEXT,
+  region_nuts    TEXT,
+  contact_email  TEXT,
+  contact_phone  TEXT
+);
+CREATE INDEX idx_parties_eik ON parties(eik);
+
 -- ===================================================================================
 -- 1b) ROLLUPS + SEARCH — read-optimised artifacts the explorer reads INSTEAD of a
 --     per-request GROUP BY over 190k contracts × joins (D1 meters rows read). Built by

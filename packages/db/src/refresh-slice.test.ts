@@ -8,9 +8,6 @@ import { describe, expect, it } from 'vitest';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const schemaPath = resolve(root, 'packages/db/migrations/0000_init.sql');
-const amendmentsMigrationPath = resolve(root, 'packages/db/migrations/0001_amendments.sql');
-const partiesMigrationPath = resolve(root, 'packages/db/migrations/0002_parties.sql');
-const tenderEopIdMigrationPath = resolve(root, 'packages/db/migrations/0003_tender_eop_id.sql');
 const refreshSlicePath = resolve(root, 'scripts/refresh-slice.sql');
 const normalizePath = resolve(root, 'scripts/normalize-egov.sql');
 const workStagingSchemaPath = resolve(root, 'scripts/work-staging-schema.sql');
@@ -177,9 +174,6 @@ function seedOcdsOnlySharedNumber(dbPath: string): void {
 
 function initWorkDb(dbPath: string): void {
   readScript(dbPath, schemaPath);
-  readScript(dbPath, amendmentsMigrationPath);
-  readScript(dbPath, partiesMigrationPath);
-  readScript(dbPath, tenderEopIdMigrationPath);
   readScript(dbPath, workStagingSchemaPath);
 }
 
@@ -363,9 +357,6 @@ describe('refresh-slice EOP base derivation', () => {
     const dbPath = resolve(dir, 'test.sqlite');
     try {
       readScript(dbPath, schemaPath);
-      readScript(dbPath, amendmentsMigrationPath);
-      readScript(dbPath, partiesMigrationPath);
-      readScript(dbPath, tenderEopIdMigrationPath);
       readScript(dbPath, workStagingSchemaPath);
       seedEopBaseDay(dbPath);
 
@@ -445,9 +436,6 @@ describe('refresh-slice EOP base derivation', () => {
     const dbPath = resolve(dir, 'test.sqlite');
     try {
       readScript(dbPath, schemaPath);
-      readScript(dbPath, amendmentsMigrationPath);
-      readScript(dbPath, partiesMigrationPath);
-      readScript(dbPath, tenderEopIdMigrationPath);
       readScript(dbPath, workStagingSchemaPath);
       seedEopOnlySharedNumber(dbPath);
       readScript(dbPath, refreshSlicePath);
@@ -496,9 +484,6 @@ describe('refresh-slice EOP base derivation', () => {
     const dbPath = resolve(dir, 'test.sqlite');
     try {
       readScript(dbPath, schemaPath);
-      readScript(dbPath, amendmentsMigrationPath);
-      readScript(dbPath, partiesMigrationPath);
-      readScript(dbPath, tenderEopIdMigrationPath);
       readScript(dbPath, workStagingSchemaPath);
       sqlite(
         dbPath,
@@ -547,9 +532,6 @@ describe('refresh-slice EOP base derivation', () => {
     const dbPath = resolve(dir, 'test.sqlite');
     try {
       readScript(dbPath, schemaPath);
-      readScript(dbPath, amendmentsMigrationPath);
-      readScript(dbPath, partiesMigrationPath);
-      readScript(dbPath, tenderEopIdMigrationPath);
       readScript(dbPath, workStagingSchemaPath);
       sqlite(
         dbPath,
