@@ -70,12 +70,12 @@ export function toISODate(v: unknown): string | null {
   return m ? `${m[3]!}-${m[2]!.padStart(2, '0')}-${m[1]!.padStart(2, '0')}` : s;
 }
 
-export function toSecuredFinancing(v: unknown): number | null {
+function toSecuredFinancing(v: unknown): number | null {
   const unsecured = toBool(v);
   return unsecured === null ? null : unsecured === 1 ? 0 : 1;
 }
 
-export function toVariants(v: unknown): number | null {
+function toVariants(v: unknown): number | null {
   const s = clean(v);
   if (s === 'Разрешено') return 1;
   if (s === 'Забранено') return 0;
@@ -300,7 +300,7 @@ export function baseInsertColumns(cat: BaseCategory): string[] {
   return [...cfg.fixed, ...cfg.fields.map((f) => f.column)];
 }
 
-export function baseColumnKind(cat: BaseCategory, column: string): BaseCoercionKind {
+function baseColumnKind(cat: BaseCategory, column: string): BaseCoercionKind {
   if (column === 'dataset_year' || column === 'needs_enrichment') return 'int';
   const match = BASE_CATEGORIES[cat].fields.find((f) => f.column === column);
   return match?.kind ?? 'text';

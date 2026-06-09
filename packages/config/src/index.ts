@@ -1,8 +1,3 @@
-import type { RiskBand } from '@sigma/shared';
-
-export const PRICE_INDEX_CATEGORIES = ['храни', 'строителство'] as const;
-export type PriceIndexCategory = (typeof PRICE_INDEX_CATEGORIES)[number];
-
 // ── Sector classification (CPV division → sector) ──────────────────────────────────
 //
 // A contract's sector is its CPV *division* — the first 2 digits of the 8-digit CPV code. CPV
@@ -13,8 +8,7 @@ export type PriceIndexCategory = (typeof PRICE_INDEX_CATEGORIES)[number];
 //
 // Coverage verified against the local corpus (May 2026): every one of the 45 divisions below is
 // present, together covering 190,422 contracts / 50.8 bn EUR. The two `curated` divisions — 45
-// Строителство and 15 Храни — are the featured sectors that also drive the price index
-// (PRICE_INDEX_CATEGORIES). See docs/mock-coverage.md.
+// Строителство and 15 Храни — are the featured sectors. See docs/mock-coverage.md.
 
 export interface CpvSector {
   /** 2-digit CPV division code. */
@@ -137,9 +131,6 @@ export function sectorForCpv(cpvCode: string | null | undefined): CpvSector | nu
   return CPV_SECTOR_BY_CODE.get(cpvCode.replace(/\D/g, '').slice(0, 2)) ?? null;
 }
 
-/** The featured sectors (45 Строителство, 15 Храни) — these also drive the price index. */
-export const CURATED_SECTORS: readonly CpvSector[] = CPV_SECTORS.filter((s) => s.curated);
-
 // ── CPV category groups (curated partition over CPV divisions) ─────────────────────────────────
 //
 // CPV has no official level above the 2-digit division, so these top-level categories are a
@@ -219,7 +210,7 @@ export const CPV_CATEGORIES: readonly CpvCategory[] = [
   },
 ];
 
-export const CPV_CATEGORY_BY_DIVISION = new Map<string, CpvCategory>(
+const CPV_CATEGORY_BY_DIVISION = new Map<string, CpvCategory>(
   CPV_CATEGORIES.flatMap((category) =>
     category.divisions.map((division) => [division, category] as const),
   ),
@@ -383,13 +374,6 @@ export const DEFAULT_RISK_WEIGHTS: RiskWeights = {
   competition: 0.2,
   cartel: 0.2,
   process: 1 - (0.25 + 0.25 + 0.2 + 0.2),
-};
-
-export const RISK_BAND_LABELS: Record<RiskBand, string> = {
-  low: 'Нисък',
-  medium: 'Среден',
-  high: 'Висок',
-  critical: 'Критичен',
 };
 
 export function requireEnv(env: Record<string, unknown>, key: string): string {

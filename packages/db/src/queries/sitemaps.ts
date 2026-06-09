@@ -10,7 +10,7 @@ const HEAD =
 const TAIL = '</urlset>\n';
 const CHUNK = 5000;
 
-export const CONTRACTS_PER_SITEMAP = 45000;
+const CONTRACTS_PER_SITEMAP = 45000;
 
 function xmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
