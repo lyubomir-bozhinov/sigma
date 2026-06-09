@@ -23,10 +23,9 @@
 --     NOT coerced to one currency. Money sums must group/convert by currency downstream.
 --   * Authorities dedupe on ЕИК (Вид на възложителя kept as `type`); a canonical name is kept.
 --   * Bidders dedupe on raw contractor ЕИК (kept verbatim in bulstat); is_consortium comes from
---     the admin "възложена на група" flag (awarded_to_group), not a name heuristic. Members
---     hidden behind a single consortium ЕИК need the Търговски регистър (joined on ЕИК) — a
---     later pipeline; bidder_members stays empty and contract_participants attributes the full
---     value to the consortium entity (role 'consortium_unresolved').
+--     the admin "възложена на група" flag (awarded_to_group), not a name heuristic. Resolving the
+--     members hidden behind a single consortium ЕИК needs the Търговски регистър (joined on ЕИК),
+--     a parked future pipeline; for now the full value is attributed to the consortium entity.
 --   * Tenders come from the tenders-export header row (one per УНП); lots from its lot rows.
 --     11k+ УНП appear only in contracts (no tenders row) → a synthetic 'неизвестна' tender so
 --     every contract has a parent. bids stays empty (the data has a bid COUNT, not bids).
@@ -40,7 +39,6 @@ DELETE FROM authority_totals;
 DELETE FROM sector_totals;
 DELETE FROM facet_counts;
 DELETE FROM home_totals;
-DELETE FROM bidder_members;
 DELETE FROM contracts;
 DELETE FROM risk_scores;
 DELETE FROM lots;

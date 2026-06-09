@@ -11,9 +11,9 @@
 -- synthetic-tender rule) lives in docs/etl-pipeline.md and docs/core-scope.md.
 --
 -- Layout: (1) domain tables the explorer reads (+ amendments history + the OCDS parties projection),
--- (1b) rollups + FTS search, (3) fx_rates / nuts_regions / data_freshness reference, (4) indexes,
--- (5) contract_participants view (parked owner attribution). No raw_* staging lives here — the
--- load/transform staging schema is scripts/work-staging-schema.sql (work DB only, never served).
+-- (1b) rollups + FTS search, (3) fx_rates / nuts_regions / data_freshness reference, (4) indexes.
+-- No raw_* staging lives here — the load/transform staging schema is scripts/work-staging-schema.sql
+-- (work DB only, never served).
 
 -- ===================================================================================
 -- 1) DOMAIN — what the explorer reads (built by scripts/normalize-egov.sql)
@@ -156,17 +156,6 @@ CREATE TABLE risk_scores (
   band        TEXT NOT NULL,
   signals     TEXT NOT NULL DEFAULT '{}',  -- JSON signal breakdown
   computed_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- Parked (owner layer): members of a consortium/обединение. Populated later from the Търговски
--- регистър joined on ЕИК (and any in-field ЕИК lists). Empty in the core.
-CREATE TABLE bidder_members (
-  consortium_id TEXT NOT NULL REFERENCES bidders(id),
-  member_eik    TEXT NOT NULL,            -- normalized ЕИК of a participant company
-  member_id     TEXT REFERENCES bidders(id),  -- linked bidder row when the member also bids/wins itself
-  share_pct     REAL,                     -- documented share if known, else NULL (never invented)
-  source        TEXT NOT NULL,            -- 'in_field' | 'bulstat' | 'tr' | 'name_match'
-  PRIMARY KEY (consortium_id, member_eik)
 );
 
 -- Domain amendment history used to roll current_value/annex_count without staging. Natural-keyed so
@@ -373,38 +362,3 @@ CREATE INDEX idx_authority_totals_name ON authority_totals(name);
 CREATE INDEX idx_flow_pairs_won ON flow_pairs(won_eur DESC);
 CREATE INDEX idx_flow_pairs_authority ON flow_pairs(authority_id);
 CREATE INDEX idx_risk_band ON risk_scores(band);
-CREATE INDEX idx_bidder_members_member ON bidder_members(member_eik);
-
--- ===================================================================================
--- 5) VIEWS — contract_participants (parked owner attribution; SUM-safe per company).
---    Sole winner → one row; resolved consortium → one row per member; unresolved consortium →
---    the consortium entity itself (role says which). allocated_amount splits the headline value.
--- ===================================================================================
-
-CREATE VIEW contract_participants AS
-SELECT
-  c.id            AS contract_id,
-  c.tender_id     AS tender_id,
-  bm.member_eik   AS participant_eik,
-  'member'        AS role,
-  c.amount / mc.n AS allocated_amount,
-  mc.n            AS member_count,
-  1               AS is_estimated_split
-FROM contracts c
-JOIN bidders b ON b.id = c.bidder_id AND b.kind = 'consortium'
-JOIN bidder_members bm ON bm.consortium_id = c.bidder_id
-JOIN (SELECT consortium_id, COUNT(*) AS n FROM bidder_members GROUP BY consortium_id) mc
-  ON mc.consortium_id = c.bidder_id
-UNION ALL
-SELECT
-  c.id,
-  c.tender_id,
-  b.eik_normalized,
-  CASE WHEN b.kind = 'consortium' THEN 'consortium_unresolved' ELSE 'sole' END,
-  c.amount,
-  1,
-  0
-FROM contracts c
-JOIN bidders b ON b.id = c.bidder_id
-WHERE NOT (b.kind = 'consortium'
-           AND EXISTS (SELECT 1 FROM bidder_members bm WHERE bm.consortium_id = c.bidder_id));

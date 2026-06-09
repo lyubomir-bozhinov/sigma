@@ -76,29 +76,6 @@ export interface BidderRow {
   created_at: string;
 }
 
-// Members of a consortium bidder (migrations/0000_init.sql). Populated from
-// the ЕИК field when it lists several ids; the rest needs the Търговски регистър.
-export interface BidderMemberRow {
-  consortium_id: string;
-  member_eik: string;
-  member_id: string | null;
-  share_pct: number | null;
-  source: 'in_field' | 'bulstat' | 'tr' | 'name_match';
-}
-
-// Result shape of the `contract_participants` view: contracts exploded to the
-// participating companies. allocated_amount conserves each contract's value across
-// its participants, so it is always safe to SUM at any grouping.
-export interface ContractParticipantRow {
-  contract_id: string;
-  tender_id: string;
-  participant_eik: string | null;
-  role: 'member' | 'sole' | 'consortium_unresolved';
-  allocated_amount: number;
-  member_count: number;
-  is_estimated_split: number; // 1 = equal split among members (estimate), 0 = exact
-}
-
 export interface ContractRow {
   id: string;
   tender_id: string;
