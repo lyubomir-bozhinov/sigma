@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const apiDir = resolve(root, 'apps/api');
+const apiDir = resolve(root, 'apps/web');
 const d1Name = process.env.SIGMA_D1_NAME || 'sigma';
 const TABLES = [
   'authorities',

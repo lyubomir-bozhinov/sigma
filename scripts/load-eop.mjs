@@ -37,7 +37,7 @@ import {
 } from '../packages/ingest/src/ocds.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const apiDir = resolve(root, 'apps/api');
+const apiDir = resolve(root, 'apps/web');
 const MAX_BATCH_BYTES = 90_000;
 const MAX_BATCH_ROWS = 500;
 const MAX_FILE_BYTES = 256 * 1024 * 1024; // keep each SQL chunk under Node's ~512MB string cap (wrangler reads the whole file into one string)

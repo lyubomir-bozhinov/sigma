@@ -16,13 +16,10 @@
   },
   "remoteUser": "node",
   "workspaceFolder": "/workspaces/sigma-prototype",
-  "forwardPorts": [5173, 8787, 8788, 8789, 8790],
+  "forwardPorts": [5173, 8789],
   "portsAttributes": {
     "5173": { "label": "web (React Router dev)" },
-    "8787": { "label": "api (wrangler dev)" },
-    "8788": { "label": "assistant (wrangler dev)" },
-    "8789": { "label": "etl (wrangler dev)" },
-    "8790": { "label": "admin (wrangler dev)" }
+    "8789": { "label": "etl (wrangler dev)" }
   },
   "otherPortsAttributes": { "onAutoForward": "notify" },
   "mounts": [

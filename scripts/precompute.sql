@@ -1,7 +1,7 @@
 -- Sigma — precompute the read-optimised artifacts the explorer reads (rollups + FTS) and the
 -- per-contract EUR value timeline. Run AFTER scripts/normalize-egov.sql has (re)built the domain
 -- tables:
---   (cd apps/api && wrangler d1 execute sigma --local --file ../../scripts/precompute.sql)
+--   (cd apps/web && wrangler d1 execute sigma --local --file ../../scripts/precompute.sql)
 --
 -- WHY: the explorer must NOT recompute aggregates per request — every leaderboard, the home KPIs,
 -- the sector facet and the flows Sankey would otherwise be full GROUP BY scans over 190k contracts ×

@@ -1,7 +1,7 @@
 -- Sigma - normalise the EOP/OCDS staging into the domain tables
 -- (authorities, tenders, lots, bidders, contracts). Run AFTER scripts/load-eop.mjs
 -- (+ scripts/derive-amendments.sql for current_value/annex_count) have populated staging:
---   (cd apps/api && wrangler d1 execute sigma --local --file ../../scripts/normalize-egov.sql)
+--   (cd apps/web && wrangler d1 execute sigma --local --file ../../scripts/normalize-egov.sql)
 --
 -- SOURCE MODEL (see docs/etl-pipeline.md): the EOP open-data feed is the authoritative base for
 -- 2020-2026 (raw_egov_contracts + raw_egov_tenders, source 'eop:%'). The OCDS JSON feed is the

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { computeCatchupWindow, daysInWindow } from '../packages/ingest/src/ocds.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const apiDir = resolve(root, 'apps/api');
+const apiDir = resolve(root, 'apps/web');
 const DEFAULT_FROM = '2020-01-01';
 const LARGE_GAP_DAYS = 14;
 const DEFAULT_LOOKBACK_DAYS = 3;

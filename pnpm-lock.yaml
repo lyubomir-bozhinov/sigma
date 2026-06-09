@@ -33,33 +33,6 @@ importers:
         specifier: ^4.93.1
         version: 4.93.1(@cloudflare/workers-types@4.20260521.1)
 
-  apps/admin:
-    dependencies:
-      '@sigma/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-
-  apps/api:
-    dependencies:
-      '@sigma/api-contract':
-        specifier: workspace:*
-        version: link:../../packages/api-contract
-      '@sigma/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      '@sigma/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@sigma/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-
-  apps/assistant:
-    dependencies:
-      '@sigma/assistant-tools':
-        specifier: workspace:*
-        version: link:../../packages/assistant-tools
-
   apps/etl:
     dependencies:
       '@sigma/ingest':
@@ -135,18 +108,6 @@ importers:
 
   packages/api-contract:
     dependencies:
-      '@sigma/shared':
-        specifier: workspace:*
-        version: link:../shared
-
-  packages/assistant-tools:
-    dependencies:
-      '@sigma/analysis':
-        specifier: workspace:*
-        version: link:../analysis
-      '@sigma/api-contract':
-        specifier: workspace:*
-        version: link:../api-contract
       '@sigma/shared':
         specifier: workspace:*
         version: link:../shared

@@ -1,12 +1,5 @@
 export * from './format';
 
-export type Currency = 'BGN' | 'EUR';
-
-export interface Money {
-  amount: number;
-  currency: Currency;
-}
-
 export type ISODate = string;
 
 export type RiskBand = 'low' | 'medium' | 'high' | 'critical';

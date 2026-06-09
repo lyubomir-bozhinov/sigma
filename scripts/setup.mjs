@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const apiDir = resolve(root, 'apps/api');
+const apiDir = resolve(root, 'apps/web');
 const seedFile = resolve(root, 'scripts/seed.sql');
 
 function run(cmd, args, cwd = root) {
@@ -16,7 +16,7 @@ function run(cmd, args, cwd = root) {
 console.log('==> Sigma local setup');
 run('pnpm', ['install']);
 
-// Local D1 state lives under apps/api/.wrangler — run migrate + seed from there
+// Local D1 state lives under apps/web/.wrangler — run migrate + seed from there
 // so the api worker's `wrangler dev` sees the same database.
 try {
   run('wrangler', ['d1', 'migrations', 'apply', 'sigma', '--local'], apiDir);

@@ -5,12 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const targets = [
-  'apps/api/.wrangler',
-  'apps/etl/.wrangler',
-  'apps/admin/.wrangler',
-  'apps/assistant/.wrangler',
-];
+const targets = ['apps/web/.wrangler', 'apps/etl/.wrangler'];
 
 for (const t of targets) {
   rmSync(resolve(root, t), { recursive: true, force: true });

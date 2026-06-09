@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const apiDir = resolve(root, 'apps/api');
+const apiDir = resolve(root, 'apps/web');
 
 function sqlite(dbPath: string, sql: string): string {
   return execFileSync('sqlite3', ['-bail', dbPath], { input: sql, encoding: 'utf8' });

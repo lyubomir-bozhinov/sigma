@@ -18,7 +18,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const apiDir = resolve(root, 'apps/api');
+const apiDir = resolve(root, 'apps/web');
 function arg(name) {
   const hit = process.argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
   if (!hit) return undefined;
