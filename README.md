@@ -1,67 +1,101 @@
 # СИГМА
 
-**СИГМА — Платформа за прозрачност на обществените поръчки** — a transparency and exploration layer for Bulgarian public procurement. Today СИГМА centralizes the public procurement record from the ЦАИС ЕОП open-data feed, connects institutions → companies → contracts, and makes every aggregate traceable down to the individual source contract. Risk scoring, anomaly detection, and cartel analysis are planned analysis-layer work; scaffolding exists in `packages/analysis`, but it is not wired into the live product yet.
+**СИГМА — платформа за прозрачност на обществените поръчки.** Слой за изследване и анализ върху данните за българските обществени поръчки: централизира публичния регистър от open-data емисията на ЦАИС ЕОП (АОП), свързва **институции → компании → договори** и прави всяка агрегатна стойност проследима до конкретния изходен договор. Отворени данни за граждани, журналисти и НПО.
 
-Built as an analysis/transparency layer over the national procurement data (АОП / ЦАИС ЕОП), with open data for citizens, journalists, and NGOs.
+Оценката на риска, откриването на аномалии и картелният анализ са планирани за аналитичния слой — scaffolding има в `packages/analysis`, но той още не е включен в работещия продукт.
 
-The design is captured in [`docs/`](docs/) — start there:
+## Документация
 
-- **Платформа за СИГМА** — concept overview, key functionality, roadmap.
-- **Обща рамка, концепция, roadmap, законови промени** — architecture, the analysis/monitoring module, phased roadmap, and the legislative changes the platform assumes.
-- **UX - СИГМА** — user journeys for the three personas: contracting authority (възложител), citizen (гражданин), and bidder (фирма-участник).
+Дизайнът и решенията живеят в [`docs/`](docs/) — започнете оттам:
 
-> These are early drafts. A consolidated `docs/specification.md` (mirroring the kolkostruva spec structure) will follow as scope firms up.
+- [`docs/core-scope.md`](docs/core-scope.md) — обхватът на v1: трите същности, страниците и съответствието им с данните (source of truth за текущата итерация).
+- [`docs/etl-pipeline.md`](docs/etl-pipeline.md) и [`docs/etl-eop-feed.md`](docs/etl-eop-feed.md) — ETL pipeline-ът и емисията от ЦАИС ЕОП.
+- [`docs/deploy.md`](docs/deploy.md) — деплой към Cloudflare.
+- [`docs/architecture/`](docs/architecture/) и [`docs/design/`](docs/design/) — архитектурни решения (ADR) и продуктов дизайн.
 
-## Quick start
+## Какво показва v1
 
-This repo is set up to be developed inside a Devcontainer — host machine needs Docker (or compatible: OrbStack, Rancher Desktop) and an editor with Devcontainer support (VS Code, JetBrains, etc.).
+Read-only explorer върху три същности и връзките между тях:
+
+- **Институция** — възложителят (buyer);
+- **Компания** — получателят, с ключ ЕИК;
+- **Договор** — сключеният договор;
+
+плюс **паричните потоци институция → компания** и **глобалното търсене**, които свързват трите същности в един общ граф.
+
+Атомарният запис е **сключеният договор**. Офертите присъстват само като брой (`bids_received`) — офертните суми по участници ги няма в данните на АОП, затова няма изглед по оферта. Сумите се съхраняват в собствената валута на всеки договор (лева до 2025 г., евро от 2026 г.), а за показване всичко се привежда в **евро** по фиксирания курс 1 EUR = 1,95583 BGN; чуждите валути се конвертират по курса към датата на подписване.
+
+| Страница             | Route                | На какъв въпрос отговаря                                       |
+| -------------------- | -------------------- | -------------------------------------------------------------- |
+| Начало               | `/`                  | Обобщени суми + входни точки (топ възложители, топ получатели) |
+| Институции           | `/authorities`       | Всички възложители, с подреждане и филтри                      |
+| Профил на институция | `/authorities/[eik]` | Един възложител: колко, за какво, към кого                     |
+| Компании             | `/companies`         | Получателите; по подразбиране топ бенефициенти                 |
+| Профил на компания   | `/companies/[eik]`   | Един получател: общо спечелено, от кого, какво                 |
+| Договори             | `/contracts`         | Филтриран списък с договори                                    |
+| Детайл на договор    | `/contracts/[id]`    | Една сделка с пълна проследимост до източника                  |
+| Потоци               | `/flows`             | Парични потоци възложител → компания (суми + брой)             |
+| Търсене              | `/search`            | По имена, предмет и идентификатори                             |
+
+Списъците имат CSV експорт (`/contracts.csv`, `/companies.csv`, `/authorities.csv`), всеки договор — JSON изглед (`/contracts/[id].json`). Има и страници за методология, достъпност, поверителност и impressum, плюс `robots.txt` и sitemap файлове.
+
+## Бърз старт
+
+Репото е пригодено за разработка в Devcontainer — хост машината се нуждае от Docker (или съвместим: OrbStack, Rancher Desktop) и редактор с поддръжка на Devcontainer (VS Code, JetBrains и др.).
 
 ```bash
-# Open the folder in your editor and "Reopen in Container"
-# (or run `devcontainer up --workspace-folder .` from the CLI)
+# Отворете папката в редактора и "Reopen in Container"
+# (или от CLI: `devcontainer up --workspace-folder .`)
 
-pnpm setup    # one-time per fresh checkout: install + local D1 + seed
-pnpm dev      # daily: starts every Worker + frontend in parallel
+pnpm setup    # еднократно при нов checkout: install + локален D1 + seed
+pnpm dev      # ежедневно: пуска explorer-а и ETL worker-а паралелно
 ```
 
-> **Status:** prototype. The container, agent conventions, and design docs are in place; the TypeScript monorepo scaffold (`apps/`, `packages/`, workspace + lockfile) is still being established, so the `pnpm` commands below describe the intended flow rather than what runs today.
+`pnpm setup` инсталира зависимостите, прилага D1 миграциите и зарежда малък примерен набор данни (`scripts/seed.sql`) в локалната miniflare база. `pnpm dev` стартира explorer-а на <http://localhost:5173> и ETL worker-а на `:8789`. Пълният корпус се зарежда с `pnpm import` — изисква свалената EOP емисия в `data/eop` (виж [ETL](#etl)).
 
-## Layout
+> **Статус:** прототип. Explorer-ът и refresh worker-ът работят локално и се деплойват на Cloudflare през GitHub Actions; аналитичният слой (оценка на риска, аномалии, картели) е roadmap.
 
-СИГМА reuses the kolkostruva tech stack — a single TypeScript monorepo on Cloudflare's edge platform (pnpm + turbo; React Router v7 SSR on Workers; D1 + Durable Objects + Vectorize + Workers AI + Queues + KV + R2, fronted by AI Gateway). The intended top-level layout:
+## Структура на репозиторието
 
-| Top-level dir        | Contents                                                                                                                                                                                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/`              | Cloudflare Workers — `web` (React Router SSR explorer; citizen / authority / bidder portals; reads D1 directly via `@sigma/db`) and `etl` (ingestion + analysis pipeline)                                                                                               |
-| `packages/`          | Shared libraries — `api-contract`, `db`, `analysis` (planned risk scoring, anomaly + cartel analysis scaffolding), `config`, `shared`                                                                                                                                  |
-| `scripts/`           | Bootstrap, deploy, setup-local, teardown; **ЦАИС ЕОП ingestion** (`load-eop.mjs`, `normalize-egov.sql`, `import.mjs`)                                                                                                                                                 |
-| `data/`              | Cached `storage.eop.bg` EOP open-data feed under `data/eop`, ~192k contracts covering 2020–2026; gitignored. Ingested into D1 by the `scripts/` pipeline — see [`docs/data-ingestion.md`](docs/data-ingestion.md)                                                     |
-| `docs/`              | Specification and design docs                                                                                                                                                                                                                                         |
-| `.devcontainer/`     | Container-based dev environment                                                                                                                                                                                                                                       |
-| `.github/workflows/` | CI: deploy on push, scheduled ingestion, tests on PR                                                                                                                                                                                                                  |
+СИГМА наследява технологичния стек на kolkostruva — единен TypeScript monorepo (pnpm + turbo) върху edge платформата на Cloudflare. Днес продуктът използва Workers (React Router v7 SSR) + D1 + Cloudflare Workflows; останалите услуги на платформата (Durable Objects, Vectorize, Workers AI, Queues, KV, R2, AI Gateway) са на разположение за аналитичния слой.
 
-The planned analysis layer covers risk scoring 0–100, спец-checker AI, ценови аномалии, and cartel detection. It is roadmap work, with pure-function scaffolding in `packages/analysis`; see the architecture doc in `docs/`.
+| Директория           | Съдържание                                                                                                                                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`           | Worker `sigma` — React Router v7 SSR explorer; чете D1 директно през `@sigma/db`                                                                                                                      |
+| `apps/etl`           | Worker `sigma-etl` — cron-only опресняване на данните (durable Workflow `sigma-refresh`)                                                                                                              |
+| `packages/`          | Споделени библиотеки — `@sigma/db` (схема, миграции, заявки), `@sigma/ingest`, `@sigma/api-contract`, `@sigma/analysis` (scaffolding за планирания аналитичен слой), `@sigma/config`, `@sigma/shared` |
+| `scripts/`           | Bootstrap, setup, teardown, рендериране на wrangler конфига; **ЦАИС ЕОП ingestion** (`load-eop.mjs`, `import.mjs`, `normalize-egov.sql` и съпътстващите SQL стъпки)                                   |
+| `data/`              | Кешираната `storage.eop.bg` емисия под `data/eop` — ~192 хил. договора от 2020 г. насам; gitignored. Зарежда се в D1 от pipeline-а в `scripts/` — виж [`docs/etl-pipeline.md`](docs/etl-pipeline.md)  |
+| `docs/`              | Спецификация и дизайн документи                                                                                                                                                                       |
+| `.devcontainer/`     | Контейнерна dev среда                                                                                                                                                                                 |
+| `.github/workflows/` | `ci.yml` — lint, typecheck, тестове, dependency audit и secret scan при push и PR; `deploy.yml` — деплой при release tag (`v*` → production) или ръчно стартиране (staging/production)                |
 
-## Common commands
+Планираният аналитичен слой покрива оценка на риска 0–100, спец-checker AI, ценови аномалии и откриване на картели — roadmap работа с pure-function scaffolding в `packages/analysis`; виж архитектурните документи в `docs/`.
 
-| Command                | Purpose                                                         |
-| ---------------------- | --------------------------------------------------------------- |
-| `pnpm setup`           | First-time setup on a fresh checkout                            |
-| `pnpm dev`             | Start every Worker + frontend locally (miniflare)               |
-| `pnpm typecheck`       | Type-check the workspace                                        |
-| `pnpm test`            | Run all tests                                                   |
-| `pnpm bootstrap`       | Dry-run Cloudflare resource creation (one-time per CF account)  |
-| `pnpm bootstrap:apply` | Actually create the resources                                   |
-| `pnpm deploy`          | Run by CI on push to `main`; idempotent migrate + seed + deploy |
+## Често използвани команди
+
+| Команда                | Предназначение                                                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm setup`           | Първоначална настройка при нов checkout (install + миграции + seed)                                                                    |
+| `pnpm dev`             | Пуска explorer-а и ETL worker-а локално (miniflare)                                                                                    |
+| `pnpm typecheck`       | Type-check на workspace-а                                                                                                              |
+| `pnpm test`            | Пуска всички тестове                                                                                                                   |
+| `pnpm lint` / `format` | Prettier проверка / форматиране                                                                                                        |
+| `pnpm import`          | Зарежда EOP емисията в локалния D1 и преизгражда производните таблици; `--catchup` сам изчислява прозореца за догонване                |
+| `pnpm bootstrap`       | Dry-run създаване на Cloudflare ресурсите (еднократно за CF акаунт); `bootstrap:apply` ги създава реално                               |
+| `pnpm run deploy`      | Деплой на двата Worker-а; в CI се пуска при release tag или ръчно. `run` е задължително — голото `pnpm deploy` е вградена pnpm команда |
+| `pnpm teardown`        | Изтрива локалното miniflare състояние (`.wrangler` на двата worker-а)                                                                  |
 
 ## ETL
 
-The historical ЦАИС ЕОП base is loaded from the public EOP MinIO open-data feed by `scripts/load-eop.mjs`; `scripts/import.mjs` applies the local D1 migrations, loads the feed, and rebuilds derived tables. The feed base defaults to `https://storage.eop.bg` and can be overridden with `EOP_OPEN_DATA_BASE_URL`.
+Историческата база на ЦАИС ЕОП се зарежда от публичната EOP MinIO open-data емисия: `scripts/load-eop.mjs` сваля и стейджва дневните bucket-и (по подразбиране пише SQL файлове и ги прилага само с `--apply`), а `scripts/import.mjs` прилага локалните D1 миграции, зарежда емисията и преизгражда производните таблици. Базовият адрес по подразбиране е `https://storage.eop.bg` и може да се подмени с `EOP_OPEN_DATA_BASE_URL`.
 
-## Operational security
+В production worker-ът `sigma-etl` опреснява базата на всеки 6 часа (cron `0 */6 * * *`), като стартира durable Workflow `sigma-refresh` върху малък скорошен прозорец; големите догонвания остават за CLI-то (`pnpm import --catchup`). Подробности — в [`docs/etl-pipeline.md`](docs/etl-pipeline.md) и [`docs/etl-eop-feed.md`](docs/etl-eop-feed.md).
 
-Production deploys originate only from GitHub Actions; the dev machine never holds a long-lived production credential. Procurement data is public by design, but integrations with national registries (НАП, Търговски регистър) carry access constraints — treat any credentials for those as production secrets.
+## Оперативна сигурност
 
-## License
+Production деплоите тръгват само от GitHub Actions (release tag или ръчно стартиране); dev машината никога не държи дълготрайни production credentials. Данните за обществени поръчки са публични по дизайн, но интеграциите с национални регистри (НАП, Търговски регистър) носят ограничения за достъп — третирайте всички credentials за тях като production secrets.
 
-TBD before public release.
+## Лиценз
+
+Ще бъде определен преди публичното пускане.
