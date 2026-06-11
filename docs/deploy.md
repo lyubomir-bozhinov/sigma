@@ -311,16 +311,16 @@ staging schedule (e.g. `30 */6 * * *`) so it doesn't hit the source at the same 
 
 - **Runtime secrets.** The explorer needs none (read-only public data; OCDS reads need no key). The
   **ETL** has no runtime secret and no public HTTP surface — it runs cron-only and cannot be
-  triggered over the internet. The `.dev.vars` secrets remain for the parked `assistant`/`admin`
-  apps — `admin` fails closed without `ADMIN_BASIC_AUTH_PASS` (set `ADMIN_ALLOW_UNAUTH=true` only for
-  local dev).
+  triggered over the internet. The `.dev.vars` secrets remain for AI gateway / Anthropic and
+  national-registry credentials used by ETL/ingest and the planned assistant.
 - **Access scoping.** Cloudflare API tokens scope by permission + account, **not** down to one Worker
   script (`Workers Scripts: Edit` is account-wide). For true "only-Sigma" isolation, put the Sigma
   workers in their own Cloudflare account and scope the token to it (this is the production-v2 plan).
   Otherwise use the minimal scopes above and keep the token in CI rather than on a laptop.
 - **Page caching** is done via `Cache-Control` headers + the per-colo Cache API
   ([apps/web/app/lib/cache.ts](../apps/web/app/lib/cache.ts)) — no KV namespace needed. D1 is the
-  only Cloudflare resource Sigma provisions.
+  only Cloudflare resource Sigma provisions. Full CSV exports are streamed without edge caching and
+  are protected by the `CSV_RATE_LIMITER` Workers Rate Limiting binding.
 
 ## Production-v2 (future, separate account)
 
