@@ -2,10 +2,10 @@
 -- ===================================================================================
 -- 2) STAGING — storage.eop.bg per-day open-data buckets (base JSON + in-bucket OCDS), by
 --    scripts/load-eop.mjs. 100% raw landing (source 'eop:<cat>:<date>' / 'ocds:<date>'); all cleaning
---    happens in normalize-egov.sql. These raw tables live in the work DB only, never the served D1.
+--    happens in normalize-raw.sql. These raw tables live in the work DB only, never the served D1.
 -- ===================================================================================
 
-CREATE TABLE raw_egov_contracts (
+CREATE TABLE raw_contracts (
   id               INTEGER PRIMARY KEY,
   source           TEXT NOT NULL,          -- 'admin:contracts:2023' (also 'ocds:…' for the go-forward feed)
   dataset_uri      TEXT,
@@ -88,7 +88,7 @@ CREATE TABLE raw_egov_contracts (
 );
 
 -- Procedure records (lot-grained: one header row per УНП with lot_id NULL, plus one row per lot).
-CREATE TABLE raw_egov_tenders (
+CREATE TABLE raw_tenders (
   id              INTEGER PRIMARY KEY,
   source          TEXT NOT NULL,          -- 'admin:tenders:2023'
   dataset_year    INTEGER,
@@ -149,7 +149,7 @@ CREATE TABLE raw_egov_tenders (
 );
 
 -- One row per amendment (изменение / анекс); derive-amendments.sql rolls these onto contracts.
-CREATE TABLE raw_egov_amendments (
+CREATE TABLE raw_amendments (
   id               INTEGER PRIMARY KEY,
   source           TEXT NOT NULL,          -- 'admin:annexes:2023'
   dataset_uri      TEXT,
@@ -159,10 +159,10 @@ CREATE TABLE raw_egov_amendments (
   fetched_at       TEXT NOT NULL,
   seq_no               TEXT,
   document_number      TEXT,
-  contract_number      TEXT,              -- ← link to raw_egov_contracts
+  contract_number      TEXT,              -- ← link to raw_contracts
   contract_date        TEXT,
   published_at         TEXT,              -- amendment publication date (ordering key)
-  unp                  TEXT,              -- ← link to raw_egov_contracts
+  unp                  TEXT,              -- ← link to raw_contracts
   authority_eik        TEXT,
   authority_name       TEXT,
   procurement_subject  TEXT,
@@ -199,7 +199,7 @@ CREATE TABLE raw_egov_amendments (
 );
 
 -- OCDS parties (storage.eop.bg in-bucket OCDS feed) — full party records: ЕИК + address (city + NUTS region) +
--- roles + contact. Captured by scripts/load-eop.mjs; normalize-egov.sql enriches authorities/bidders
+-- roles + contact. Captured by scripts/load-eop.mjs; normalize-raw.sql enriches authorities/bidders
 -- location from here by ЕИК. Source 'ocds:%'.
 CREATE TABLE raw_ocds_parties (
   id             INTEGER PRIMARY KEY,
@@ -224,7 +224,7 @@ CREATE TABLE raw_ocds_parties (
 );
 
 -- OCDS lots — per-lot values from the in-bucket release package. tender_id is the OCDS tender.id
--- used to bridge to raw_egov_tenders.tender_id; ocid is provenance only, not a UNP.
+-- used to bridge to raw_tenders.tender_id; ocid is provenance only, not a UNP.
 CREATE TABLE raw_ocds_lots (
   id             INTEGER PRIMARY KEY,
   source         TEXT NOT NULL,
@@ -240,17 +240,17 @@ CREATE TABLE raw_ocds_lots (
 );
 
 -- Work-only staging indexes.
-CREATE INDEX idx_egov_unp ON raw_egov_contracts(unp);
-CREATE INDEX idx_egov_unp_cnum ON raw_egov_contracts(unp, contract_number);
-CREATE INDEX idx_egov_cnum ON raw_egov_contracts(contract_number);  -- admin↔OCDS dedup key (normalize step 5)
-CREATE INDEX idx_egov_eik ON raw_egov_contracts(contractor_eik);
-CREATE INDEX idx_egov_year ON raw_egov_contracts(dataset_year);
-CREATE INDEX idx_egov_needs_enrichment ON raw_egov_contracts(needs_enrichment);
-CREATE INDEX idx_egov_tenders_unp ON raw_egov_tenders(unp);
-CREATE INDEX idx_egov_tenders_tender_id ON raw_egov_tenders(tender_id);
-CREATE INDEX idx_egov_tenders_source ON raw_egov_tenders(source);
-CREATE INDEX idx_egov_amend_contract ON raw_egov_amendments(unp, contract_number);
-CREATE INDEX idx_egov_amend_source ON raw_egov_amendments(source);
+CREATE INDEX idx_raw_unp ON raw_contracts(unp);
+CREATE INDEX idx_raw_unp_cnum ON raw_contracts(unp, contract_number);
+CREATE INDEX idx_raw_cnum ON raw_contracts(contract_number);  -- admin↔OCDS dedup key (normalize step 5)
+CREATE INDEX idx_raw_eik ON raw_contracts(contractor_eik);
+CREATE INDEX idx_raw_year ON raw_contracts(dataset_year);
+CREATE INDEX idx_raw_needs_enrichment ON raw_contracts(needs_enrichment);
+CREATE INDEX idx_raw_tenders_unp ON raw_tenders(unp);
+CREATE INDEX idx_raw_tenders_tender_id ON raw_tenders(tender_id);
+CREATE INDEX idx_raw_tenders_source ON raw_tenders(source);
+CREATE INDEX idx_raw_amend_contract ON raw_amendments(unp, contract_number);
+CREATE INDEX idx_raw_amend_source ON raw_amendments(source);
 CREATE INDEX idx_ocds_parties_eik ON raw_ocds_parties(eik);
 CREATE INDEX idx_ocds_parties_source ON raw_ocds_parties(source);
 CREATE INDEX idx_ocds_lots_source ON raw_ocds_lots(source);

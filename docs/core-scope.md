@@ -136,8 +136,8 @@ the УНП (`tenders.source_id`) and `contract_number` †.
 ## Data dependencies this scope needs
 
 **Mostly done.** normalize v2 (the admin export → domain rebuild, [etl-pipeline.md](etl-pipeline.md))
-propagates these directly — the admin export carries them per row, from `raw_egov_contracts` /
-`raw_egov_tenders` via [normalize-egov.sql](../scripts/normalize-egov.sql).
+propagates these directly — the admin export carries them per row, from `raw_contracts` /
+`raw_tenders` via [normalize-raw.sql](../scripts/normalize-raw.sql).
 
 | Field | Domain home | Status |
 | --- | --- | --- |

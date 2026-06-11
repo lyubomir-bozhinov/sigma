@@ -19,13 +19,13 @@ published bucket contains four JSON files:
 3. plain annexes JSON
 4. one full OCDS 1.1 release package
 
-The plain JSON files are the base. They populate the existing `raw_egov_contracts`,
-`raw_egov_tenders`, and `raw_egov_amendments` staging tables with `source` values like
+The plain JSON files are the base. They populate the existing `raw_contracts`,
+`raw_tenders`, and `raw_amendments` staging tables with `source` values like
 `eop:contracts:YYYY-MM-DD`, `eop:tenders:YYYY-MM-DD`, and `eop:annexes:YYYY-MM-DD`.
 
 The in-bucket OCDS file enriches that base. It populates:
 
-- `raw_egov_contracts` and `raw_egov_amendments` with `source = 'ocds:YYYY-MM-DD'`
+- `raw_contracts` and `raw_amendments` with `source = 'ocds:YYYY-MM-DD'`
 - `raw_ocds_parties` for party address and contact fields
 - `raw_ocds_award_suppliers` for all suppliers on each award
 - `raw_ocds_lots` for per-lot OCDS values
@@ -78,7 +78,7 @@ window and derive mode:
 - large or first-run catch-up: CLI window plus full derive
 - small steady-state refresh: gap-aware window plus slice derive
 
-`scripts/import.mjs --catchup` detects loaded bucket coverage from `raw_egov_contracts` source-tag
+`scripts/import.mjs --catchup` detects loaded bucket coverage from `raw_contracts` source-tag
 dates for `eop:%` and `ocds:%`. It uses `published_at` only as a fallback for loaded rows, and uses
 `data_freshness.as_of` only when there are zero loaded EOP/OCDS staging rows. This prevents signed-date
 metrics from masking missing bucket coverage.
@@ -91,14 +91,14 @@ for small gaps.
 
 ## Domain derive
 
-`normalize-egov.sql` performs a full rebuild from staging:
+`normalize-raw.sql` performs a full rebuild from staging:
 
 - EOP base rows win.
 - OCDS contract rows fill only genuinely new contract numbers not present in EOP.
 - parties enrich authority and bidder address, NUTS, settlement, contact email, and contact phone by
   EIK.
 - lots receive OCDS per-lot `value_amount` and `value_currency` only when the safe bridge exists:
-  `raw_ocds_lots.tender_id` -> `raw_egov_tenders.tender_id` -> UNP -> domain lot id.
+  `raw_ocds_lots.tender_id` -> `raw_tenders.tender_id` -> UNP -> domain lot id.
 
 `refresh-slice.sql` is idempotent for the refreshed window. It derives new EOP base rows into `c:e:*`
 refresh ids and OCDS rows into `c:o:*` refresh ids, then refreshes affected rollups and search rows.
@@ -129,7 +129,7 @@ A later full normalize rebases those rows into the normal `c:*` id space.
 
 The procurement data spans the BGN to EUR switch: 2020-2025 contract amounts are recorded in BGN,
 2026 amounts are recorded in EUR, and a small number of contracts use other currencies such as USD,
-CHF, GBP, TRY, SEK, or CZK. `normalize-egov.sql` keeps each row's native recorded value on
+CHF, GBP, TRY, SEK, or CZK. `normalize-raw.sql` keeps each row's native recorded value on
 `contracts.amount` and `contracts.currency`, then derives canonical `contracts.amount_eur` for safe
 aggregation.
 
@@ -147,7 +147,7 @@ stored on the contract, so `amount * fx_rate = amount_eur` can be audited withou
 
 ### Data quality
 
-Source value errors are handled non-destructively: staging stays raw, while `normalize-egov.sql`
+Source value errors are handled non-destructively: staging stays raw, while `normalize-raw.sql`
 derives `value_flag` and `amount_eur` on domain contracts.
 
 - **Value errors:** roughly 213 source rows have signed or amended values at least 100x the

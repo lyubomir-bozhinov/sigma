@@ -114,8 +114,8 @@ is **deferred** (see below).
 ### Data & query tools
 
 - **`run_sql`** — read-only `SELECT` over D1; the "any select query" capability you asked for.
-  Reaches both the normalized domain tables and the raw source mirrors (`raw_egov_*`,
-  `raw_ocds_*`, `raw_tr_companies`). Safety is designed in full under #7; the shape: single
+  Reaches both the normalized domain tables and the raw source mirrors (`raw_contracts`,
+  `raw_tenders`, `raw_amendments`, `raw_ocds_*`, `raw_tr_companies`). Safety is designed in full under #7; the shape: single
   statement, must be `SELECT`/`WITH…SELECT`, keyword blocklist (`INSERT/UPDATE/DELETE/DROP/
   ATTACH/PRAGMA/…`), no extra semicolons, a hard `LIMIT`, a row/byte cap on what's returned to the
   model, and a query timeout.

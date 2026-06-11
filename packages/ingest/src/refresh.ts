@@ -82,11 +82,18 @@ export function refreshSliceStatementGroups(refreshSliceSql: string): RefreshSli
 }
 
 const TRANSIENT_STAGING_TABLES = [
+  'raw_contracts',
+  'raw_tenders',
+  'raw_amendments',
+  'raw_ocds_parties',
+  'raw_ocds_lots',
+] as const;
+
+// Clean leftovers from crashed refreshes before the 2026-06 staging-table rename.
+const LEGACY_TRANSIENT_STAGING_TABLES = [
   'raw_egov_contracts',
   'raw_egov_tenders',
   'raw_egov_amendments',
-  'raw_ocds_parties',
-  'raw_ocds_lots',
 ] as const;
 
 function touchesTransientStaging(statement: string): boolean {
@@ -98,7 +105,7 @@ export function transientStagingStatements(workStagingSchemaSql: string): string
 }
 
 export function dropTransientStagingStatements(): string[] {
-  return [...TRANSIENT_STAGING_TABLES]
+  return [...TRANSIENT_STAGING_TABLES, ...LEGACY_TRANSIENT_STAGING_TABLES]
     .reverse()
     .map((table) => `DROP TABLE IF EXISTS ${table}`);
 }

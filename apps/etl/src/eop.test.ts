@@ -4,7 +4,7 @@ import { computeWorkerCatchupPlan, listBucketForDay } from './eop';
 function fakeDbFromFreshness(maxLoadedDate: string): D1Database {
   const db = {
     prepare(sql: string) {
-      if (sql.includes('raw_egov_contracts')) {
+      if (sql.includes('raw_contracts')) {
         throw new Error('raw staging should not be read for planning');
       }
       return {

@@ -25,7 +25,7 @@ WITH keyed AS (
           COALESCE(currency, '') || ':' ||
           COALESCE(description, '')
       ) AS natural_key
-  FROM raw_egov_amendments
+  FROM raw_amendments
 ), dedup AS (
   SELECT *,
     ROW_NUMBER() OVER (

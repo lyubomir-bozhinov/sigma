@@ -1,5 +1,5 @@
 -- Sigma — precompute the read-optimised artifacts the explorer reads (rollups + FTS) and the
--- per-contract EUR value timeline. Run AFTER scripts/normalize-egov.sql has (re)built the domain
+-- per-contract EUR value timeline. Run AFTER scripts/normalize-raw.sql has (re)built the domain
 -- tables:
 --   (cd apps/web && wrangler d1 execute sigma --local --file ../../scripts/precompute.sql)
 --

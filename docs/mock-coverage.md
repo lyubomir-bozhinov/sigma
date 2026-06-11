@@ -22,7 +22,7 @@ admin full export. Only **per-bidder bid amounts** are unavailable anywhere. See
   2026): 4,868 authorities · 139,718 tenders · 195,220 lots · 17,354 bidders · 190,427 contracts ·
   **50.83 bn EUR** clean total (`SUM(amount_eur)`), data current to 2026-05-22 — matching the
   documented counts exactly. Schema: [0000_init.sql](../packages/db/migrations/0000_init.sql);
-  transform: [normalize-egov.sql](../scripts/normalize-egov.sql). Live spot-checks confirmed
+  transform: [normalize-raw.sql](../scripts/normalize-raw.sql). Live spot-checks confirmed
   `bids`/`risk_scores`/`bidder_members` = 0 rows and `authorities.region` = 0/4,868 populated.
 - **Figures differ from the mocks, in our favour.** The mocks use placeholder numbers from a
   narrower slice — 2 sectors (строителство/храни), 2020–2024, 129,134 contracts, 47.8 bn лв. The
@@ -105,8 +105,8 @@ gap for every entity that appears in procurement, with no new source.
   **33 медицина (35,187 contracts), 45 строителство (26,899 / 19.0 bn EUR), 71 инженерни услуги
   (14,232), 15 храни (10,959)**; only the 5 contracts with no CPV are unclassified.
 - **Lot ↔ contract link** — "обособена позиция Лот 6 от 6", the per-lot contractor/value table, and
-  the "N обособени позиции" sub-counts. `lot_id` **exists in staging** (`raw_egov_contracts.lot_id`)
-  but [normalize-egov.sql](../scripts/normalize-egov.sql) drops it — the domain `contracts` table has
+  the "N обособени позиции" sub-counts. `lot_id` **exists in staging** (`raw_contracts.lot_id`)
+  but [normalize-raw.sql](../scripts/normalize-raw.sql) drops it — the domain `contracts` table has
   no `lot_id`. Listing a tender's lots (titles, estimated values) works; mapping each lot to its
   winning contract does not. This is a **normalize/schema change, not missing data**.
 - **Bid-count metrics** (avg/median bids, single-bidder share, distribution) — derivable from
@@ -114,7 +114,7 @@ gap for every entity that appears in procurement, with no new source.
 - **"Group award" flag** — `contracts.awarded_to_group` is **real data** (the "Възложена на група"
   Да/Не column), so "this award went to an обединение/консорциум" is achievable per contract, and an
   entity can be marked a consortium by aggregating it. Note the current `bidders.is_consortium` /
-  `kind` flag is instead computed by **name matching** (`LIKE '%ДЗЗД%'` … in normalize-egov.sql) — a
+  `kind` flag is instead computed by **name matching** (`LIKE '%ДЗЗД%'` … in normalize-raw.sql) — a
   heuristic, so under these rules it should be **replaced by `awarded_to_group`** or dropped. The
   finer entity types **ЕТ** and **чуждестранно** have no real source field and are **not achievable**.
 - **Authority type** — `authorities.type` is filled for 4,867/4,868 **directly from the source field**
@@ -146,5 +146,5 @@ only sanctioned in-DB "derivation" is deterministic config — chiefly the CPV-d
 - Intended scope & data mapping: [core-scope.md](core-scope.md).
 - Pipeline feeding the domain: [etl-pipeline.md](etl-pipeline.md).
 - Schema (domain + staging + parked hooks, one file): [0000_init.sql](../packages/db/migrations/0000_init.sql).
-- Transform that decides what is populated: [normalize-egov.sql](../scripts/normalize-egov.sql).
+- Transform that decides what is populated: [normalize-raw.sql](../scripts/normalize-raw.sql).
 - The mocks assessed: [`mocks/v1/`](../mocks/v1/).

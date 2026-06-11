@@ -162,7 +162,7 @@ function latestLoadedDate() {
         WHEN published_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
         THEN published_at
       END) AS max_published_at
-    FROM raw_egov_contracts
+    FROM raw_contracts
     WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
   `);
   const loadedRows = Number(rows[0]?.rows ?? 0);
@@ -209,7 +209,7 @@ function runFullDerive() {
   execSql(resolve(root, 'scripts/derive-amendments.sql'));
   run('node', ['scripts/load-fx.mjs', '--apply', ...passthru]);
   execSql(resolve(root, 'scripts/load-nuts.sql'));
-  execSql(resolve(root, 'scripts/normalize-egov.sql'));
+  execSql(resolve(root, 'scripts/normalize-raw.sql'));
   assertFxPopulated();
   execSql(resolve(root, 'scripts/precompute.sql'));
 }
@@ -264,7 +264,7 @@ function runWorkBackfill() {
   sqliteFile(workDb, resolve(root, 'scripts/derive-amendments.sql'));
   run('node', ['scripts/load-fx.mjs', '--apply', `--work-db=${workDb}`, `--out=${resolve(workDir, `${stem}.fx-load.sql`)}`]);
   sqliteFile(workDb, resolve(root, 'scripts/load-nuts.sql'));
-  sqliteFile(workDb, resolve(root, 'scripts/normalize-egov.sql'));
+  sqliteFile(workDb, resolve(root, 'scripts/normalize-raw.sql'));
   sqliteFile(workDb, resolve(root, 'scripts/promote-amendments.sql'));
   assertFxPopulatedSqlite(workDb);
 

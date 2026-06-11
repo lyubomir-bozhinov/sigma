@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const schemaPath = resolve(root, 'packages/db/migrations/0000_init.sql');
 const refreshSlicePath = resolve(root, 'scripts/refresh-slice.sql');
-const normalizePath = resolve(root, 'scripts/normalize-egov.sql');
+const normalizePath = resolve(root, 'scripts/normalize-raw.sql');
 const workStagingSchemaPath = resolve(root, 'scripts/work-staging-schema.sql');
 
 function sqlite(dbPath: string, sql: string): string {
@@ -55,7 +55,7 @@ function seedEopBaseDay(dbPath: string): void {
   sqlite(
     dbPath,
     `PRAGMA foreign_keys=ON;
-INSERT INTO raw_egov_tenders
+INSERT INTO raw_tenders
   (source, dataset_year, fetched_at, unp, tender_id, procedure_type, procurement_subject,
    cpv_code, cpv_description, contract_kind, estimated_value, currency, legal_basis,
    award_criteria, authority_name, authority_eik, authority_type, main_activity, deadline,
@@ -70,7 +70,7 @@ VALUES
    'lowest', 'Authority CE', '123456789', 'public', 'activity', '2026-06-10', 'notice',
    '1', 'Lot 1', 1, 0, '2026-06-01');
 
-INSERT INTO raw_egov_contracts
+INSERT INTO raw_contracts
   (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
    published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
    cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -90,7 +90,7 @@ VALUES
    'public', 'activity', 'notice', NULL, 'CONTRACT-CO-1', '2026-06-02', 1000, 'BGN',
    'OCDS contract', 0, '987654322', 'Bidder CO', 'BG', 'small', 0, 3, 1, 0, 0, 30);
 
-INSERT INTO raw_egov_amendments
+INSERT INTO raw_amendments
   (source, dataset_year, dataset_variant, fetched_at, seq_no, document_number,
    contract_number, contract_date, published_at, unp, authority_eik, authority_name,
    procurement_subject, contract_kind, value_before, value_after, value_delta,
@@ -109,7 +109,7 @@ VALUES
 function seedRepeatedAnnexOnly(dbPath: string): void {
   sqlite(
     dbPath,
-    `INSERT INTO raw_egov_amendments
+    `INSERT INTO raw_amendments
       (source, dataset_year, dataset_variant, fetched_at, seq_no, document_number,
        contract_number, contract_date, published_at, unp, authority_eik, authority_name,
        procurement_subject, contract_kind, value_before, value_after, value_delta,
@@ -124,7 +124,7 @@ function seedRepeatedAnnexOnly(dbPath: string): void {
 function seedEopOnlySharedNumber(dbPath: string): void {
   sqlite(
     dbPath,
-    `INSERT INTO raw_egov_tenders
+    `INSERT INTO raw_tenders
       (source, dataset_year, fetched_at, unp, tender_id, procedure_type, procurement_subject,
        cpv_code, cpv_description, contract_kind, estimated_value, currency, legal_basis,
        award_criteria, authority_name, authority_eik, authority_type, main_activity, deadline,
@@ -135,7 +135,7 @@ function seedEopOnlySharedNumber(dbPath: string): void {
        'lowest', 'Authority Shared', '223456789', 'public', 'activity', '2026-06-10', 'notice',
        NULL, NULL, 1, 0, '2026-06-01');
 
-    INSERT INTO raw_egov_contracts
+    INSERT INTO raw_contracts
       (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
        published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
        cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -155,7 +155,7 @@ function seedEopOnlySharedNumber(dbPath: string): void {
 function seedOcdsOnlySharedNumber(dbPath: string): void {
   sqlite(
     dbPath,
-    `INSERT INTO raw_egov_contracts
+    `INSERT INTO raw_contracts
       (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
        published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
        cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -180,7 +180,7 @@ function initWorkDb(dbPath: string): void {
 function seedContractIdFixture(dbPath: string): void {
   sqlite(
     dbPath,
-    `INSERT INTO raw_egov_tenders
+    `INSERT INTO raw_tenders
       (source, dataset_year, fetched_at, unp, tender_id, procedure_type, procurement_subject,
        cpv_code, cpv_description, contract_kind, estimated_value, currency, legal_basis,
        award_criteria, authority_name, authority_eik, authority_type, main_activity, deadline,
@@ -195,7 +195,7 @@ function seedContractIdFixture(dbPath: string): void {
        'lowest', 'Authority ID', '523456789', 'public', 'activity', '2026-06-10', 'notice',
        '1', 'Lot 1', 1, 0, '2026-06-01');
 
-    INSERT INTO raw_egov_contracts
+    INSERT INTO raw_contracts
       (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
        published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
        cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -245,7 +245,7 @@ function seedSyntheticWindow(
 ): void {
   sqlite(
     dbPath,
-    `INSERT INTO raw_egov_contracts
+    `INSERT INTO raw_contracts
       (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
        published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
        cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -290,7 +290,7 @@ function seedReplayParty(dbPath: string): void {
 function seedReplayEntity(dbPath: string): void {
   sqlite(
     dbPath,
-    `INSERT INTO raw_egov_contracts
+    `INSERT INTO raw_contracts
       (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
        published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
        cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -332,7 +332,7 @@ function seedTwoCollidingBidders(dbPath: string): void {
   ] as const) {
     sqlite(
       dbPath,
-      `INSERT INTO raw_egov_contracts
+      `INSERT INTO raw_contracts
         (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
          published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
          cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -497,7 +497,7 @@ describe('refresh-slice EOP base derivation', () => {
            VALUES
            ('c:e:flag', 't:UNP-FLAG', 'eik:777777777', 100, 'BGN', '2026-06-02',
             'CONTRACT-FLAG', 100, 10000, 1, 'annex_suspect', NULL, 100 / 1.95583);
-         INSERT INTO raw_egov_amendments
+         INSERT INTO raw_amendments
            (source, dataset_year, dataset_variant, fetched_at, seq_no, document_number,
             contract_number, contract_date, published_at, unp, authority_eik, authority_name,
             procurement_subject, contract_kind, value_before, value_after, value_delta,
@@ -535,7 +535,7 @@ describe('refresh-slice EOP base derivation', () => {
       readScript(dbPath, workStagingSchemaPath);
       sqlite(
         dbPath,
-        `INSERT INTO raw_egov_tenders
+        `INSERT INTO raw_tenders
           (source, dataset_year, fetched_at, unp, tender_id, procedure_type, procurement_subject,
            cpv_code, cpv_description, contract_kind, estimated_value, currency, legal_basis,
            award_criteria, authority_name, authority_eik, authority_type, main_activity, deadline,
@@ -546,7 +546,7 @@ describe('refresh-slice EOP base derivation', () => {
            'lowest', 'Authority Mismatch', '423456789', 'public', 'activity', '2026-06-10', 'notice',
            NULL, NULL, 1, 0, '2026-06-01');
 
-        INSERT INTO raw_egov_contracts
+        INSERT INTO raw_contracts
           (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
            published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
            cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -561,7 +561,7 @@ describe('refresh-slice EOP base derivation', () => {
            'public', 'activity', 'notice', NULL, 'CONTRACT-MISMATCH', '2026-06-02', 1000, 'BGN',
            'Mismatch contract', 0, '677777777', 'Bidder Mismatch', 'BG', 'small', 0, 3, 1, 0, 0, 30);
 
-        INSERT INTO raw_egov_amendments
+        INSERT INTO raw_amendments
           (source, dataset_year, dataset_variant, fetched_at, seq_no, document_number,
            contract_number, contract_date, published_at, unp, authority_eik, authority_name,
            procurement_subject, contract_kind, value_before, value_after, value_delta,
@@ -651,7 +651,7 @@ describe('refresh-slice EOP base derivation', () => {
       for (const dbPath of [fullDb, sliceDb]) {
         sqlite(
           dbPath,
-          `INSERT INTO raw_egov_tenders
+          `INSERT INTO raw_tenders
             (source, dataset_year, fetched_at, unp, tender_id, procedure_type, procurement_subject,
              cpv_code, cpv_description, contract_kind, estimated_value, currency, legal_basis,
              award_criteria, authority_name, authority_eik, authority_type, main_activity, deadline,
@@ -662,7 +662,7 @@ describe('refresh-slice EOP base derivation', () => {
              'lowest', 'Authority Ordinal', '723456789', 'public', 'activity', '2026-06-10', 'notice',
              NULL, NULL, 1, 0, '2026-06-01');
 
-          INSERT INTO raw_egov_amendments
+          INSERT INTO raw_amendments
             (source, dataset_year, dataset_variant, fetched_at, seq_no, document_number,
              contract_number, contract_date, published_at, unp, authority_eik, authority_name,
              procurement_subject, contract_kind, value_before, value_after, value_delta,
@@ -675,7 +675,7 @@ describe('refresh-slice EOP base derivation', () => {
       }
       sqlite(
         fullDb,
-        `INSERT INTO raw_egov_contracts
+        `INSERT INTO raw_contracts
           (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
            published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
            cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -697,7 +697,7 @@ describe('refresh-slice EOP base derivation', () => {
       );
       sqlite(
         sliceDb,
-        `INSERT INTO raw_egov_contracts
+        `INSERT INTO raw_contracts
           (source, dataset_year, dataset_variant, fetched_at, needs_enrichment, document_number,
            published_at, unp, tender_ext_id, procedure_type, procurement_subject, cpv_code,
            cpv_description, contract_kind, estimated_value, procurement_currency, legal_basis,
@@ -783,7 +783,7 @@ describe('refresh-slice EOP base derivation', () => {
     const realDb = resolve(dir, 'real.sqlite');
     const synDb = resolve(dir, 'syn.sqlite');
     try {
-      // Real tender — the EOP id is the header row's tender_id (raw_egov_tenders.tender_id).
+      // Real tender — the EOP id is the header row's tender_id (raw_tenders.tender_id).
       initWorkDb(realDb);
       seedEopBaseDay(realDb);
       readScript(realDb, normalizePath);
@@ -824,7 +824,7 @@ describe('refresh-slice EOP base derivation', () => {
       initWorkDb(dbPath);
       sqlite(
         dbPath,
-        `INSERT INTO raw_egov_tenders
+        `INSERT INTO raw_tenders
           (source, dataset_year, fetched_at, unp, tender_id, procedure_type, procurement_subject,
            cpv_code, cpv_description, contract_kind, estimated_value, currency, legal_basis,
            award_criteria, authority_name, authority_eik, authority_type, main_activity, deadline,

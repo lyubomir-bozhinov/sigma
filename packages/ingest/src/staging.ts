@@ -50,13 +50,13 @@ async function upsertStagingRows<T extends StagingRow>(
   return rows.length;
 }
 
-/** Scoped DELETE + batched INSERT into raw_egov_contracts for one OCDS source tag. */
+/** Scoped DELETE + batched INSERT into raw_contracts for one OCDS source tag. */
 export async function upsertContractStaging(
   db: D1Database,
   source: string,
   rows: ContractStagingRow[],
 ): Promise<number> {
-  return upsertStagingRows(db, 'raw_egov_contracts', source, CONTRACT_STAGING_COLS, rows);
+  return upsertStagingRows(db, 'raw_contracts', source, CONTRACT_STAGING_COLS, rows);
 }
 
 export async function upsertAmendmentStaging(
@@ -64,7 +64,7 @@ export async function upsertAmendmentStaging(
   source: string,
   rows: AmendmentStagingRow[],
 ): Promise<number> {
-  return upsertStagingRows(db, 'raw_egov_amendments', source, AMENDMENT_STAGING_COLS, rows);
+  return upsertStagingRows(db, 'raw_amendments', source, AMENDMENT_STAGING_COLS, rows);
 }
 
 export async function upsertPartyStaging(
@@ -88,7 +88,7 @@ export async function upsertBaseContractStaging(
   source: string,
   rows: BaseStagingRow[],
 ): Promise<number> {
-  return upsertStagingRows(db, 'raw_egov_contracts', source, BASE_CONTRACT_COLS, rows);
+  return upsertStagingRows(db, 'raw_contracts', source, BASE_CONTRACT_COLS, rows);
 }
 
 export async function upsertBaseTenderStaging(
@@ -96,7 +96,7 @@ export async function upsertBaseTenderStaging(
   source: string,
   rows: BaseStagingRow[],
 ): Promise<number> {
-  return upsertStagingRows(db, 'raw_egov_tenders', source, BASE_TENDER_COLS, rows);
+  return upsertStagingRows(db, 'raw_tenders', source, BASE_TENDER_COLS, rows);
 }
 
 export async function upsertBaseAmendmentStaging(
@@ -104,5 +104,5 @@ export async function upsertBaseAmendmentStaging(
   source: string,
   rows: BaseStagingRow[],
 ): Promise<number> {
-  return upsertStagingRows(db, 'raw_egov_amendments', source, BASE_AMENDMENT_COLS, rows);
+  return upsertStagingRows(db, 'raw_amendments', source, BASE_AMENDMENT_COLS, rows);
 }

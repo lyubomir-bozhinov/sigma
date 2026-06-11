@@ -259,7 +259,7 @@ function supplierOf(
   };
 }
 
-/** Flatten a contract-tagged release into raw_egov_contracts staging rows. */
+/** Flatten a contract-tagged release into raw_contracts staging rows. */
 export function releaseToContracts(rel: OcdsRelease, meta: OcdsMeta): ContractStagingRow[] {
   if (!(rel.tag ?? []).includes('contract') || !(rel.contracts ?? []).length) return [];
   const ctx = relContext(rel, meta);

@@ -47,7 +47,7 @@ request → apps/web Worker (workers/app.ts) → RR loader → @sigma/db query f
 | `@sigma/config` | add `PROCEDURE_GROUPS` (real values below) + `ENTITY_TYPES` |
 | `@sigma/shared` | add the formatting helpers |
 | `packages/db/migrations/0000_init.sql` | add the rollup tables, the `search_index` FTS5 vtable, and `*_eur` value columns |
-| `scripts/normalize-egov.sql` | populate the rollups + FTS + `*_eur`; the daily Workflow recomputes the touched slice |
+| `scripts/normalize-raw.sql` | populate the rollups + FTS + `*_eur`; the daily Workflow recomputes the touched slice |
 
 ### Apps in scope & where the ETL lives
 
@@ -80,7 +80,7 @@ exist.
 step + a consumer handler + `[[queues.producers]]`/`[[queues.consumers]]` bindings); nothing in the
 daily path changes. Trigger to build it: arrival of the TR full backfill.
 
-**Stays off the cron path:** the full-rebuild `normalize-egov.sql` (a CLI job, or a Workflow run on
+**Stays off the cron path:** the full-rebuild `normalize-raw.sql` (a CLI job, or a Workflow run on
 demand) and the one-time admin-xlsx bootstrap (`pnpm import`, or an R2 upload the Workflow ingests).
 GitHub Actions keeps **only the deploy job** — it is no longer an ETL runtime. The main engineering
 item is the per-run **scoped re-derive + rollup/FTS refresh** (above), not a naive row upsert. Fuller
@@ -345,5 +345,5 @@ The plan-review findings and where each is now handled:
 
 - Data support per page: [mock-coverage.md](mock-coverage.md).
 - Schema: [0000_init.sql](../packages/db/migrations/0000_init.sql). Transform:
-  [normalize-egov.sql](../scripts/normalize-egov.sql).
+  [normalize-raw.sql](../scripts/normalize-raw.sql).
 - Sector config: [`@sigma/config`](../packages/config/src/index.ts).

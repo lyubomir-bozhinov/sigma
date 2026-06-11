@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fetch ECB euro reference rates (via the no-auth frankfurter.app API, which serves ECB data)
-// for the foreign-currency contracts, into the fx_rates table — so scripts/normalize-egov.sql
+// for the foreign-currency contracts, into the fx_rates table — so scripts/normalize-raw.sql
 // can convert those contracts to canonical EUR at the date-of-signing rate.
 //
 //   node scripts/load-fx.mjs            # fetch → data/fx-load.sql
@@ -67,7 +67,7 @@ function queryTarget(sql) {
 // EOP is the canonical historical corpus; OCDS adds go-forward deltas. Both feed the work DB.
 const ranges = queryTarget(
   'SELECT currency, MIN(contract_date) AS min_date, MAX(contract_date) AS max_date, ' +
-    'COUNT(DISTINCT contract_date) AS contract_dates FROM raw_egov_contracts ' +
+    'COUNT(DISTINCT contract_date) AS contract_dates FROM raw_contracts ' +
     "WHERE (source LIKE 'eop:%' OR source LIKE 'ocds:%') " +
     "AND currency NOT IN ('BGN','EUR') AND contract_date IS NOT NULL " +
     'GROUP BY currency ORDER BY currency',

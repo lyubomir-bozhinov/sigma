@@ -471,12 +471,12 @@ async function loadOcds(days, concurrency, failures, skips) {
   );
   const cb = makeSqlBatcher(
     out,
-    `INSERT INTO raw_egov_contracts (${CONTRACT_STAGING_COLS.join(', ')}) VALUES
+    `INSERT INTO raw_contracts (${CONTRACT_STAGING_COLS.join(', ')}) VALUES
 `,
   );
   const ab = makeSqlBatcher(
     out,
-    `INSERT INTO raw_egov_amendments (${AMENDMENT_STAGING_COLS.join(', ')}) VALUES
+    `INSERT INTO raw_amendments (${AMENDMENT_STAGING_COLS.join(', ')}) VALUES
 `,
   );
   const pb = makeSqlBatcher(
@@ -501,8 +501,8 @@ async function loadOcds(days, concurrency, failures, skips) {
     await flushAll();
     await writeChunk(
       out,
-      deleteSqlForSources('raw_egov_contracts', [source]) +
-        deleteSqlForSources('raw_egov_amendments', [source]) +
+      deleteSqlForSources('raw_contracts', [source]) +
+        deleteSqlForSources('raw_amendments', [source]) +
         deleteSqlForSources('raw_ocds_parties', [source]) +
         deleteSqlForSources('raw_ocds_lots', [source]),
     );

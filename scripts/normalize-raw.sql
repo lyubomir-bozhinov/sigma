@@ -1,10 +1,10 @@
 -- Sigma - normalise the EOP/OCDS staging into the domain tables
 -- (authorities, tenders, lots, bidders, contracts). Run AFTER scripts/load-eop.mjs
 -- (+ scripts/derive-amendments.sql for current_value/annex_count) have populated staging:
---   (cd apps/web && wrangler d1 execute sigma --local --file ../../scripts/normalize-egov.sql)
+--   (cd apps/web && wrangler d1 execute sigma --local --file ../../scripts/normalize-raw.sql)
 --
 -- SOURCE MODEL (see docs/etl-pipeline.md): the EOP open-data feed is the authoritative base for
--- 2020-2026 (raw_egov_contracts + raw_egov_tenders, source 'eop:%'). The OCDS JSON feed is the
+-- 2020-2026 (raw_contracts + raw_tenders, source 'eop:%'). The OCDS JSON feed is the
 -- go-forward delta for new 2026+ data (source 'ocds:%'); its rows carry their procedure fields on
 -- the contract row, so they flow through here automatically and a UNP with no tenders-export row
 -- gets a synthetic tender (step 2b). DEDUPE (step 5): where OCDS overlaps the EOP corpus,
@@ -51,9 +51,9 @@ DELETE FROM authorities;
 INSERT OR IGNORE INTO authorities (id, name, bulstat, type)
 SELECT 'auth:' || authority_eik, MIN(authority_name), authority_eik, MAX(authority_type)
 FROM (
-  SELECT authority_eik, authority_name, authority_type FROM raw_egov_contracts WHERE authority_eik IS NOT NULL
+  SELECT authority_eik, authority_name, authority_type FROM raw_contracts WHERE authority_eik IS NOT NULL
   UNION ALL
-  SELECT authority_eik, authority_name, authority_type FROM raw_egov_tenders   WHERE authority_eik IS NOT NULL
+  SELECT authority_eik, authority_name, authority_type FROM raw_tenders   WHERE authority_eik IS NOT NULL
 )
 GROUP BY authority_eik;
 
@@ -89,7 +89,7 @@ SELECT
   COALESCE(t.procedure_type, 'неизвестна'),
   t.contract_kind,
   t.num_lots,
-  CASE WHEN EXISTS (SELECT 1 FROM raw_egov_contracts c WHERE c.unp = t.unp) THEN 'awarded' ELSE 'published' END,
+  CASE WHEN EXISTS (SELECT 1 FROM raw_contracts c WHERE c.unp = t.unp) THEN 'awarded' ELSE 'published' END,
   t.published_at,
   t.deadline,
   t.legal_basis,
@@ -108,7 +108,7 @@ SELECT
   t.eauction,
   t.cancelled,
   NULLIF(t.tender_id, '')                 -- raw EOP numeric tenderId from the header row
-FROM raw_egov_tenders t
+FROM raw_tenders t
 WHERE t.lot_id IS NULL
   AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || t.authority_eik);
 
@@ -127,10 +127,10 @@ WITH folded AS (
     MIN(c.legal_basis) AS legal_basis,
     MIN(c.award_criteria) AS award_criteria,
     MIN(NULLIF(c.tender_ext_id, '')) AS eop_tender_id  -- synthetic tenders inherit the EOP id from contracts
-  FROM raw_egov_contracts c
+  FROM raw_contracts c
   WHERE 1 = 1
     AND c.unp IS NOT NULL
-    AND NOT EXISTS (SELECT 1 FROM raw_egov_tenders t WHERE t.unp = c.unp)
+    AND NOT EXISTS (SELECT 1 FROM raw_tenders t WHERE t.unp = c.unp)
     AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || c.authority_eik)
   GROUP BY c.unp
 )
@@ -227,7 +227,7 @@ SELECT
   COALESCE(t.lot_name, '(без предмет)'),
   t.cpv_code,
   t.estimated_value
-FROM raw_egov_tenders t
+FROM raw_tenders t
 WHERE t.lot_id IS NOT NULL
   AND EXISTS (SELECT 1 FROM tenders te WHERE te.id = 't:' || t.unp);
 
@@ -270,7 +270,7 @@ FROM (
     SELECT
       contractor_name,
       TRIM(CASE WHEN contractor_eik LIKE 'ЕИК %' THEN SUBSTR(contractor_eik, 5) ELSE contractor_eik END) AS eik_clean
-    FROM raw_egov_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
+    FROM raw_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
   )
 )
 WHERE bidder_key IS NOT NULL
@@ -406,18 +406,18 @@ FROM (
           WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
           ELSE NULL
         END AS bidder_key
-      FROM raw_egov_contracts c
+      FROM raw_contracts c
       -- EOP always; an OCDS row only when no EOP row shares its contract_number - EOP wins.
       -- Key is contract_number (the public-procurement contract document number, common to both feeds), NOT unp:
-      -- OCDS stores its ocid in unp, which never matches the EOP UNP format. (idx_egov_cnum)
+      -- OCDS stores its ocid in unp, which never matches the EOP UNP format. (idx_raw_cnum)
       -- EOP daily open-data buckets are CUMULATIVE: the same contract recurs across consecutive days,
       -- so keep exactly ONE row per logical contract (unp+contract_number+lot+contractor), choosing the
       -- latest source-day (then highest id). Without this, contracts and every EUR total double-count.
-      -- The NOT EXISTS leads with contract_number so idx_egov_cnum/idx_egov_unp_cnum keep it cheap.
+      -- The NOT EXISTS leads with contract_number so idx_raw_cnum/idx_raw_unp_cnum keep it cheap.
       WHERE (c.source LIKE 'eop:%' AND NOT EXISTS (
-              SELECT 1 FROM raw_egov_contracts a
+              SELECT 1 FROM raw_contracts a
               WHERE a.source LIKE 'eop:%'
-                -- Bare equality (not COALESCE) so idx_egov_cnum drives the seek; contract_number is
+                -- Bare equality (not COALESCE) so idx_raw_cnum drives the seek; contract_number is
                 -- guaranteed non-null by the base keep-filter, so this is identical to COALESCE(...,'')
                 -- but O(n log n) instead of the O(n^2) full scan COALESCE forces on a 380k-row corpus.
                 AND a.contract_number = c.contract_number
@@ -427,9 +427,9 @@ FROM (
                 AND COALESCE(a.contractor_name, '') = COALESCE(c.contractor_name, '')
                 AND (a.source > c.source OR (a.source = c.source AND a.id > c.id))))
          OR (c.source LIKE 'ocds:%' AND NOT EXISTS (
-              SELECT 1 FROM raw_egov_contracts a
+              SELECT 1 FROM raw_contracts a
               WHERE a.source LIKE 'eop:%'
-                AND a.contract_number = c.contract_number))  -- bare = -> idx_egov_cnum (see above)
+                AND a.contract_number = c.contract_number))  -- bare = -> idx_raw_cnum (see above)
     ) z
   ) y
 ) x
@@ -511,9 +511,9 @@ UPDATE bidders SET
 WHERE EXISTS (SELECT 1 FROM parties p WHERE p.eik = bidders.eik_normalized);
 
 -- 6b) Per-lot value enrichment from OCDS. The bridge is OCDS tender.id -> EOP tenderId
---     (raw_egov_tenders.tender_id) -> UNP -> domain lots. ocid is a surrogate and is never
+--     (raw_tenders.tender_id) -> UNP -> domain lots. ocid is a surrogate and is never
 --     treated as the UNP.
-CREATE INDEX IF NOT EXISTS idx_egov_tenders_tender_id ON raw_egov_tenders(tender_id);
+CREATE INDEX IF NOT EXISTS idx_raw_tenders_tender_id ON raw_tenders(tender_id);
 WITH mapped AS (
   SELECT
     'lot:' || rt.unp || ':' || CASE
@@ -532,7 +532,7 @@ WITH mapped AS (
       ORDER BY rl.id DESC
     ) AS rn
   FROM raw_ocds_lots rl
-  JOIN raw_egov_tenders rt ON rt.tender_id = rl.tender_id
+  JOIN raw_tenders rt ON rt.tender_id = rl.tender_id
   WHERE rl.tender_id IS NOT NULL
     AND rl.lot_id IS NOT NULL
     AND rt.unp IS NOT NULL
@@ -591,10 +591,10 @@ SELECT
           WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
           ELSE NULL
         END AS bidder_key
-      FROM raw_egov_contracts c
+      FROM raw_contracts c
       WHERE c.source LIKE 'eop:%'
          OR (c.source LIKE 'ocds:%' AND c.contract_number IS NOT NULL AND NOT EXISTS (
-              SELECT 1 FROM raw_egov_contracts a
+              SELECT 1 FROM raw_contracts a
               WHERE a.source LIKE 'eop:%' AND a.contract_number = c.contract_number))
     ) c
     WHERE c.bidder_key IS NOT NULL

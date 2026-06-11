@@ -1,6 +1,6 @@
 -- NUTS region reference for Bulgaria (Eurostat / НСИ classification, stable). 28 области (NUTS3)
 -- grouped into 6 NUTS2 + 2 NUTS1 macro-regions. Idempotent. Applied by scripts/import.mjs before
--- normalize-egov.sql so the region enrichment (authorities.region from nuts) can use it.
+-- normalize-raw.sql so the region enrichment (authorities.region from nuts) can use it.
 DELETE FROM nuts_regions;
 INSERT INTO nuts_regions (nuts3, nuts3_name, nuts2, nuts2_name, nuts1, nuts1_name) VALUES
   ('BG311','Видин',            'BG31','Северозападен',    'BG3','Северна и Югоизточна България'),

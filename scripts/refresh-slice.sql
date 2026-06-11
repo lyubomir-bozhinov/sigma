@@ -5,7 +5,7 @@
 -- SCOPED + IDEMPOTENT. It replaces only c:e:/c:o: contracts represented by the transient window
 -- and refreshes the rollup rows for c:e:/c:o: entities. Admin-derived c: rows are left alone.
 -- EOP wins over OCDS when both feeds carry the same public contract document number. Re-running the
--- same window yields the same domain rows. Mirrors normalize-egov.sql steps 1/2b/4/5 plus
+-- same window yields the same domain rows. Mirrors normalize-raw.sql steps 1/2b/4/5 plus
 -- precompute.sql, scoped.
 
 -- @refresh-batch setup
@@ -25,15 +25,15 @@ CREATE TABLE refresh_touched_authorities (authority_id TEXT PRIMARY KEY);
 INSERT OR IGNORE INTO authorities (id, name, bulstat, type)
 SELECT 'auth:' || authority_eik, MIN(authority_name), authority_eik, MAX(authority_type)
 FROM (
-  SELECT source, authority_eik, authority_name, authority_type FROM raw_egov_contracts
+  SELECT source, authority_eik, authority_name, authority_type FROM raw_contracts
   UNION ALL
-  SELECT source, authority_eik, authority_name, authority_type FROM raw_egov_tenders
+  SELECT source, authority_eik, authority_name, authority_type FROM raw_tenders
 )
 WHERE (source LIKE 'eop:%' OR source LIKE 'ocds:%') AND authority_eik IS NOT NULL
 GROUP BY authority_eik;
 
 -- type_group for any authority still missing it (covers the rows just inserted) — same heuristic as
--- normalize-egov.sql step 1b.
+-- normalize-raw.sql step 1b.
 UPDATE authorities SET type_group = CASE
   WHEN name LIKE 'Община%' OR name LIKE 'ОБЩИНА%' OR name LIKE '%Столична община%' OR name LIKE '%СТОЛИЧНА ОБЩИНА%' THEN 'община'
   WHEN name LIKE 'Министерство%' OR name LIKE 'МИНИСТЕРСТВО%' THEN 'министерство'
@@ -73,7 +73,7 @@ FROM (
   FROM (
     SELECT contractor_name,
       TRIM(CASE WHEN contractor_eik LIKE 'ЕИК %' THEN SUBSTR(contractor_eik, 5) ELSE contractor_eik END) AS eik_clean
-    FROM raw_egov_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
+    FROM raw_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
   )
 )
 WHERE bidder_key IS NOT NULL
@@ -93,7 +93,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- @refresh-batch touch-tenders
 INSERT OR IGNORE INTO refresh_touched_contracts (id)
 SELECT c.id
-FROM raw_egov_tenders t
+FROM raw_tenders t
 JOIN contracts c ON c.tender_id = 't:' || t.unp;
 INSERT OR IGNORE INTO refresh_touched_bidders (bidder_id)
 SELECT DISTINCT c.bidder_id
@@ -126,7 +126,7 @@ SELECT
   COALESCE(t.procedure_type, 'неизвестна'),
   t.contract_kind,
   t.num_lots,
-  CASE WHEN EXISTS (SELECT 1 FROM raw_egov_contracts c WHERE c.unp = t.unp) THEN 'awarded' ELSE 'published' END,
+  CASE WHEN EXISTS (SELECT 1 FROM raw_contracts c WHERE c.unp = t.unp) THEN 'awarded' ELSE 'published' END,
   t.published_at,
   t.deadline,
   t.legal_basis,
@@ -145,7 +145,7 @@ SELECT
   t.eauction,
   t.cancelled,
   NULLIF(t.tender_id, '')                 -- raw EOP numeric tenderId from the header row
-FROM raw_egov_tenders t
+FROM raw_tenders t
 WHERE t.lot_id IS NULL
   AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || t.authority_eik)
 ON CONFLICT(id) DO UPDATE SET
@@ -196,7 +196,7 @@ SELECT
   COALESCE(t.lot_name, '(без предмет)'),
   t.cpv_code,
   t.estimated_value
-FROM raw_egov_tenders t
+FROM raw_tenders t
 WHERE t.lot_id IS NOT NULL
   AND EXISTS (SELECT 1 FROM tenders te WHERE te.id = 't:' || t.unp);
 
@@ -273,9 +273,9 @@ INSERT OR IGNORE INTO refresh_touched_authorities (authority_id)
 SELECT a.id
 FROM authorities a
 WHERE a.bulstat IN (
-    SELECT authority_eik FROM raw_egov_contracts WHERE authority_eik IS NOT NULL
+    SELECT authority_eik FROM raw_contracts WHERE authority_eik IS NOT NULL
     UNION
-    SELECT authority_eik FROM raw_egov_tenders WHERE authority_eik IS NOT NULL
+    SELECT authority_eik FROM raw_tenders WHERE authority_eik IS NOT NULL
     UNION
     SELECT eik FROM raw_ocds_parties WHERE eik IS NOT NULL
   );
@@ -286,7 +286,7 @@ SET region = (SELECT n.nuts3_name FROM nuts_regions n WHERE n.nuts3 = authoritie
 WHERE id IN (SELECT authority_id FROM refresh_touched_authorities);
 
 -- @refresh-batch lot-values
-CREATE INDEX IF NOT EXISTS idx_egov_tenders_tender_id ON raw_egov_tenders(tender_id);
+CREATE INDEX IF NOT EXISTS idx_raw_tenders_tender_id ON raw_tenders(tender_id);
 WITH mapped AS (
   SELECT
     'lot:' || rt.unp || ':' || CASE
@@ -305,7 +305,7 @@ WITH mapped AS (
       ORDER BY rl.id DESC
     ) AS rn
   FROM raw_ocds_lots rl
-  JOIN raw_egov_tenders rt ON rt.tender_id = rl.tender_id
+  JOIN raw_tenders rt ON rt.tender_id = rl.tender_id
   WHERE rl.tender_id IS NOT NULL
     AND rl.lot_id IS NOT NULL
     AND rt.unp IS NOT NULL
@@ -332,10 +332,10 @@ WITH folded AS (
     MIN(c.legal_basis) AS legal_basis,
     MIN(c.award_criteria) AS award_criteria,
     MIN(NULLIF(c.tender_ext_id, '')) AS eop_tender_id  -- synthetic tenders inherit the EOP id from contracts
-  FROM raw_egov_contracts c
+  FROM raw_contracts c
   WHERE (c.source LIKE 'eop:%' OR c.source LIKE 'ocds:%')
     AND c.unp IS NOT NULL
-    AND NOT EXISTS (SELECT 1 FROM raw_egov_tenders t WHERE t.unp = c.unp)
+    AND NOT EXISTS (SELECT 1 FROM raw_tenders t WHERE t.unp = c.unp)
     AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || c.authority_eik)
   GROUP BY c.unp
 )
@@ -420,7 +420,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- @refresh-batch contracts
 INSERT OR IGNORE INTO refresh_touched_contracts (id)
 SELECT DISTINCT c.id
-FROM raw_egov_contracts r
+FROM raw_contracts r
 JOIN contracts c ON c.contract_number = r.contract_number AND c.tender_id = 't:' || r.unp
 WHERE r.contract_number IS NOT NULL
   AND c.id GLOB 'c:[eo]:*'
@@ -430,7 +430,7 @@ WHERE r.contract_number IS NOT NULL
   )
 UNION
 SELECT DISTINCT c.id
-FROM raw_egov_contracts r
+FROM raw_contracts r
 JOIN contracts c ON c.contract_number IS NULL AND c.tender_id = 't:' || r.unp
 WHERE r.contract_number IS NULL
   AND c.id GLOB 'c:[eo]:*'
@@ -440,14 +440,14 @@ WHERE r.contract_number IS NULL
   );
 INSERT OR IGNORE INTO refresh_touched_contracts (id)
 SELECT DISTINCT c.id
-FROM raw_egov_contracts e
+FROM raw_contracts e
 JOIN contracts c ON c.contract_number = e.contract_number
 WHERE e.source LIKE 'eop:%'
   AND e.contract_number IS NOT NULL
   AND c.id GLOB 'c:o:*'
 UNION
 SELECT DISTINCT c.id
-FROM raw_egov_contracts e
+FROM raw_contracts e
 JOIN contracts c ON c.contract_number IS NULL
 WHERE e.source LIKE 'eop:%'
   AND e.contract_number IS NULL
@@ -466,7 +466,7 @@ WHERE c.id IN (SELECT id FROM refresh_touched_contracts)
 DELETE FROM contracts
 WHERE id IN (
   SELECT DISTINCT c.id
-  FROM raw_egov_contracts r
+  FROM raw_contracts r
   JOIN contracts c ON c.contract_number = r.contract_number AND c.tender_id = 't:' || r.unp
   WHERE r.contract_number IS NOT NULL
     AND c.id GLOB 'c:[eo]:*'
@@ -476,7 +476,7 @@ WHERE id IN (
     )
   UNION
   SELECT DISTINCT c.id
-  FROM raw_egov_contracts r
+  FROM raw_contracts r
   JOIN contracts c ON c.contract_number IS NULL AND c.tender_id = 't:' || r.unp
   WHERE r.contract_number IS NULL
     AND c.id GLOB 'c:[eo]:*'
@@ -605,7 +605,7 @@ FROM (
             WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
             ELSE NULL
           END AS bidder_key
-        FROM raw_egov_contracts c
+        FROM raw_contracts c
         WHERE c.source LIKE 'ocds:%'
       ) z
     ) y
@@ -617,7 +617,7 @@ WHERE x.bidder_key IS NOT NULL
   AND EXISTS (SELECT 1 FROM bidders b WHERE b.id = x.bidder_key)
   -- EOP wins: skip OCDS rows when the transient window has an EOP row for the same document.
   AND NOT EXISTS (
-    SELECT 1 FROM raw_egov_contracts e
+    SELECT 1 FROM raw_contracts e
     WHERE e.source LIKE 'eop:%'
       AND COALESCE(e.contract_number, '') = COALESCE(x.contract_number, '')
   )
@@ -626,19 +626,19 @@ WHERE x.bidder_key IS NOT NULL
   -- Existing EOP rows win over later OCDS-only windows too.
   AND NOT EXISTS (SELECT 1 FROM contracts c3 WHERE c3.id GLOB 'c:e:*' AND COALESCE(c3.contract_number, '') = COALESCE(x.contract_number, ''));
 
--- EOP base rows loaded after the last full normalize. This mirrors normalize-egov.sql's EOP branch:
+-- EOP base rows loaded after the last full normalize. This mirrors normalize-raw.sql's EOP branch:
 -- newest cumulative bucket wins, existing full-normalize rows win over refresh rows.
 DELETE FROM contracts
 WHERE id IN (
   SELECT DISTINCT c.id
-  FROM raw_egov_contracts e
+  FROM raw_contracts e
   JOIN contracts c ON c.contract_number = e.contract_number
   WHERE e.source LIKE 'eop:%'
     AND e.contract_number IS NOT NULL
     AND c.id GLOB 'c:o:*'
   UNION
   SELECT DISTINCT c.id
-  FROM raw_egov_contracts e
+  FROM raw_contracts e
   JOIN contracts c ON c.contract_number IS NULL
   WHERE e.source LIKE 'eop:%'
     AND e.contract_number IS NULL
@@ -769,14 +769,14 @@ FROM (
             WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
             ELSE NULL
           END AS bidder_key
-        FROM raw_egov_contracts c
+        FROM raw_contracts c
         WHERE c.source LIKE 'eop:%'
           AND NOT EXISTS (
-            SELECT 1 FROM raw_egov_contracts a
+            SELECT 1 FROM raw_contracts a
             WHERE a.source LIKE 'eop:%'
-              -- Bare equality (not COALESCE) so idx_egov_cnum drives the seek; contract_number is
+              -- Bare equality (not COALESCE) so idx_raw_cnum drives the seek; contract_number is
               -- non-null (base keep-filter), so this is identical to COALESCE(...,'') but avoids the
-              -- O(n^2) full scan. Mirrors the same fix in normalize-egov.sql.
+              -- O(n^2) full scan. Mirrors the same fix in normalize-raw.sql.
               AND a.contract_number = c.contract_number
               AND COALESCE(a.unp, '') = COALESCE(c.unp, '')
               AND COALESCE(a.lot_id, '') = COALESCE(c.lot_id, '')
@@ -803,7 +803,7 @@ WHERE x.bidder_key IS NOT NULL
 UPDATE tenders
 SET status = 'awarded'
 WHERE status <> 'awarded'
-  AND EXISTS (SELECT 1 FROM raw_egov_contracts c WHERE 't:' || c.unp = tenders.id);
+  AND EXISTS (SELECT 1 FROM raw_contracts c WHERE 't:' || c.unp = tenders.id);
 
 
 -- 5) Promote window amendments into served domain history and roll touched contracts.
@@ -827,7 +827,7 @@ WITH keyed AS (
           COALESCE(currency, '') || ':' ||
           COALESCE(description, '')
       ) AS natural_key
-  FROM raw_egov_amendments
+  FROM raw_amendments
 ), dedup AS (
   SELECT *,
     ROW_NUMBER() OVER (
@@ -868,12 +868,12 @@ SET
     LIMIT 1
   )
 WHERE (id GLOB 'c:[eo]:*' AND EXISTS (
-      SELECT 1 FROM raw_egov_contracts rc
+      SELECT 1 FROM raw_contracts rc
       WHERE rc.unp = substr(contracts.tender_id, 3)
         AND rc.contract_number = contracts.contract_number
    ))
    OR EXISTS (
-      SELECT 1 FROM raw_egov_amendments ra
+      SELECT 1 FROM raw_amendments ra
       WHERE ra.unp = substr(contracts.tender_id, 3)
         AND ra.contract_number = contracts.contract_number
    );
@@ -883,7 +883,7 @@ WITH contract_base AS (
     te.estimated_value AS tender_estimated_value,
     COALESCE((
       SELECT rc.estimated_value
-      FROM raw_egov_contracts rc
+      FROM raw_contracts rc
       WHERE rc.unp = substr(c.tender_id, 3)
         AND rc.contract_number = c.contract_number
         AND (
@@ -897,12 +897,12 @@ WITH contract_base AS (
   JOIN tenders te ON te.id = c.tender_id
   WHERE (
       (c.id GLOB 'c:[eo]:*' AND EXISTS (
-        SELECT 1 FROM raw_egov_contracts rc
+        SELECT 1 FROM raw_contracts rc
         WHERE rc.unp = substr(c.tender_id, 3)
           AND rc.contract_number = c.contract_number
       ))
       OR EXISTS (
-        SELECT 1 FROM raw_egov_amendments ra
+        SELECT 1 FROM raw_amendments ra
         WHERE ra.unp = substr(c.tender_id, 3)
           AND ra.contract_number = c.contract_number
       )
@@ -977,24 +977,24 @@ WHERE recalculated.id = contracts.id;
 
 INSERT OR IGNORE INTO refresh_touched_contracts (id)
 SELECT DISTINCT c.id
-FROM raw_egov_contracts rc
+FROM raw_contracts rc
 JOIN contracts c ON c.contract_number = rc.contract_number AND c.tender_id = 't:' || rc.unp
 WHERE rc.contract_number IS NOT NULL
   AND c.id GLOB 'c:[eo]:*'
 UNION
 SELECT DISTINCT c.id
-FROM raw_egov_contracts rc
+FROM raw_contracts rc
 JOIN contracts c ON c.contract_number IS NULL AND c.tender_id = 't:' || rc.unp
 WHERE rc.contract_number IS NULL
   AND c.id GLOB 'c:[eo]:*'
 UNION
 SELECT DISTINCT c.id
-FROM raw_egov_amendments ra
+FROM raw_amendments ra
 JOIN contracts c ON c.contract_number = ra.contract_number AND c.tender_id = 't:' || ra.unp
 WHERE ra.contract_number IS NOT NULL
 UNION
 SELECT DISTINCT c.id
-FROM raw_egov_amendments ra
+FROM raw_amendments ra
 JOIN contracts c ON c.contract_number IS NULL AND c.tender_id = 't:' || ra.unp
 WHERE ra.contract_number IS NULL;
 INSERT OR IGNORE INTO refresh_touched_bidders (bidder_id)
@@ -1011,9 +1011,9 @@ INSERT OR IGNORE INTO refresh_touched_authorities (authority_id)
 SELECT a.id
 FROM authorities a
 WHERE a.bulstat IN (
-    SELECT authority_eik FROM raw_egov_contracts WHERE authority_eik IS NOT NULL
+    SELECT authority_eik FROM raw_contracts WHERE authority_eik IS NOT NULL
     UNION
-    SELECT authority_eik FROM raw_egov_tenders WHERE authority_eik IS NOT NULL
+    SELECT authority_eik FROM raw_tenders WHERE authority_eik IS NOT NULL
     UNION
     SELECT eik FROM raw_ocds_parties WHERE eik IS NOT NULL
   );
@@ -1033,7 +1033,7 @@ WHERE b.eik_normalized IN (SELECT eik FROM raw_ocds_parties WHERE eik IS NOT NUL
       FROM (
         SELECT contractor_name,
           TRIM(CASE WHEN contractor_eik LIKE 'ЕИК %' THEN SUBSTR(contractor_eik, 5) ELSE contractor_eik END) AS eik_clean
-        FROM raw_egov_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
+        FROM raw_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
       )
     )
     WHERE bidder_key IS NOT NULL

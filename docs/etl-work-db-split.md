@@ -8,7 +8,7 @@
 
 `apps/web` reads the served D1 directly, and in local dev it shares `apps/api`'s miniflare D1
 file (`apps/web/vite.config.ts` `persistState` -> `../api/.wrangler/state`). The ETL `raw_*`
-staging (~1.8 GB for the full 2020-2026 corpus, dominated by `raw_egov_tenders`/`_contracts`)
+staging (~1.8 GB for the full 2020-2026 corpus, dominated by `raw_tenders`/`_contracts`)
 bloated that shared file past what `workerd` would open, breaking the web app with
 `SQLITE_CANTOPEN`. Staging is a transform **work-area**, not an archive — the storage.eop.bg
 per-day buckets (cached in `data/eop/`) are the durable raw source. So staging must never live
@@ -16,7 +16,7 @@ in the served DB.
 
 ## Decision
 
-- **Backfill** runs the full ELT (`load-eop` -> `derive-amendments` -> `load-fx` -> `normalize-egov`)
+- **Backfill** runs the full ELT (`load-eop` -> `derive-amendments` -> `load-fx` -> `normalize-raw`)
   in a **throwaway plain-SQLite work file** (no D1 size/CPU limit), then **ships only domain +
   reference + amendments** into the served D1 and runs **`precompute` ON the served D1** (rollups +
   FTS built natively by D1).
@@ -131,7 +131,7 @@ invisible to the web app. `import.mjs --reset` also cleans `data/work/`.
   `0003_tender_eop_id.sql`) so the contract page can deep-link the public documents page at
   `https://app.eop.bg/today/<eop_tender_id>`. This is the portal's own key — NOT the УНП and NOT the
   contract `document_number` (noticeId). Real tenders take it from the header row
-  (`raw_egov_tenders.tender_id`, 100 % populated); synthetic `неизвестна` tenders fold it from the
-  contract feed (`MIN(raw_egov_contracts.tender_ext_id)`), which is present on ~50 % of contracts —
+  (`raw_tenders.tender_id`, 100 % populated); synthetic `неизвестна` tenders fold it from the
+  contract feed (`MIN(raw_contracts.tender_ext_id)`), which is present on ~50 % of contracts —
   where absent, no documents link is shown. The id is stored verbatim and converges `0/0`
   (full backfill vs early + live-refresh).

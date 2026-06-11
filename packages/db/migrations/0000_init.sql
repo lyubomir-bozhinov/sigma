@@ -4,7 +4,7 @@
 -- preserve), so the schema is ONE file rather than an incremental migration chain — re-introduce
 -- incremental migrations only once there is deployed data you cannot drop. Applied by
 -- `wrangler d1 migrations apply sigma [--local|--remote]`; the full import is `node scripts/import.mjs`
--- (work DB: load-eop → derive-amendments → load-fx → load-nuts → normalize-egov → promote-amendments,
+-- (work DB: load-eop → derive-amendments → load-fx → load-nuts → normalize-raw → promote-amendments,
 -- then ship-domain copies the served tables into the served D1 and runs precompute on it).
 --
 -- Modelling rationale (cleaning policy, value_flag, consortium model, canonical EUR + FX, the
@@ -16,7 +16,7 @@
 -- (work DB only, never served).
 
 -- ===================================================================================
--- 1) DOMAIN — what the explorer reads (built by scripts/normalize-egov.sql)
+-- 1) DOMAIN — what the explorer reads (built by scripts/normalize-raw.sql)
 -- ===================================================================================
 
 CREATE TABLE authorities (
@@ -178,7 +178,7 @@ CREATE TABLE amendments (
 CREATE INDEX idx_amendments_contract ON amendments(unp, contract_number);
 
 -- Curated OCDS party projection (served domain/reference data, not raw staging). Built from the
--- transient raw_ocds_parties by scripts/normalize-egov.sql; feeds authority/bidder nuts/address/contact
+-- transient raw_ocds_parties by scripts/normalize-raw.sql; feeds authority/bidder nuts/address/contact
 -- enrichment by ЕИК. Keyed ЕИК-first so distinct companies sharing a reused OCDS party slot never collide.
 CREATE TABLE parties (
   party_key      TEXT PRIMARY KEY,
@@ -323,8 +323,8 @@ CREATE TABLE nuts_regions (
 );
 
 -- "Data current as of" per feed — the latest real contract date covered + row count, recomputed
--- by normalize-egov.sql. Surfaces the freshness date the UI needs and lets the OCDS go-forward
--- catch-up verify the admin↔OCDS boundary (admin wins on overlap; see normalize-egov.sql step 5).
+-- by normalize-raw.sql. Surfaces the freshness date the UI needs and lets the OCDS go-forward
+-- catch-up verify the admin↔OCDS boundary (admin wins on overlap; see normalize-raw.sql step 5).
 CREATE TABLE data_freshness (
   source       TEXT PRIMARY KEY,          -- 'admin' | 'ocds'
   as_of        TEXT,                       -- MAX(contract_date) ≤ today

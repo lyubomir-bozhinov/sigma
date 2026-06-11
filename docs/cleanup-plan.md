@@ -11,8 +11,9 @@ a "Brand favicons" comment) — and they were deleted. Everything else in `@sigm
 
 **Scope rules (per decisions):**
 - `mocks/` and `docs/` are **left as-is** — out of scope for this cleanup.
-- The `raw_egov_*` / `raw_ocds_*` staging tables **stay** — they are live transform-only staging, never
-  persisted in the served DB (see §3). Not obsolete, not renamed.
+- The source-neutral `raw_contracts` / `raw_tenders` / `raw_amendments` staging tables and the
+  `raw_ocds_*` staging tables **stay** — they are live transform-only staging, never persisted in the
+  served DB (see §3). Not obsolete.
 - The `etl-work-db-split` re-architecture has **landed on `main`**; re-ground against the current tree
   before executing (other ETL work, e.g. R3, may still be in flight).
 
@@ -59,36 +60,40 @@ The deploy workflow targets only web+etl, so it is unaffected.
 `data.egov.bg`). None is invoked by `import.mjs`.
 
 **Strip the `admin:%` source handling from shared statements (keep the eop/ocds arms):**
-- the `admin:%` disjunct in the `normalize-egov.sql` source filter,
+- the `admin:%` disjunct in the `normalize-raw.sql` source filter,
 - the `admin:%` pricing branch in `load-fx.mjs` (the FX loader otherwise stays whole),
-- the unreachable `admin` arm of the id-prefix CASE in `normalize-egov.sql` (live ids are `c:e:%`/`c:o:%`),
+- the unreachable `admin` arm of the id-prefix CASE in `normalize-raw.sql` (live ids are `c:e:%`/`c:o:%`),
 - the admin "bare-id rows win" guards in `refresh-slice.sql`.
 
-**Keep — looks admin/egov but the eop path reuses it:** the `raw_egov_*` staging tables (transform-only
-— see §3), the `raw_ocds_*` tables, the OCDS mappers in `@sigma/ingest`, the `idx_egov_*` indexes, and
-the FX + NUTS **reference** loaders (`load-fx.mjs` minus its admin branch; `load-nuts.sql`).
+**Keep — looks admin/source-specific but the eop path reuses it:** the source-neutral raw staging
+tables (`raw_contracts`, `raw_tenders`, `raw_amendments`; transform-only — see §3), the `raw_ocds_*`
+tables, the OCDS mappers in `@sigma/ingest`, the `idx_raw_*` indexes, and the FX + NUTS
+**reference** loaders (`load-fx.mjs` minus its admin branch; `load-nuts.sql`).
 
 ---
 
-## 3. `raw_egov_*` / `raw_ocds_*` staging — KEEP (transform-only, never served)
+## 3. Source-neutral raw staging / `raw_ocds_*` staging — KEEP (transform-only, never served)
 
-These are **not** obsolete and are **not** renamed — they are the live load+transform staging schema.
-The architecture invariant (the work-DB split already on `main`) is that **no `raw_*` table ever
-persists in the served database**:
-- **Backfill:** `load-eop` populates `raw_egov_contracts/_tenders/_amendments` (+ `raw_ocds_*`) in a
-  throwaway sqlite **work DB**; the transforms (`normalize-egov.sql`, `derive-amendments.sql`) read them
+These are **not** obsolete — they are the live load+transform staging schema. The 2026-06-11 user
+decision superseded the earlier "rename dropped" conclusion: the former source-named contract,
+tender, and amendment staging tables were renamed to source-neutral `raw_contracts`, `raw_tenders`,
+and `raw_amendments` because they carry both `eop:%` and `ocds:%` rows. The architecture invariant
+(the work-DB split already on `main`) is that **no `raw_*` table ever persists in the served
+database**:
+- **Backfill:** `load-eop` populates `raw_contracts/_tenders/_amendments` (+ `raw_ocds_*`) in a
+  throwaway sqlite **work DB**; the transforms (`normalize-raw.sql`, `derive-amendments.sql`) read them
   to build the domain; only the domain / precompute / reference tables ship to the served D1.
 - **Live refresh (Worker):** the same tables are created **transiently** in the served D1, the window is
   staged into them, `refresh-slice.sql` reads them, and they are **dropped at the end of the run**.
 - Their DDL lives in `scripts/work-staging-schema.sql` (applied to the work DB / created transiently),
   **not** in `0000_init.sql`. The served DB holds **zero `raw_*` tables** — that is the core invariant.
 
-So keep the `raw_egov_*` / `raw_ocds_*` tables, the `idx_egov_*` / `idx_ocds_*` indexes, and the OCDS
-mappers as-is. The `egov` name reflects the data **shape**, independent of the storage.eop.bg source —
-the earlier "rename to eop-named staging" idea was based on a misunderstanding and is dropped.
+So keep the source-neutral raw tables, the `raw_ocds_*` tables, the `idx_raw_*` / `idx_ocds_*`
+indexes, and the OCDS mappers as-is. Cleanup-only live-refresh drops still remove old pre-2026-06
+staging leftovers defensively, but the old names are not used for creates or transforms.
 
 > **R3 has landed:** the curated **served** `parties` table (`packages/db/migrations/0002_parties.sql`)
-> is live and read by `normalize-egov.sql` (authority nuts/address/contact enrichment). It is a clean
+> is live and read by `normalize-raw.sql` (authority nuts/address/contact enrichment). It is a clean
 > domain-style projection, distinct from the transient `raw_ocds_parties` — keep it; it is not a cleanup
 > target. (Schema is now four migrations: `0000_init` + `0001_amendments` + `0002_parties` +
 > `0003_tender_eop_id`; the `bidder_members` / `contract_participants` / `risk_scores` objects in §5/§8
@@ -100,7 +105,7 @@ the earlier "rename to eop-named staging" idea was based on a misunderstanding a
 
 The owner tables are already gone on this branch; what remains is small and self-contained:
 - the `raw_tr_companies` staging table + its index in `work-staging-schema.sql`;
-- the "Company master from the Trade Register" block in `normalize-egov.sql`;
+- the "Company master from the Trade Register" block in `normalize-raw.sql`;
 - in `@sigma/ingest`'s `refresh.ts`, the guard that exists **only** to spare `raw_tr_companies`
   (`isExcludedWorkTable`) — delete it and simplify the staging filter;
 - the `raw_tr_companies` fixture/assertion in `ocds.test.ts`;
@@ -117,7 +122,7 @@ legal-form columns **stay** (also populated from OCDS parties / NSI); only the T
 Confirmed fully dead (no `INSERT/UPDATE INTO bidder_members`; no `FROM/JOIN contract_participants`;
 both result-shape interfaces have zero importers):
 - the `bidder_members` table + its index, and the `contract_participants` view, in `0000_init.sql`;
-- the no-op `DELETE FROM bidder_members` in `normalize-egov.sql`;
+- the no-op `DELETE FROM bidder_members` in `normalize-raw.sql`;
 - the `BidderMemberRow` and `ContractParticipantRow` interfaces in `@sigma/db`'s `schema.ts`.
 
 **Keep — this is the LIVE path, not the dead layer:** `parseConsortiumMembers` /
@@ -170,9 +175,9 @@ with them, not before, or the build breaks):**
   wires `@sigma/analysis` into the web app.
 - `@sigma/db`, `@sigma/config`, `@sigma/shared`, `@sigma/api-contract` (live parts);
   `CpvSector`/`RiskBand`/`requireEnv`.
-- FX + NUTS reference data; the `raw_egov_*` / `raw_ocds_*` staging tables, `idx_egov_*` / `idx_ocds_*`
-  indexes, and OCDS mappers — **live transform-only staging, never served** (§3); the `bidders` /
-  `authorities` master tables.
+- FX + NUTS reference data; the source-neutral raw staging tables, the `raw_ocds_*` staging tables,
+  `idx_raw_*` / `idx_ocds_*` indexes, and OCDS mappers — **live transform-only staging, never served**
+  (§3); the `bidders` / `authorities` master tables.
 - `apps/web`, `apps/etl`.
 - `mocks/` and `docs/` — intentionally untouched this pass. (Aside: `docs/deploy.md`'s cron section
   still describes the retired `data.egov.bg` feed and is stale, but it is out of scope here.)

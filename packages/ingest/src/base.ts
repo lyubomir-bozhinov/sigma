@@ -19,7 +19,7 @@ export interface BaseFieldMapEntry {
 }
 
 interface BaseCategoryConfig {
-  table: 'raw_egov_contracts' | 'raw_egov_tenders' | 'raw_egov_amendments';
+  table: 'raw_contracts' | 'raw_tenders' | 'raw_amendments';
   fixed: string[];
   fields: BaseFieldMapEntry[];
   keep: (record: Record<string, unknown>) => boolean;
@@ -149,7 +149,7 @@ const yearOf = (day: string): number | null => {
 
 export const BASE_CATEGORIES: Record<BaseCategory, BaseCategoryConfig> = {
   contracts: {
-    table: 'raw_egov_contracts',
+    table: 'raw_contracts',
     fixed: ['source', 'dataset_year', 'dataset_variant', 'fetched_at', 'needs_enrichment'],
     keep: (record) => clean(record.contractNumber) !== null,
     fields: [
@@ -213,7 +213,7 @@ export const BASE_CATEGORIES: Record<BaseCategory, BaseCategoryConfig> = {
     ],
   },
   tenders: {
-    table: 'raw_egov_tenders',
+    table: 'raw_tenders',
     fixed: ['source', 'dataset_year', 'fetched_at'],
     keep: () => true,
     fields: [
@@ -272,7 +272,7 @@ export const BASE_CATEGORIES: Record<BaseCategory, BaseCategoryConfig> = {
     ],
   },
   annexes: {
-    table: 'raw_egov_amendments',
+    table: 'raw_amendments',
     fixed: ['source', 'dataset_year', 'dataset_variant', 'fetched_at'],
     keep: (record) => clean(record.contractNumber) !== null,
     fields: [
