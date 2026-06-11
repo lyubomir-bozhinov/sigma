@@ -318,9 +318,16 @@ staging schedule (e.g. `30 */6 * * *`) so it doesn't hit the source at the same 
   workers in their own Cloudflare account and scope the token to it (this is the production-v2 plan).
   Otherwise use the minimal scopes above and keep the token in CI rather than on a laptop.
 - **Page caching** is done via `Cache-Control` headers + the per-colo Cache API
-  ([apps/web/app/lib/cache.ts](../apps/web/app/lib/cache.ts)) — no KV namespace needed. D1 is the
-  only Cloudflare resource Sigma provisions. Full CSV exports are streamed without edge caching and
-  are protected by the `CSV_RATE_LIMITER` Workers Rate Limiting binding.
+  ([apps/web/app/lib/cache.ts](../apps/web/app/lib/cache.ts)) — no KV namespace needed. The Worker
+  normalizes cache keys to the query params the loaders consume, so unknown query params collapse
+  onto the same cached entry instead of forcing fresh D1 aggregation. D1 is the only Cloudflare
+  resource Sigma provisions. Full CSV exports are streamed without edge caching and are protected by
+  the `CSV_RATE_LIMITER` Workers Rate Limiting binding (10/60s); `/companies` and `/authorities`
+  cache misses are protected by `AGG_RATE_LIMITER` (30/60s).
+- **Custom-domain checklist.** In production the Worker redirects cleartext HTTP to HTTPS before
+  route handling. For the production custom domain, set Minimum TLS Version 1.2, enable Always Use
+  HTTPS, submit/verify HSTS preload, and optionally add a case-insensitive WAF rate rule on `*.csv`
+  as a zone-level backstop (not available on `workers.dev`).
 
 ## Production-v2 (future, separate account)
 
