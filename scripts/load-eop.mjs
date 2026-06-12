@@ -60,6 +60,14 @@ const RESOURCE_FILES = {
   annexes: 'annexes.json',
 };
 
+export function assertSameHost(requestedUrl, res) {
+  const reqHost = new URL(requestedUrl).host;
+  const finalHost = new URL(res.url || requestedUrl).host;
+  if (finalHost !== reqHost) {
+    throw new Error(`Refusing cross-host redirect: ${requestedUrl} -> ${res.url}`);
+  }
+}
+
 const SQL_REAL_COLS = new Set([
   'signing_value',
   'estimated_value',
@@ -271,6 +279,7 @@ async function readBucketKeysFor(day) {
   try {
     const keyMap = await retryOperation(`${day} bucket listing`, async (signal) => {
       const res = await fetch(url, { signal });
+      assertSameHost(url, res);
       handleHttp(res, url);
       const keys = parseBucketKeys(await res.text());
       const byCat = {};
@@ -304,6 +313,7 @@ async function fetchObjectJson(cat, day, key) {
   const url = `${bucketUrl}${encodeURIComponent(key)}`;
   return retryOperation(`${cat} ${day} object`, async (signal) => {
     const res = await fetch(url, { signal });
+    assertSameHost(url, res);
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} ${url}`);
     const text = await res.text();
     const json = JSON.parse(text);
@@ -322,6 +332,7 @@ async function fetchAnyObjectJson(cat, day, key) {
   const url = `${bucketUrl}${encodeURIComponent(key)}`;
   return retryOperation(`${cat} ${day} object`, async (signal) => {
     const res = await fetch(url, { signal });
+    assertSameHost(url, res);
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} ${url}`);
     const text = await res.text();
     return { text, json: JSON.parse(text) };

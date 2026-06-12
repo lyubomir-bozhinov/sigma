@@ -1,7 +1,30 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deleteSqlForEopSources, isWithinMissingSettleWindow } from './load-eop.mjs';
+import { assertSameHost, deleteSqlForEopSources, isWithinMissingSettleWindow } from './load-eop.mjs';
+
+describe('assertSameHost', () => {
+  it('accepts same-host final URLs and responses without a final URL', () => {
+    assert.doesNotThrow(() =>
+      assertSameHost('https://storage.eop.bg/open-data-2024-01-02/', {
+        url: 'https://storage.eop.bg/open-data-2024-01-02/?list-type=2',
+      }),
+    );
+    assert.doesNotThrow(() =>
+      assertSameHost('https://storage.eop.bg/open-data-2024-01-02/', { url: '' }),
+    );
+  });
+
+  it('rejects cross-host final URLs', () => {
+    assert.throws(
+      () =>
+        assertSameHost('https://storage.eop.bg/open-data-2024-01-02/', {
+          url: 'https://example.com/open-data-2024-01-02/',
+        }),
+      /Refusing cross-host redirect/,
+    );
+  });
+});
 
 describe('deleteSqlForEopSources', () => {
   it('keeps the existing single-day source wipe', () => {
