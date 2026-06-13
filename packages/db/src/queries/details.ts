@@ -478,10 +478,13 @@ export async function getContract(
       }>(),
   ]);
 
+  // value_low values ARE populated (counted in sums) but stay labelled, so include them here so the
+  // „стойност с непотвърдена достоверност" note still renders on the tiny/zero-value contracts.
   const suspect =
     r.value_flag === 'value_suspect' ||
     r.value_flag === 'annex_suspect' ||
-    r.value_flag === 'review';
+    r.value_flag === 'review' ||
+    r.value_flag === 'value_low';
   const dateSuspect = r.date_flag === 'signed_after_publication';
   const signingEur =
     r.signing_value_eur ?? eurFromNative(r.signing_value, r.contract_currency, r.fx_rate);

@@ -302,7 +302,13 @@ SET ownership_kind = (
 
 -- 5) Contracts — awarded lines (1:1 with staging rows), linked to tender + winning bidder,
 --    with the data-quality verdict (see 0007_data_quality.sql):
---      value_flag = 'value_suspect'  signed value ≥100× estimate (untrustworthy, excluded from sums)
+--      value_flag = 'value_suspect'  signed value ≥100× estimate, or an absurd headline value with no
+--                                    estimate (≥1e10) — untrustworthy, excluded from sums
+--                 | 'value_low'      zero/negative, OR a tiny signed value (< 1000 EUR) that is also
+--                                    < 5% of the estimate. KEPT IN the sums (amount_eur populated) but
+--                                    LABELLED — large legitimate framework call-offs (a small share of
+--                                    a huge ceiling but big in absolute terms) are excluded by the
+--                                    < 1000 EUR floor, so they keep counting and stay unflagged
 --                 | 'annex_suspect'  amendment pushed current_value ≥100× signing, or negative →
 --                                    fall back to signing_value, or current_value if signing is
 --                                    missing, so the contract still counts
@@ -383,6 +389,8 @@ FROM (
       WHEN 'annex_suspect' THEN COALESCE(y.signing_value, y.current_value)
       ELSE COALESCE(y.current_value, y.signing_value)
     END AS display_native,
+    -- Only value_suspect (and annex_suspect, which falls back) is null-valued for sums. value_low and
+    -- 'review' fall to the populated ELSE branch, so their amount_eur is set, NOT nulled.
     CASE y.value_flag
       WHEN 'value_suspect' THEN NULL
       WHEN 'annex_suspect' THEN COALESCE(y.signing_value, y.current_value)
@@ -419,9 +427,29 @@ FROM (
           ELSE c.lot_id
         END AS lot_norm,
         CASE
+          -- Over-valuation + absurd are checked FIRST; only these (and annex_suspect below) drop the
+          -- value from sums. value_low is a labelled-but-counted flag (see the amount_eur CASE).
           WHEN c.estimated_value > 0 AND c.signing_value / c.estimated_value >= 100 THEN 'value_suspect'
-          WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_suspect'
+          WHEN (c.estimated_value IS NULL OR c.estimated_value = 0) AND COALESCE(c.current_value, c.signing_value) >= 10000000000 THEN 'value_suspect'
+          -- value_low: zero/negative, OR a tiny signed value (< 1000 EUR) that is also < 5% of the
+          -- estimate. Large legitimate framework call-offs (small share of a huge ceiling but big in
+          -- absolute terms) are NOT caught — the < 1000 EUR floor keeps them OUT of value_low.
+          WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_low'
           WHEN c.estimated_value > 0 AND c.signing_value IS NOT NULL AND (
+            CASE
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN c.signing_value
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN c.signing_value / 1.95583
+              ELSE c.signing_value * (
+                SELECT f.eur_per_unit
+                FROM fx_rates f
+                WHERE f.base_currency = c.currency
+                  AND f.rate_date <= c.contract_date
+                  AND f.rate_date >= date(c.contract_date, '-10 days')
+                ORDER BY f.rate_date DESC
+                LIMIT 1
+              )
+            END
+          ) < 1000 AND (
             CASE
               WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN c.signing_value
               WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN c.signing_value / 1.95583
@@ -449,7 +477,7 @@ FROM (
                 LIMIT 1
               )
             END
-          ), 0) < 0.05 THEN 'value_suspect'
+          ), 0) < 0.05 THEN 'value_low'
           WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
           WHEN c.estimated_value > 0 AND COALESCE(c.current_value, c.signing_value) / c.estimated_value >= 10 THEN 'review'
           ELSE 'ok'
@@ -640,9 +668,25 @@ SELECT
     FROM (
       SELECT c.*,
         CASE
+          -- Mirrors the main derive CASE above; value_low is checked AFTER over-valuation + absurd.
           WHEN c.estimated_value > 0 AND c.signing_value / c.estimated_value >= 100 THEN 'value_suspect'
-          WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_suspect'
+          WHEN (c.estimated_value IS NULL OR c.estimated_value = 0) AND COALESCE(c.current_value, c.signing_value) >= 10000000000 THEN 'value_suspect'
+          WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_low'
           WHEN c.estimated_value > 0 AND c.signing_value IS NOT NULL AND (
+            CASE
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN c.signing_value
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN c.signing_value / 1.95583
+              ELSE c.signing_value * (
+                SELECT f.eur_per_unit
+                FROM fx_rates f
+                WHERE f.base_currency = c.currency
+                  AND f.rate_date <= c.contract_date
+                  AND f.rate_date >= date(c.contract_date, '-10 days')
+                ORDER BY f.rate_date DESC
+                LIMIT 1
+              )
+            END
+          ) < 1000 AND (
             CASE
               WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN c.signing_value
               WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN c.signing_value / 1.95583
@@ -670,7 +714,7 @@ SELECT
                 LIMIT 1
               )
             END
-          ), 0) < 0.05 THEN 'value_suspect'
+          ), 0) < 0.05 THEN 'value_low'
           WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
           WHEN c.estimated_value > 0 AND COALESCE(c.current_value, c.signing_value) / c.estimated_value >= 10 THEN 'review'
           ELSE 'ok'

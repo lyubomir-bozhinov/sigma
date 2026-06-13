@@ -282,10 +282,14 @@ export async function contractsSummary(
   p: ContractListParams,
 ): Promise<{ total: number; valueEur: number; suspect: number }> {
   const filters = buildFilters(p);
+  // suspect badge = rows whose value is excluded from the sum (amount_eur IS NULL: value_/annex_suspect)
+  // PLUS value_low rows, which ARE summed (amount_eur populated) but stay labelled „непотвърдена стойност".
+  // The value SUM intentionally keeps value_low IN (amount_eur is non-null for it) and only drops
+  // value_/annex_suspect (their amount_eur is NULL upstream).
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS total, COALESCE(SUM(c.amount_eur), 0) AS eur,
-              SUM(CASE WHEN c.amount_eur IS NULL THEN 1 ELSE 0 END) AS suspect ${FROM}${filters.sql}`,
+              SUM(CASE WHEN c.amount_eur IS NULL OR c.value_flag = 'value_low' THEN 1 ELSE 0 END) AS suspect ${FROM}${filters.sql}`,
     )
     .bind(...filters.params)
     .first<{ total: number; eur: number; suspect: number }>();
