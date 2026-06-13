@@ -283,18 +283,45 @@ export default function Company({ loaderData }: Route.ComponentProps) {
 
         <Section
           id="latest"
-          title="Най-големи договори"
+          title="Договори"
           hint={
-            <>
-              {Math.min(c.topContracts.length, 7)} от {count(c.contracts)}{' '}
-              {plural(c.contracts, 'договор', 'договора')}, подредени по стойност.{' '}
-              <Link to={`/contracts?bidder=${c.slug}`}>
-                Виж всички / филтрирай / свали като CSV →
-              </Link>
-            </>
+            <span>
+              {Math.min(Math.max(c.recentContracts.length, c.topContracts.length), 7)} от{' '}
+              {count(c.contracts)} {plural(c.contracts, 'договор', 'договора')} — превключи между
+              най-новите и най-големите по стойност.
+            </span>
           }
         >
-          <ContractMiniTable items={c.topContracts} counterparty="authority" />
+          <div className="tabset">
+            <input
+              type="radio"
+              name="company-contracts"
+              id="company-recent"
+              className="tab-input"
+              defaultChecked
+            />
+            <input
+              type="radio"
+              name="company-contracts"
+              id="company-top"
+              className="tab-input"
+            />
+            <div className="tab-labels">
+              <label htmlFor="company-recent">Най-нови</label>
+              <label htmlFor="company-top">Най-големи по стойност</label>
+            </div>
+            <div className="tab-panel" data-tab="recent">
+              <ContractMiniTable items={c.recentContracts} counterparty="authority" />
+            </div>
+            <div className="tab-panel" data-tab="top">
+              <ContractMiniTable items={c.topContracts} counterparty="authority" />
+            </div>
+          </div>
+          <p className="small muted" style={{ marginTop: 8 }}>
+            <Link to={`/contracts?bidder=${c.slug}`}>
+              Виж всички / филтрирай / свали като CSV →
+            </Link>
+          </p>
           <SourceLine>
             Източник: АОП / ЦАИС ЕОП. {c.eik ? `ЕИК ${c.eik}.` : 'Изпълнител без потвърден ЕИК.'}
           </SourceLine>

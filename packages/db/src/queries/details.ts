@@ -100,7 +100,8 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
     .first<CompanyTotalsFull>();
   if (!row) return null;
 
-  const [bidderMeta, extra, topAuth, procRows, bidsRow, suspectRow, top] = await Promise.all([
+  const [bidderMeta, extra, topAuth, procRows, bidsRow, suspectRow, top, recent] =
+    await Promise.all([
     db
       .prepare(
         `SELECT b.legal_form, n.nuts3_name AS region FROM bidders b
@@ -150,6 +151,7 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
       .bind(bidderId)
       .first<{ n: number }>(),
     listContracts(db, { bidder: companySlug(bidderId), sort: 'value-desc', pageSize: 7 }),
+    listContracts(db, { bidder: companySlug(bidderId), sort: 'date-desc', pageSize: 7 }),
   ]);
 
   const topAuthorities: AuthorityShare[] = topAuth.results.map((a) => ({
@@ -207,6 +209,7 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
     procedureMix: toProcedureMix(procRows.results),
     bids,
     topContracts: top.items,
+    recentContracts: recent.items,
     participants,
     membershipNote,
   };
@@ -240,7 +243,7 @@ export async function getAuthority(
     .first<AuthorityTotalsFull>();
   if (!row) return null;
 
-  const [topComp, sectorRows, procRows, bidsRow, suspectRow, recent] = await Promise.all([
+  const [topComp, sectorRows, procRows, bidsRow, suspectRow, recent, top] = await Promise.all([
     db
       .prepare(
         `SELECT c.bidder_id, b.name, b.kind, SUM(c.amount_eur) AS won, COUNT(*) AS n
@@ -288,6 +291,7 @@ export async function getAuthority(
       .bind(authorityId)
       .first<{ n: number }>(),
     listContracts(db, { authority: authoritySlug(authorityId), sort: 'date-desc', pageSize: 6 }),
+    listContracts(db, { authority: authoritySlug(authorityId), sort: 'value-desc', pageSize: 6 }),
   ]);
 
   const topContractors: CompanyShare[] = topComp.results.map((c) => ({
@@ -352,6 +356,7 @@ export async function getAuthority(
     sectorsOther,
     procedureMix: toProcedureMix(procRows.results),
     recentContracts: recent.items,
+    topContracts: top.items,
   };
 }
 
@@ -393,6 +398,7 @@ interface ContractDetailRow {
   cpv_code: string | null;
   cpv_description: string | null;
   num_lots: number | null;
+  tender_awards: number;
   eop_tender_id: string | null;
   estimated_value: number | null;
   tender_currency: string;
@@ -431,7 +437,8 @@ export async function getContract(
               t.authority_id, a.name AS authority_name, a.type_group AS authority_type_group,
               a.settlement AS authority_settlement,
               c.bidder_id, b.name AS bidder_name, b.kind AS bidder_kind, b.eik_normalized AS bidder_eik,
-              b.settlement AS bidder_settlement
+              b.settlement AS bidder_settlement,
+              (SELECT COUNT(*) FROM contracts c2 WHERE c2.tender_id = c.tender_id) AS tender_awards
        FROM contracts c
        JOIN tenders t ON t.id = c.tender_id
        JOIN authorities a ON a.id = t.authority_id
@@ -594,6 +601,13 @@ export async function getContract(
         }
       : null;
 
+  // Framework call-off detection (query-time, works on current data). When the parent procedure has
+  // more awarded contracts than lots, the extra awards are call-offs against one framework / DSP
+  // procedure rather than one-contract-per-lot — so the procedure-level estimate is the whole
+  // framework ceiling, not this single award. `frameworkAwards` carries the award count when so, else null.
+  const frameworkAwards =
+    r.tender_awards > Math.max(r.num_lots ?? 0, 1) ? r.tender_awards : null;
+
   const detail: ContractDetail = {
     id: contractSlug(r.id),
     subject: r.contract_subject?.trim() || r.title,
@@ -620,6 +634,7 @@ export async function getContract(
     euProgramme: r.eu_programme,
     durationDays: r.duration_days,
     value,
+    frameworkAwards,
     authority,
     bidder,
     lots,

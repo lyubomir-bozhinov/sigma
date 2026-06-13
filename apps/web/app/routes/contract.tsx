@@ -175,6 +175,12 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               <Link to="/methodology">методология</Link>.
             </p>
           )}
+          {c.frameworkAwards != null && (
+            <p className="small muted">
+              Рамково споразумение / ДСП — едно от {count(c.frameworkAwards)} възлагания по тази
+              процедура. Прогнозната стойност е за цялата процедура, а не за отделното възлагане.
+            </p>
+          )}
         </Section>
 
         <Section id="who" title="Възложител и изпълнител">

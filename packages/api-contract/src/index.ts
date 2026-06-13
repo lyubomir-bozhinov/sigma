@@ -136,7 +136,10 @@ export interface CompanyDetail {
   moreAuthorities: number;
   procedureMix: ProcedureSlice[];
   bids: BidDistribution;
+  /** Highest-value contracts (listContracts sort='value-desc', amount_eur DESC) — „Най-големи по стойност". */
   topContracts: ContractListItem[];
+  /** Most-recent contracts (listContracts sort='date-desc', signed_at DESC) — the „Най-нови" tab. */
+  recentContracts: ContractListItem[];
   /** Members parsed from the consortium's contractor_name string. Empty for plain companies and
    *  for consortia whose source row carries only a single name with the ДЗЗД/ОБЕДИНЕНИЕ keyword. */
   participants: ConsortiumParticipant[];
@@ -199,7 +202,10 @@ export interface AuthorityDetail {
   sectors: SectorSpend[];
   sectorsOther: SectorSpend | null; // „… още CPV категории" rollup of the long tail
   procedureMix: ProcedureSlice[];
+  /** Most-recent contracts (listContracts sort='date-desc', signed_at DESC) — the „Най-нови" tab. */
   recentContracts: ContractListItem[];
+  /** Highest-value contracts (listContracts sort='value-desc', amount_eur DESC) — „Най-големи по стойност". */
+  topContracts: ContractListItem[];
 }
 
 // ── Contracts ─────────────────────────────────────────────────────────────────────────────────
@@ -302,6 +308,11 @@ export interface ContractDetail {
   euProgramme: string | null;
   durationDays: number | null;
   value: ContractValueTimeline;
+  /** When this contract is one of several awards under the same procedure (more awards than lots — a
+   *  framework agreement / dynamic purchasing system call-off), this is the total number of awarded
+   *  contracts under the parent tender. Null for a normal single/per-lot award. The procedure-level
+   *  estimate then represents the whole framework ceiling, not this individual call-off. */
+  frameworkAwards: number | null;
   authority: ContractParty;
   bidder: ContractParty;
   lots: ContractLots | null;

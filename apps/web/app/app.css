@@ -2287,16 +2287,28 @@ details.row .body .signal .why {
   display: none;
 }
 #so-recent:checked ~ .tab-labels label[for='so-recent'],
-#so-top:checked ~ .tab-labels label[for='so-top'] {
+#so-top:checked ~ .tab-labels label[for='so-top'],
+#company-recent:checked ~ .tab-labels label[for='company-recent'],
+#company-top:checked ~ .tab-labels label[for='company-top'],
+#authority-recent:checked ~ .tab-labels label[for='authority-recent'],
+#authority-top:checked ~ .tab-labels label[for='authority-top'] {
   color: var(--ink);
   border-bottom-color: var(--accent);
 }
 #so-recent:checked ~ .tab-panel[data-tab='recent'],
-#so-top:checked ~ .tab-panel[data-tab='top'] {
+#so-top:checked ~ .tab-panel[data-tab='top'],
+#company-recent:checked ~ .tab-panel[data-tab='recent'],
+#company-top:checked ~ .tab-panel[data-tab='top'],
+#authority-recent:checked ~ .tab-panel[data-tab='recent'],
+#authority-top:checked ~ .tab-panel[data-tab='top'] {
   display: block;
 }
 #so-recent:focus-visible ~ .tab-labels label[for='so-recent'],
-#so-top:focus-visible ~ .tab-labels label[for='so-top'] {
+#so-top:focus-visible ~ .tab-labels label[for='so-top'],
+#company-recent:focus-visible ~ .tab-labels label[for='company-recent'],
+#company-top:focus-visible ~ .tab-labels label[for='company-top'],
+#authority-recent:focus-visible ~ .tab-labels label[for='authority-recent'],
+#authority-top:focus-visible ~ .tab-labels label[for='authority-top'] {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

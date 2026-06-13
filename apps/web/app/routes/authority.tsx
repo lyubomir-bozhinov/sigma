@@ -191,18 +191,44 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
 
         <Section
           id="all"
-          title="Всички договори"
+          title="Договори"
           hint={
-            <>
-              {count(a.contracts)} {plural(a.contracts, 'договор', 'договора')}, {range}. Показани
-              са най-новите.{' '}
-              <Link to={`/contracts?authority=${a.eik}`}>
-                Виж всички / филтрирай / свали като CSV →
-              </Link>
-            </>
+            <span>
+              {count(a.contracts)} {plural(a.contracts, 'договор', 'договора')}, {range} —
+              превключи между най-новите и най-големите по стойност.
+            </span>
           }
         >
-          <ContractMiniTable items={a.recentContracts} counterparty="bidder" />
+          <div className="tabset">
+            <input
+              type="radio"
+              name="authority-contracts"
+              id="authority-recent"
+              className="tab-input"
+              defaultChecked
+            />
+            <input
+              type="radio"
+              name="authority-contracts"
+              id="authority-top"
+              className="tab-input"
+            />
+            <div className="tab-labels">
+              <label htmlFor="authority-recent">Най-нови</label>
+              <label htmlFor="authority-top">Най-големи по стойност</label>
+            </div>
+            <div className="tab-panel" data-tab="recent">
+              <ContractMiniTable items={a.recentContracts} counterparty="bidder" />
+            </div>
+            <div className="tab-panel" data-tab="top">
+              <ContractMiniTable items={a.topContracts} counterparty="bidder" />
+            </div>
+          </div>
+          <p className="small muted" style={{ marginTop: 8 }}>
+            <Link to={`/contracts?authority=${a.eik}`}>
+              Виж всички / филтрирай / свали като CSV →
+            </Link>
+          </p>
           <SourceLine>
             Източник: Регистър на обществените поръчки (АОП / ЦАИС ЕОП). Името на институцията е
             канонизирано.
