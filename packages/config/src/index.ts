@@ -259,7 +259,7 @@ export const PROCEDURE_GROUPS: readonly ProcedureGroup[] = [
     key: 'open',
     label: 'Открита',
     competitive: true,
-    color: 'var(--color-ink)',
+    color: 'oklch(0.50 0.14 245)',
     types: [
       'Открита процедура', // 37 942
       'Ограничена процедура', // 121
@@ -271,7 +271,7 @@ export const PROCEDURE_GROUPS: readonly ProcedureGroup[] = [
     key: 'competition',
     label: 'Състезание',
     competitive: true,
-    color: 'var(--color-ink-mid)',
+    color: 'oklch(0.56 0.10 200)',
     types: [
       'Публично състезание', // 35 423
       'Състезателна процедура с договаряне', // 20
@@ -281,7 +281,7 @@ export const PROCEDURE_GROUPS: readonly ProcedureGroup[] = [
     key: 'collection',
     label: 'Събиране на оферти',
     competitive: true,
-    color: 'var(--color-ink-soft)',
+    color: 'oklch(0.60 0.13 150)',
     types: [
       'Събиране на оферти с обява', // 33 940
     ],
@@ -290,7 +290,7 @@ export const PROCEDURE_GROUPS: readonly ProcedureGroup[] = [
     key: 'negotiated_invited',
     label: 'Договаряне с покана',
     competitive: null,
-    color: 'oklch(72% 0.05 70)',
+    color: 'oklch(0.66 0.13 75)',
     types: [
       'Покана до определени лица', // 2 200
       'Договаряне с предварителна покана за участие', // 954
@@ -314,7 +314,7 @@ export const PROCEDURE_GROUPS: readonly ProcedureGroup[] = [
     key: 'other',
     label: 'Друго',
     competitive: null,
-    color: 'oklch(80% 0.03 75)',
+    color: 'oklch(0.54 0.15 300)',
     types: [
       'Динамична система за покупки', // 151
       'Квалификационна система', // 89
@@ -327,7 +327,7 @@ export const PROCEDURE_GROUPS: readonly ProcedureGroup[] = [
     key: 'unknown',
     label: 'Неизвестна',
     competitive: null,
-    color: 'var(--color-rule)',
+    color: 'oklch(0.62 0.015 250)',
     types: [
       'неизвестна', // 18 954 — synthetic (contract-only) tenders; shown as its own bucket, never dropped
     ],
