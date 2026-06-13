@@ -23,6 +23,14 @@ export interface AuthorityListParams {
   pageSize?: number;
 }
 
+export const AUTHORITY_FILTER_KEYS = [
+  'types',
+  'sectors',
+  'years',
+  'eu',
+  'q',
+] as const satisfies readonly (keyof AuthorityListParams)[];
+
 const SORTS: Record<AuthoritySort, { col: string; dir: 'asc' | 'desc' }> = lookup({
   spent: { col: 'spent_eur', dir: 'desc' },
   count: { col: 'contracts', dir: 'desc' },
@@ -43,6 +51,7 @@ function needsBase(p: AuthorityListParams): boolean {
 }
 
 function source(p: AuthorityListParams): { from: string; params: unknown[] } {
+  // Keep consumed filter keys in sync with AUTHORITY_FILTER_KEYS and authorityFilterSignature().
   if (!needsBase(p)) return { from: 'authority_totals', params: [] };
   const where: string[] = ['c.amount_eur IS NOT NULL'];
   const params: unknown[] = [];
@@ -72,6 +81,7 @@ function source(p: AuthorityListParams): { from: string; params: unknown[] } {
 }
 
 function entityWhere(p: AuthorityListParams): { sql: string; params: unknown[] } {
+  // Keep consumed filter keys in sync with AUTHORITY_FILTER_KEYS and authorityFilterSignature().
   // The type facet shows all 7 buckets; a filter is only meaningful when a strict subset is selected.
   const where: string[] = [];
   const params: unknown[] = [];
@@ -90,13 +100,14 @@ function entityWhere(p: AuthorityListParams): { sql: string; params: unknown[] }
 }
 
 function authorityFilterSignature(p: AuthorityListParams): string {
-  return filterSignature({
+  const filters = {
     types: p.types,
     sectors: p.sectors,
     years: p.years,
     eu: normalizeEu(p.eu),
     q: searchMatchQuery(p.q ?? ''),
-  });
+  } satisfies Record<(typeof AUTHORITY_FILTER_KEYS)[number], unknown>;
+  return filterSignature(filters);
 }
 
 export async function listAuthorities(

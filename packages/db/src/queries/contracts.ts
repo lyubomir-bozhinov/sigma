@@ -26,6 +26,17 @@ export interface ContractListParams {
   pageSize?: number;
 }
 
+export const CONTRACT_FILTER_KEYS = [
+  'years',
+  'sectors',
+  'procedureGroups',
+  'valueBucket',
+  'eu',
+  'authority',
+  'bidder',
+  'q',
+] as const satisfies readonly (keyof ContractListParams)[];
+
 const SORTS: Record<ContractSort, { expr: string; dir: 'asc' | 'desc' }> = lookup({
   'value-desc': { expr: 'COALESCE(c.amount_eur, -1)', dir: 'desc' },
   'value-asc': { expr: 'COALESCE(c.amount_eur, 1e18)', dir: 'asc' },
@@ -77,7 +88,10 @@ const FROM = `
   JOIN authorities a ON a.id = t.authority_id
   JOIN bidders b ON b.id = c.bidder_id`;
 
-/** Build the WHERE fragment (with a leading ' WHERE ') + params shared by list, summary and CSV. */
+/**
+ * Build the WHERE fragment (with a leading ' WHERE ') + params shared by list, summary and CSV.
+ * Keep consumed filter keys in sync with CONTRACT_FILTER_KEYS and contractFilterSignature().
+ */
 function buildFilters(p: ContractListParams): { sql: string; params: unknown[] } {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -144,7 +158,7 @@ function buildFilters(p: ContractListParams): { sql: string; params: unknown[] }
 
 function contractFilterSignature(p: ContractListParams): string {
   const bidder = p.bidder ? (bidderIdFromSlug(p.bidder) ?? `invalid:${p.bidder}`) : null;
-  return filterSignature({
+  const filters = {
     years: p.years,
     sectors: p.sectors,
     procedureGroups: p.procedureGroups,
@@ -153,7 +167,8 @@ function contractFilterSignature(p: ContractListParams): string {
     authority: p.authority,
     bidder,
     q: searchMatchQuery(p.q ?? ''),
-  });
+  } satisfies Record<(typeof CONTRACT_FILTER_KEYS)[number], unknown>;
+  return filterSignature(filters);
 }
 
 function toItem(r: ContractRow): ContractListItem {

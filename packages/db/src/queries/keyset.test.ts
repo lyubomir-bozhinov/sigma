@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { AUTHORITY_FILTER_KEYS } from './authorities';
+import { COMPANY_FILTER_KEYS } from './companies';
+import { CONTRACT_FILTER_KEYS } from './contracts';
 import { decodeCursor, encodeCursor, filterSignature, keyset, pageCursors } from './keyset';
+
+const FILTER_VALUE: Record<string, unknown> = {
+  authority: '000695089',
+  bidder: '103267194',
+  countBucket: '2-5',
+  eu: 'eu',
+  kinds: ['company'],
+  procedureGroups: ['open'],
+  q: 'rail',
+  sectors: ['45'],
+  types: ['municipality'],
+  valueBucket: 'gt100m',
+  years: ['2025'],
+};
+
+function singleFilter(key: string): Record<string, unknown> {
+  return { [key]: FILTER_VALUE[key] };
+}
 
 describe('cursor encode/decode', () => {
   it('round-trips a [value, id] pair', () => {
@@ -34,6 +55,42 @@ describe('cursor encode/decode', () => {
     expect(filterSignature({ sectors: ['45', '30', '45'], eu: 'eu', empty: [] })).toBe(
       filterSignature({ eu: 'eu', sectors: ['30', '45'] }),
     );
+  });
+});
+
+describe('route filter signatures', () => {
+  it('declares the filter keys consumed by each route WHERE builder', () => {
+    expect([...CONTRACT_FILTER_KEYS]).toEqual([
+      'years',
+      'sectors',
+      'procedureGroups',
+      'valueBucket',
+      'eu',
+      'authority',
+      'bidder',
+      'q',
+    ]);
+    expect([...COMPANY_FILTER_KEYS]).toEqual([
+      'kinds',
+      'countBucket',
+      'sectors',
+      'years',
+      'eu',
+      'q',
+    ]);
+    expect([...AUTHORITY_FILTER_KEYS]).toEqual(['types', 'sectors', 'years', 'eu', 'q']);
+  });
+
+  it.each([
+    ['contracts', CONTRACT_FILTER_KEYS],
+    ['companies', COMPANY_FILTER_KEYS],
+    ['authorities', AUTHORITY_FILTER_KEYS],
+  ])('binds every %s filter key into the cursor filter signature', (_route, keys) => {
+    const empty = filterSignature({});
+    for (const key of keys) {
+      expect(filterSignature(singleFilter(key))).not.toBe(empty);
+      expect(filterSignature(singleFilter(key))).toBe(filterSignature(singleFilter(key)));
+    }
   });
 });
 

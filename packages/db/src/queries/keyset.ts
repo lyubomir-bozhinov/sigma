@@ -119,6 +119,8 @@ function normalizeSignatureValue(value: unknown): unknown {
 }
 
 export function filterSignature(filters: Record<string, unknown>): string {
+  // Route WHERE builders define their consumed filter keys as *_FILTER_KEYS and feed the same key
+  // set into their route-specific filterSignature object. Update both when adding a list filter.
   return JSON.stringify(normalizeSignatureValue(filters));
 }
 

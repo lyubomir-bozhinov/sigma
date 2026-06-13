@@ -24,6 +24,15 @@ export interface CompanyListParams {
   pageSize?: number;
 }
 
+export const COMPANY_FILTER_KEYS = [
+  'kinds',
+  'countBucket',
+  'sectors',
+  'years',
+  'eu',
+  'q',
+] as const satisfies readonly (keyof CompanyListParams)[];
+
 const SORTS: Record<CompanySort, { col: string; dir: 'asc' | 'desc' }> = lookup({
   won: { col: 'won_eur', dir: 'desc' },
   count: { col: 'contracts', dir: 'desc' },
@@ -51,7 +60,10 @@ function needsBase(p: CompanyListParams): boolean {
   return Boolean(p.sectors?.length || p.years?.length || normalizeEu(p.eu));
 }
 
-/** The FROM source: the rollup table, or a scoped base-aggregation CTE for sector/year/EU cross-cuts. */
+/**
+ * The FROM source: the rollup table, or a scoped base-aggregation CTE for sector/year/EU cross-cuts.
+ * Keep consumed filter keys in sync with COMPANY_FILTER_KEYS and companyFilterSignature().
+ */
 function source(p: CompanyListParams): { from: string; params: unknown[] } {
   if (!needsBase(p)) return { from: 'company_totals', params: [] };
   const where: string[] = ['c.amount_eur IS NOT NULL'];
@@ -81,7 +93,10 @@ function source(p: CompanyListParams): { from: string; params: unknown[] } {
   return { from, params: single ? [single, ...params] : params };
 }
 
-/** Entity-level WHERE (kind, contract-count bucket) applied on top of the source. */
+/**
+ * Entity-level WHERE (kind, contract-count bucket) applied on top of the source.
+ * Keep consumed filter keys in sync with COMPANY_FILTER_KEYS and companyFilterSignature().
+ */
 function entityWhere(p: CompanyListParams): { sql: string; params: unknown[] } {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -101,14 +116,15 @@ function entityWhere(p: CompanyListParams): { sql: string; params: unknown[] } {
 }
 
 function companyFilterSignature(p: CompanyListParams): string {
-  return filterSignature({
+  const filters = {
     kinds: p.kinds,
     countBucket: p.countBucket,
     sectors: p.sectors,
     years: p.years,
     eu: normalizeEu(p.eu),
     q: searchMatchQuery(p.q ?? ''),
-  });
+  } satisfies Record<(typeof COMPANY_FILTER_KEYS)[number], unknown>;
+  return filterSignature(filters);
 }
 
 export async function listCompanies(
