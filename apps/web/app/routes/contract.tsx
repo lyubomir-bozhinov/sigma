@@ -143,7 +143,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
         <Section
           id="values"
           title="Стойности във времето"
-          hint='Договорът минава през няколко стойности: прогноза на възложителя, цена при подписване и текуща стойност. Показани в евро. „Стойност" в списъците по подразбиране е текущата (изчистена) стойност.'
+          hint='Договорът минава през няколко стойности: прогнозна (на възложителя), цена при подписване и текуща. Всички в евро. „Стойност" в списъците по подразбиране е текущата (изчистена) стойност.'
         >
           <div className="value-history">
             <div className="vh">
@@ -280,7 +280,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                     {c.cpvDescription ? ` ${c.cpvDescription}` : ''}
                   </>
                 ),
-                sub: 'вторичен CPV не се публикува в източника',
+                sub: 'вторичният CPV код не се публикува в източника',
               },
               c.sector && { term: 'Сектор', value: c.sector.short },
               { term: 'Процедура', value: c.procedureLabel },
@@ -297,10 +297,10 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                 // and the staging columns at packages/db/migrations/0000_init.sql:363-365). Each clause
                 // only appears when the source published a non-zero value, so contracts without any
                 // rejection/SME data fall back to the original „самите оферти…" footnote.
-                sub: bidsBreakdown(c) ?? 'самите оферти и техните стойности не са в АОП',
+                sub: bidsBreakdown(c) ?? 'самите оферти и стойностите им ги няма в АОП',
               },
               {
-                term: 'ЕС финансиране',
+                term: 'Финансиране от ЕС',
                 value:
                   c.euFunded == null ? (
                     <span className="muted">няма данни</span>
@@ -325,12 +325,13 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                     {longDate(c.signedAt)}{' '}
                     {c.dateSuspect && (
                       <span className="suspect">
-                        Възможна грешка в датата — подписана след публикуване на обявлението
+                        Възможна грешка в датата — договорът е подписан след публикуване на
+                        обявлението
                       </span>
                     )}
                   </>
                 ) : (
-                  <span className="muted">не е наличен</span>
+                  <span className="muted">липсва</span>
                 ),
               },
               {
@@ -338,7 +339,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                 value: c.publishedAt ? (
                   longDate(c.publishedAt)
                 ) : (
-                  <span className="muted">не е наличен</span>
+                  <span className="muted">липсва</span>
                 ),
               },
               {
@@ -347,24 +348,16 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                   c.durationDays != null ? (
                     `${count(c.durationDays)} дни`
                   ) : (
-                    <span className="muted">не е наличен за този запис</span>
+                    <span className="muted">липсва за този запис</span>
                   ),
               },
               {
                 term: 'Начална дата',
-                value: c.startDate ? (
-                  longDate(c.startDate)
-                ) : (
-                  <span className="muted">не е налична</span>
-                ),
+                value: c.startDate ? longDate(c.startDate) : <span className="muted">липсва</span>,
               },
               {
                 term: 'Очакван край',
-                value: c.endDate ? (
-                  longDate(c.endDate)
-                ) : (
-                  <span className="muted">не е налична</span>
-                ),
+                value: c.endDate ? longDate(c.endDate) : <span className="muted">липсва</span>,
               },
             ]}
           />
@@ -377,8 +370,8 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
             hint={
               <>
                 Преписка <span className="mono">{c.lots.unp}</span> е разделена на обособени
-                позиции. Връзката договор↔лот в данните е приблизителна — съпоставена по
-                идентификатор на позицията (вж. <Link to="/methodology">методология</Link>).
+                позиции. Връзката договор↔лот е приблизителна — съпоставяме я по идентификатора на
+                позицията (вж. <Link to="/methodology">методология</Link>).
               </>
             }
           >
@@ -453,9 +446,9 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
 
         <Section id="provenance" title="Произход на данните">
           <p>
-            Този запис е съставен от публикуваните в АОП / ЦАИС ЕОП данни към преписката,
-            нормализирани от СИГМА. Имената на институцията и компанията са показани в
-            стандартизиран вид; ЕИК и УНП се запазват буквално.
+            Този запис е сглобен от публикуваните в АОП / ЦАИС ЕОП данни за преписката и
+            нормализиран от СИГМА. Имената на институцията и компанията са в стандартизиран вид; ЕИК
+            и УНП се запазват буквално.
           </p>
           <ul className="linklist">
             <li>
@@ -475,7 +468,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               <p className="small muted" style={{ margin: '0 0 8px' }}>
                 Първични данни от ЦАИС ЕОП (отворени данни) за деня на публикуване —{' '}
                 {longDate(c.publishedAt!)}. Свалят се директно от storage.eop.bg, без копие в СИГМА;
-                всеки файл съдържа пълните данни за деня. Записът на този договор е във файла
+                всеки файл съдържа пълните данни за деня. Записът за този договор е във файла
                 „Договори".
               </p>
               <ul className="linklist">
@@ -494,8 +487,8 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
           )}
 
           <SourceLine>
-            Източник: Регистър на обществените поръчки (АОП / ЦАИС ЕОП). СИГМА не редактира
-            съдържанието на договора и не интерпретира клаузите.
+            Източник: Регистър на обществените поръчки (АОП / ЦАИС ЕОП). СИГМА не променя
+            съдържанието на договора и не тълкува клаузите му.
           </SourceLine>
         </Section>
       </main>

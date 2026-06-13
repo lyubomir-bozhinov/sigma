@@ -65,7 +65,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
             </>
           }
           title={a.name}
-          lede={`Общо публични средства, разходвани за обществени поръчки за периода ${range} г. Всяко число по-долу може да бъде разложено до конкретните договори, които го съставят.`}
+          lede={`Колко публични средства е похарчила институцията за обществени поръчки през ${range} г. Зад всяко число по-долу стоят конкретните договори, които го формират.`}
         />
 
         <FactsList
@@ -76,7 +76,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
             { term: 'Период', value: periodRange(a.periodFirst, a.periodLast) },
             { term: 'Различни изпълнители', value: count(a.suppliers) },
             {
-              term: 'Финансиране със средства от ЕС',
+              term: 'Дял с финансиране от ЕС',
               value: pct(a.euSharePct),
               sub: 'от общия обем',
             },
@@ -99,7 +99,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
         <Section
           id="top-contractors"
           title="Топ изпълнители"
-          hint={`Подредени по обща сума, спечелена от ${a.name}. Колоната „Дял" показва каква част от общата стойност отива към всеки изпълнител.`}
+          hint={`Подредени по общата сума, спечелена от ${a.name}. Колоната „Дял" показва каква част от парите отива при всеки изпълнител.`}
         >
           <div className="table-wrap tbl-cards">
             <table>
@@ -155,7 +155,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
         </Section>
 
         <div className="two-col">
-          <Section id="what" title="Какво купува" hint="CPV категории, подредени по обем.">
+          <Section id="what" title="Какво купува" hint="CPV категориите, подредени по обем.">
             <table>
               <tbody>
                 {a.sectors.map((s) => (
@@ -184,7 +184,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
             </table>
           </Section>
 
-          <Section id="how" title="Как купува" hint="Разпределение на договорите по тип процедура.">
+          <Section id="how" title="Как купува" hint="Разпределение на договорите по вид процедура.">
             <StackedBar slices={a.procedureMix.filter((s) => s.sharePct >= 0.0005)} />
           </Section>
         </div>
@@ -195,7 +195,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
           hint={
             <>
               {count(a.contracts)} {plural(a.contracts, 'договор', 'договора')}, {range}. Показани
-              са най-скорошните.{' '}
+              са най-новите.{' '}
               <Link to={`/contracts?authority=${a.eik}`}>
                 Виж всички / филтрирай / свали като CSV →
               </Link>

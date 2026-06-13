@@ -1,7 +1,7 @@
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // Explorer DTOs (v1 public explorer) — the typed shapes apps/web loaders return. Monetary values are
 // plain EUR numbers (the corpus is converted to amount_eur upstream); `null` means genuinely absent (the
-// UI renders „—" or a „данните се преглеждат" note), never a fabricated value.
+// UI renders „—" or a „данните се проверяват" note), never a fabricated value.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 export type EntityKind = 'company' | 'consortium';
@@ -220,7 +220,7 @@ export interface ContractListItem {
   procedureLabel: string;
   signedAt: string | null;
   bidsReceived: number | null;
-  valueEur: number | null; // null = suspect / unconvertible → render the преглеждат note
+  valueEur: number | null; // null = suspect / unconvertible → render the проверяват note
 }
 
 export interface ContractParty {

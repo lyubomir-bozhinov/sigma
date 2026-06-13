@@ -16,7 +16,7 @@ export function Pagination({
     <div className="paging">
       <div>
         Страница <strong>{fmtCount(nav.page)}</strong> от <strong>{fmtCount(nav.pageCount)}</strong>{' '}
-        · {pageSize} на страница{unit ? ` (${unit})` : ''}
+        · по {pageSize} на страница{unit ? ` (${unit})` : ''}
       </div>
       <div className="ctrl">
         {nav.prevHref ? (

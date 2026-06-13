@@ -28,7 +28,7 @@ export function SankeyDiagram({ layout }: { layout: SankeyLayout }) {
 
   return (
     <>
-      <p className="flow-scroll-hint">Плъзни хоризонтално, за да видиш цялата схема →</p>
+      <p className="flow-scroll-hint">Плъзни настрани, за да видиш цялата схема →</p>
       <div className="flow-scroll">
         <svg
           className="flow-svg"

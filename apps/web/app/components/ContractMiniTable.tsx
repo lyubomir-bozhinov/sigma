@@ -59,7 +59,7 @@ export function ContractMiniTable({
                 {c.valueEur != null ? (
                   money(c.valueEur)
                 ) : (
-                  <span className="suspect">преглеждат</span>
+                  <span className="suspect">проверяват</span>
                 )}
               </td>
             </tr>

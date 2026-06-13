@@ -26,7 +26,7 @@ export function ListControls({
     <div className="list-controls" aria-busy={busy || undefined}>
       <p className="muted small">
         {count}
-        {busy ? <span className="muted small"> · Обновяване…</span> : null}
+        {busy ? <span className="muted small"> · Зарежда…</span> : null}
       </p>
       <p className="muted small">
         Подреди:{' '}

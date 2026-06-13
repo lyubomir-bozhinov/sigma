@@ -24,7 +24,7 @@ import { coverageRange, getCoverageMeta, yearOptions } from '../lib/coverage';
 export function meta(_: Route.MetaArgs) {
   return [
     { title: 'Институции — СИГМА' },
-    { name: 'description', content: 'Всяка институция, която е възложила поне един договор.' },
+    { name: 'description', content: 'Всяка институция, възложила поне един договор.' },
   ];
 }
 
@@ -72,7 +72,7 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
   const groups: FilterGroup[] = [
     {
       key: 'type',
-      label: 'Тип на институцията',
+      label: 'Вид институция',
       type: 'checkbox',
       selected: getMulti(sp, 'type'),
       options: facets.types.map((t) => ({ value: t.value, label: t.label, count: t.count })),
@@ -93,12 +93,12 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
     },
     {
       key: 'eu',
-      label: 'ЕС финансиране',
+      label: 'Финансиране от ЕС',
       type: 'radio',
       selected: sp.get('eu') ? [sp.get('eu')!] : [],
       options: [
-        { value: 'eu', label: 'Само с ЕС финансиране' },
-        { value: 'national', label: 'Само без ЕС' },
+        { value: 'eu', label: 'Само с финансиране от ЕС' },
+        { value: 'national', label: 'Само без финансиране от ЕС' },
       ],
     },
   ];
@@ -123,7 +123,7 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
     },
     {
       key: 'type',
-      header: 'Тип',
+      header: 'Вид',
       secondary: true,
       cell: (a) => (a.typeLabel ? <Chip>{a.typeLabel}</Chip> : null),
     },
@@ -139,7 +139,7 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
         <PageHeader
           kicker={`${count(page.total)} възложители`}
           title="Институции"
-          lede="Всяка институция, която е възложила поне един договор. Подреди ги по похарченото общо, по брой договори или по средна стойност. Филтрите се запазват в адреса."
+          lede="Всяка институция, възложила поне един договор. Подреди ги по общо похарчено, по брой договори или по средна стойност. Филтрите остават в адреса."
         />
         <div className="split">
           <FilterRail groups={groups} sort={sort} clearHref="/authorities" csvHref={csvHref} />
@@ -188,8 +188,8 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
               </h2>
               <p style={{ margin: 0 }}>
                 Сумата от стойностите (в евро) на всички договори на дадена институция за периода{' '}
-                {range}. Типът на институцията (министерство, община, болница…) се определя по
-                името ѝ и е приблизителен. Виж <Link to="/methodology">методология</Link>.
+                {range}. Видът на институцията (министерство, община, болница…) се определя по името
+                ѝ и е приблизителен. Виж <Link to="/methodology">методология</Link>.
               </p>
             </Callout>
           </section>

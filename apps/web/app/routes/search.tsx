@@ -153,11 +153,9 @@ export default function Search({ loaderData }: Route.ComponentProps) {
   // states (never as a claim that matches were found). On a query that did match, the lede leads
   // with the result line instead.
   const coverage =
-    'Търсенето претърсва имена на институции и компании, предмети на договори, номера на договори и УНП на преписки.';
+    'Търси из имената на институции и компании, предметите и номерата на договорите и УНП на преписките.';
   const lede =
-    hasQuery && !results.empty
-      ? 'Намерени са съвпадения в институции, компании и договори.'
-      : coverage;
+    hasQuery && !results.empty ? 'Има съвпадения сред институции, компании и договори.' : coverage;
   // On the empty-query / no-results states no result <section> (each an h2) renders, so the Callout's
   // h3 would follow the h1 directly — an h1→h3 skip. Emit a preceding h2 in that case.
   const hasResults = results.groups.some((g) => g.total > 0);
@@ -178,7 +176,9 @@ export default function Search({ loaderData }: Route.ComponentProps) {
         />
 
         {hasQuery && results.empty && (
-          <p className="muted">Няма съвпадения за „{results.query}". Опитай с име, ЕИК или УНП.</p>
+          <p className="muted">
+            Нищо не намерихме за „{results.query}". Пробвай с име, ЕИК или УНП.
+          </p>
         )}
 
         {results.groups
@@ -241,12 +241,12 @@ export default function Search({ loaderData }: Route.ComponentProps) {
               компанията.
             </li>
             <li>
-              Главни/малки букви и ударения нямат значение; кирилица и латиница се обработват
-              еднакво в рамките на писмеността.
+              Главни и малки букви, както и ударенията, нямат значение. Кирилица и латиница се
+              разпознават еднакво.
             </li>
             <li>
-              Думите се търсят на принципа „начало на дума" — <code>стр</code> намира „<u>стр</u>
-              оителство", „<u>Стр</u>абаг".
+              Търси се по начало на дума — <code>стр</code> намира „<u>стр</u>оителство" и „
+              <u>Стр</u>абаг".
             </li>
           </ul>
         </Callout>

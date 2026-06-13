@@ -59,6 +59,8 @@ export default function Company({ loaderData }: Route.ComponentProps) {
   const c = loaderData.company;
   const range = coverageRange(loaderData.coverage.coverageEndYear);
   const noEikCompany = !c.isConsortium && !c.hasEik;
+  const subjectPhrase = c.isConsortium ? 'това обединение' : 'тази компания';
+  const wonVerb = c.isConsortium ? 'спечелило' : 'спечелила';
   return (
     <>
       <Breadcrumbs
@@ -95,7 +97,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             </>
           }
           title={c.displayName}
-          lede={`Профил, обобщаващ публичните средства, спечелени от ${c.isConsortium ? 'това обединение' : 'тази компания'} през регистъра на обществените поръчки за периода ${range} г.`}
+          lede={`Колко публични средства е ${wonVerb} ${subjectPhrase} по обществени поръчки за периода ${range} г.`}
         />
 
         <FactsList
@@ -108,11 +110,11 @@ export default function Company({ loaderData }: Route.ComponentProps) {
               sub: c.sectorSharePct != null ? `${pct(c.sectorSharePct)} от стойността` : undefined,
             },
             { term: 'Брой договори', value: count(c.contracts) },
-            { term: 'Брой институции платци', value: count(c.authorities) },
+            { term: 'Институции платци', value: count(c.authorities) },
             { term: 'Период', value: periodRange(c.periodFirst, c.periodLast) },
-            { term: 'Дял ЕС финансиране', value: pct(c.euSharePct) },
+            { term: 'Дял с финансиране от ЕС', value: pct(c.euSharePct) },
             c.avgBids != null && {
-              term: 'Среден брой оферти на търг',
+              term: 'Средно оферти на търг',
               value: c.avgBids.toString().replace('.', ','),
             },
             {
@@ -128,7 +130,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             c.suspect > 0 && {
               term: 'Непотвърдена стойност',
               value: `${count(c.suspect)} ${plural(c.suspect, 'договор', 'договора')}`,
-              sub: 'изключени от сумите — данните се преглеждат',
+              sub: 'изключени от сумите — данните се проверяват',
             },
           ]}
         />
@@ -151,8 +153,8 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             }
             hint={
               c.participants.length > 0
-                ? 'Имена от описанието на договора в АОП. Сумите се водят на ниво обединение — индивидуални профили на участниците ще се появят след свързване с Търговския регистър.'
-                : 'Източникът съдържа свободен текст вместо структуриран списък участници. Запазваме описанието както е в обявата.'
+                ? 'Имената са от описанието на договора в АОП. Сумите се водят на ниво обединение; отделни профили на участниците ще се появят след свързване с Търговския регистър.'
+                : 'Източникът дава свободен текст вместо подреден списък с участници. Запазваме описанието както е в обявата.'
             }
           >
             {c.participants.length > 0 ? (
@@ -187,7 +189,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
         <Section
           id="from"
           title="Откъде печели"
-          hint={`Институции, наредени по сума, заплатена на ${c.displayName.replace(/\.$/, '')}.`}
+          hint={`Институции, подредени по сумата, платена на ${c.displayName.replace(/\.$/, '')}.`}
         >
           <div className="table-wrap tbl-cards">
             <table>
@@ -240,7 +242,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
           <Section
             id="how-win"
             title="Как печели"
-            hint="Тип на процедурата, с която компанията е спечелила договорите."
+            hint="Видът процедури, по които компанията е печелила договорите."
           >
             <StackedBar slices={c.procedureMix.filter((s) => s.sharePct >= 0.0005)} />
           </Section>
@@ -248,7 +250,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
           <Section
             id="bids"
             title="Брой оферти на спечелените търгове"
-            hint="Колко оферти е имало на търговете, които компанията е спечелила (където данните го посочват)."
+            hint="Колко оферти е имало на спечелените от компанията търгове (там, където данните го показват)."
           >
             <table>
               <tbody>

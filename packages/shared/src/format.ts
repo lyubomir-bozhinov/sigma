@@ -213,7 +213,7 @@ export function cleanName(raw: string): string {
 /**
  * The canonical, comparable EUR value of a contract for lists/leaderboards/sums: `amount_eur` —
  * already current-when-an-annex-legitimately-raised-it, else signing, and NULL for value_suspect or
- * a foreign row without an FX rate. Returns null so the caller renders the „данните се преглеждат"
+ * a foreign row without an FX rate. Returns null so the caller renders the „данните се проверяват"
  * note instead of a number. The estimated→signing→current timeline (contract page) uses the
  * separate *_eur fields directly.
  */

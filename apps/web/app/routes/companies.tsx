@@ -93,7 +93,7 @@ export default function Companies({ loaderData }: Route.ComponentProps) {
     ),
     {
       key: 'kind',
-      label: 'Тип субект',
+      label: 'Вид субект',
       type: 'checkbox',
       selected: getMulti(sp, 'kind'),
       options: facets.kinds.map((k) => ({ value: k.value, label: k.label, count: k.count })),
@@ -117,12 +117,12 @@ export default function Companies({ loaderData }: Route.ComponentProps) {
     },
     {
       key: 'eu',
-      label: 'ЕС финансиране',
+      label: 'Финансиране от ЕС',
       type: 'radio',
       selected: sp.get('eu') ? [sp.get('eu')!] : [],
       options: [
-        { value: 'eu', label: 'Само договори с ЕС финансиране' },
-        { value: 'national', label: 'Само без ЕС' },
+        { value: 'eu', label: 'Само договори с финансиране от ЕС' },
+        { value: 'national', label: 'Само без финансиране от ЕС' },
       ],
     },
   ];
@@ -143,7 +143,7 @@ export default function Companies({ loaderData }: Route.ComponentProps) {
     },
     {
       key: 'type',
-      header: 'Тип',
+      header: 'Вид',
       secondary: true,
       cell: (c) => (
         <>
@@ -175,7 +175,7 @@ export default function Companies({ loaderData }: Route.ComponentProps) {
         <PageHeader
           kicker={`${count(page.total)} изпълнители`}
           title="Компании"
-          lede="Всяка компания, която е спечелила поне един договор по обществена поръчка. По подразбиране списъкът е подреден по обща стойност на спечелените договори."
+          lede="Всяка компания, която е спечелила поне един договор по обществена поръчка. По подразбиране е подреден по общата стойност на спечелените договори."
         />
         <div className="split">
           <FilterRail groups={groups} sort={sort} clearHref="/companies" csvHref={csvHref} />
@@ -223,10 +223,10 @@ export default function Companies({ loaderData }: Route.ComponentProps) {
                 Какво означава „спечелено“?
               </h2>
               <p style={{ margin: 0 }}>
-                Сумата от стойностите на договорите (в евро), по които компанията е изпълнител.
-                Когато договорът е възложен на обединение (ДЗЗД/консорциум), цялата сума се отчита
-                на обединението като един изпълнител; разбивка по членове ще се добави след
-                свързване с Търговския регистър.
+                Сборът от стойностите (в евро) на договорите, по които компанията е изпълнител.
+                Когато договорът е възложен на обединение (ДЗЗД/консорциум), цялата сума се води на
+                обединението като един изпълнител; разбивка по членове ще добавим след свързване с
+                Търговския регистър.
               </p>
             </Callout>
           </section>
