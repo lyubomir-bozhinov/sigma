@@ -1,3 +1,22 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# pnpm 10 no longer reads the `pnpm` field from package.json — overrides and
+# onlyBuiltDependencies live here instead.
+overrides:
+  esbuild: 0.28.1
+  # Security pins for dev/build-time transitive deps so CI `pnpm audit --audit-level=high`
+  # passes. None of these ship to the Worker runtime.
+  #   ws <8.21.0  — memory-exhaustion DoS (GHSA-96hv-2xvq-fx4p), via wrangler→miniflare
+  #   vite        — server.fs.deny bypass (GHSA-fx2h-pf6j-xcff): v7 via @react-router/dev→
+  #                 vite-node, v8 via apps/web + vitest. Patched per-major to avoid forcing
+  #                 vite-node (which needs v7) onto v8.
+  ws: "^8.21.0"
+  vite@7: "^7.3.5"
+  vite@8: "^8.0.16"
+
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - sharp
