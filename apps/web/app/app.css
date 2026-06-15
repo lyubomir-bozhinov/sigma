@@ -529,11 +529,25 @@ code,
   .search-drawer-form {
     grid-template-columns: auto 1fr auto;
   }
+  /* Pin every cell so the close button can't fall to a third row: row 1 is
+     `› input ×`, the submit button takes the full second row. Without explicit
+     placement, grid's sparse auto-flow strands the × bottom-left. */
+  .search-drawer-prompt {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .search-drawer-form input {
+    grid-column: 2;
+    grid-row: 1;
+  }
   .search-drawer-form .search-drawer-close {
+    grid-column: 3;
+    grid-row: 1;
     justify-self: end;
   }
   .search-drawer-form button[type='submit'] {
     grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
   }
 }
