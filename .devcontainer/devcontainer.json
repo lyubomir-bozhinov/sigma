@@ -15,6 +15,12 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "remoteUser": "node",
+  // Pin the source mount to /workspaces/sigma regardless of the host folder name.
+  // Without this, Dev Containers mounts the repo at /workspaces/<host-basename>
+  // (e.g. /workspaces/sigma-prototype), while workspaceFolder + the node_modules
+  // volume target /workspaces/sigma — leaving that dir with only node_modules in it
+  // and breaking post-create's pnpm install (no package.json at cwd).
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/sigma,type=bind,consistency=cached",
   "workspaceFolder": "/workspaces/sigma",
   "forwardPorts": [5173, 8789],
   "portsAttributes": {

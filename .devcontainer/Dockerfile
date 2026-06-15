@@ -2,6 +2,9 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:22-bookworm
 
 ARG WRANGLER_VERSION=4
 ARG UV_VERSION=0.5.11
+# Pin pnpm's major to avoid `@latest` drift silently changing build behavior
+# (e.g. the global-bin-dir convention). Bump deliberately.
+ARG PNPM_VERSION=10
 
 # ENV DEBIAN_FRONTEND=noninteractive
 
@@ -46,16 +49,16 @@ RUN usermod -s /usr/bin/zsh node
 RUN su node -c "curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh"
 
 RUN corepack enable \
-    && printf 'export PNPM_HOME=/home/node/.local/share/pnpm\nexport PATH=$PNPM_HOME:$PATH\n' \
+    && printf 'export PNPM_HOME=/home/node/.local/share/pnpm\nexport PATH=$PNPM_HOME/bin:$PNPM_HOME:$PATH\n' \
        > /etc/profile.d/pnpm-home.sh
 
 USER node
 WORKDIR /workspaces/sigma
 
 ENV PNPM_HOME=/home/node/.local/share/pnpm
-ENV PATH=/home/node/.local/bin:${PNPM_HOME}:${PATH}
+ENV PATH=/home/node/.local/bin:${PNPM_HOME}/bin:${PNPM_HOME}:${PATH}
 
-RUN corepack prepare pnpm@latest --activate \
+RUN corepack prepare pnpm@${PNPM_VERSION} --activate \
     && pnpm config set store-dir /home/node/.pnpm-store
 
 RUN pnpm add -g wrangler@${WRANGLER_VERSION}
