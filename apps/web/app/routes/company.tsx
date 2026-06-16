@@ -95,8 +95,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
               )}
               {c.hasEik && c.eik && (
                 <>
-                  {' '}
-                  · ЕИК&nbsp;{c.eik}
+                  {' · '}ЕИК&nbsp;{c.eik}
                   <ExternalEikLink eik={c.eik} />
                 </>
               )}
