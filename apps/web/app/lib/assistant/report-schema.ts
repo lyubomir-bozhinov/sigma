@@ -1,0 +1,292 @@
+// Report block vocabulary + server-side value binding.
+//
+// Integrity rule (spec §4 + §9 point 1): the model NEVER writes data values. It emits blocks that
+// *reference* handles into result sets the server actually executed (run_sql / curated tools); the
+// server re-binds the real values. A 27B model that fabricates a row or writes 12 млрд. instead of
+// 1,2 млрд. therefore cannot reach a published, citable report — the defamation/disinfo vector in
+// architecture.md §3. Only `text`/`callout` carry model prose; it is markdown-sanitized (no raw
+// HTML — closes the stored-XSS vector on the public /reports/:id, spec §7) and must not carry
+// material numbers.
+//
+// This module is pure (no deps, no bindings) so it is unit-testable and deploy-independent.
+
+export type CellFormat = 'money' | 'number' | 'percent' | 'date' | 'text';
+export type EntityKind = 'company' | 'authority' | 'contract';
+
+/**
+ * A result set the server obtained from a server-executed tool. `handle` is what the model uses to
+ * reference it (e.g. "R1"). Values are primitives only — never markup. Rows are aligned to columns.
+ */
+export interface QueryResult {
+  handle: string;
+  columns: string[];
+  rows: (string | number | null)[][];
+  truncated?: boolean; // run_sql byte/row cap hit (spec §7) — surfaced in the callout
+}
+
+// A pointer to a single cell in a result set. The only way the model can place a number anywhere.
+export interface CellRef {
+  resultId: string;
+  row: number;
+  col: string;
+}
+
+// ── What the MODEL emits via emit_report (no literal data values in data blocks) ──────────────────
+export interface EmitText {
+  type: 'text';
+  md: string;
+}
+export interface EmitCallout {
+  type: 'callout';
+  title: string;
+  md: string;
+}
+export interface EmitTotals {
+  type: 'totals';
+  items: { label: string; ref: CellRef; format: CellFormat }[];
+}
+export interface EmitFacts {
+  type: 'facts';
+  items: { term: string; ref: CellRef; sub?: string }[];
+}
+export interface EmitTableColumn {
+  key: string; // must name a column of the referenced result
+  header: string;
+  align?: 'left' | 'right';
+  format: CellFormat;
+  link?: { kind: EntityKind; idCol: string }; // renderer builds the canonical /companies/:eik etc.
+}
+export interface EmitTable {
+  type: 'table';
+  resultId: string; // rows come wholesale from this result — the model cannot inject fabricated rows
+  columns: EmitTableColumn[];
+}
+export interface EmitBar {
+  type: 'bar';
+  resultId: string;
+  labelCol: string;
+  valueCol: string;
+}
+export interface EmitFlows {
+  type: 'flows';
+  resultId: string;
+  fromCol: string;
+  toCol: string;
+  valueCol: string;
+}
+export interface EmitTimeseries {
+  type: 'timeseries';
+  resultId: string;
+  periodCol: string;
+  valueCol: string;
+}
+export type EmitBlock =
+  | EmitText
+  | EmitCallout
+  | EmitTotals
+  | EmitFacts
+  | EmitTable
+  | EmitBar
+  | EmitFlows
+  | EmitTimeseries;
+
+export interface EmitReportInput {
+  title: string;
+  question: string; // the asked question — shown on the report (watermark, spec §9 point 12)
+  blocks: EmitBlock[];
+}
+
+// ── What the RENDERER consumes (resolved, server-owned values) ────────────────────────────────────
+export interface ResolvedRow {
+  cells: (string | number | null)[];
+}
+export type ResolvedBlock =
+  | { type: 'text'; md: string }
+  | { type: 'callout'; title: string; md: string }
+  | {
+      type: 'totals';
+      items: { label: string; value: string | number | null; format: CellFormat }[];
+    }
+  | { type: 'facts'; items: { term: string; value: string | number | null; sub?: string }[] }
+  | {
+      type: 'table';
+      columns: EmitTableColumn[];
+      rows: ResolvedRow[];
+    }
+  | { type: 'bar'; points: { label: string | number | null; value: number }[] }
+  | { type: 'flows'; edges: { from: string; to: string; valueEur: number }[] }
+  | { type: 'timeseries'; points: { period: string | number | null; value: number }[] };
+
+export interface ResolvedReport {
+  title: string;
+  question: string;
+  blocks: ResolvedBlock[];
+  watermark: 'ai-generated'; // renderer always shows the „AI-генерирано, неофициално" label (§9.12)
+}
+
+export type BindResult = { ok: true; report: ResolvedReport } | { ok: false; errors: string[] };
+
+// Strip raw HTML so model prose can never inject markup into the public report (spec §7/§9). The
+// renderer must additionally render the result as markdown WITHOUT raw-HTML passthrough.
+export function sanitizeProse(md: string): string {
+  return md.replace(/<[^>]*>/g, '').trim();
+}
+
+function asNumber(v: string | number | null): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+
+/**
+ * Re-bind a model-emitted report against the server's own result sets. Every number on the page is
+ * sourced here from `results`; the model's blocks only select/label/shape. Returns validation
+ * errors instead of a report if any reference is dangling — the model then retries (spec §4).
+ */
+export function bindReport(input: EmitReportInput, results: QueryResult[]): BindResult {
+  const errors: string[] = [];
+  const byHandle = new Map(results.map((r) => [r.handle, r]));
+
+  const cell = (ref: CellRef, where: string): string | number | null => {
+    const r = byHandle.get(ref.resultId);
+    if (!r) {
+      errors.push(`${where}: unknown result handle "${ref.resultId}"`);
+      return null;
+    }
+    const colIdx = r.columns.indexOf(ref.col);
+    if (colIdx < 0) {
+      errors.push(`${where}: result "${ref.resultId}" has no column "${ref.col}"`);
+      return null;
+    }
+    if (ref.row < 0 || ref.row >= r.rows.length) {
+      errors.push(
+        `${where}: result "${ref.resultId}" row ${ref.row} out of range (0..${r.rows.length - 1})`,
+      );
+      return null;
+    }
+    return r.rows[ref.row]![colIdx]!;
+  };
+
+  const requireResult = (resultId: string, where: string): QueryResult | null => {
+    const r = byHandle.get(resultId);
+    if (!r) errors.push(`${where}: unknown result handle "${resultId}"`);
+    return r ?? null;
+  };
+
+  const requireCols = (r: QueryResult, cols: string[], where: string): boolean => {
+    let ok = true;
+    for (const c of cols) {
+      if (!r.columns.includes(c)) {
+        errors.push(`${where}: result "${r.handle}" has no column "${c}"`);
+        ok = false;
+      }
+    }
+    return ok;
+  };
+
+  const colValues = (r: QueryResult, col: string) => {
+    const i = r.columns.indexOf(col);
+    return r.rows.map((row) => row[i] ?? null);
+  };
+
+  const blocks: ResolvedBlock[] = [];
+  input.blocks.forEach((b, bi) => {
+    const at = `block[${bi}] (${b.type})`;
+    switch (b.type) {
+      case 'text':
+        blocks.push({ type: 'text', md: sanitizeProse(b.md) });
+        break;
+      case 'callout':
+        blocks.push({ type: 'callout', title: sanitizeProse(b.title), md: sanitizeProse(b.md) });
+        break;
+      case 'totals':
+        blocks.push({
+          type: 'totals',
+          items: b.items.map((it) => ({
+            label: it.label,
+            value: cell(it.ref, at),
+            format: it.format,
+          })),
+        });
+        break;
+      case 'facts':
+        blocks.push({
+          type: 'facts',
+          items: b.items.map((it) => ({ term: it.term, value: cell(it.ref, at), sub: it.sub })),
+        });
+        break;
+      case 'table': {
+        const r = requireResult(b.resultId, at);
+        if (
+          r &&
+          requireCols(
+            r,
+            b.columns.map((c) => c.key),
+            at,
+          )
+        ) {
+          const idx = b.columns.map((c) => r.columns.indexOf(c.key));
+          blocks.push({
+            type: 'table',
+            columns: b.columns,
+            rows: r.rows.map((row) => ({ cells: idx.map((i) => row[i] ?? null) })),
+          });
+        }
+        break;
+      }
+      case 'bar': {
+        const r = requireResult(b.resultId, at);
+        if (r && requireCols(r, [b.labelCol, b.valueCol], at)) {
+          const labels = colValues(r, b.labelCol);
+          const vals = colValues(r, b.valueCol);
+          blocks.push({
+            type: 'bar',
+            points: labels.map((label, i) => ({ label, value: asNumber(vals[i] ?? null) ?? 0 })),
+          });
+        }
+        break;
+      }
+      case 'flows': {
+        const r = requireResult(b.resultId, at);
+        if (r && requireCols(r, [b.fromCol, b.toCol, b.valueCol], at)) {
+          const from = colValues(r, b.fromCol);
+          const to = colValues(r, b.toCol);
+          const val = colValues(r, b.valueCol);
+          blocks.push({
+            type: 'flows',
+            edges: from.map((f, i) => ({
+              from: String(f ?? ''),
+              to: String(to[i] ?? ''),
+              valueEur: asNumber(val[i] ?? null) ?? 0,
+            })),
+          });
+        }
+        break;
+      }
+      case 'timeseries': {
+        const r = requireResult(b.resultId, at);
+        if (r && requireCols(r, [b.periodCol, b.valueCol], at)) {
+          const period = colValues(r, b.periodCol);
+          const vals = colValues(r, b.valueCol);
+          blocks.push({
+            type: 'timeseries',
+            points: period.map((p, i) => ({ period: p, value: asNumber(vals[i] ?? null) ?? 0 })),
+          });
+        }
+        break;
+      }
+    }
+  });
+
+  if (!input.title.trim()) errors.push('report title is empty');
+  if (errors.length) return { ok: false, errors };
+  return {
+    ok: true,
+    report: {
+      title: input.title.trim(),
+      question: sanitizeProse(input.question),
+      blocks,
+      watermark: 'ai-generated',
+    },
+  };
+}
