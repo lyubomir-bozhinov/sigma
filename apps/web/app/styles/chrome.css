@@ -1,0 +1,565 @@
+/* Site chrome — header, nav, search drawer, breadcrumbs, main, footer.
+   These rules appear on every page regardless of content. */
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+}
+.skip:focus {
+  left: var(--s-2);
+  top: var(--s-2);
+  background: var(--accent);
+  color: var(--paper);
+  padding: var(--s-2) var(--s-3);
+  z-index: 1000;
+  text-decoration: none;
+}
+
+/* Masthead — editorial: serif brand, mono nav, hairline rule */
+.site-header {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+}
+.site-header {
+  position: relative;
+  z-index: 20;
+}
+.site-header-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 24px var(--gutter) 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-4) var(--s-5);
+  flex-wrap: wrap;
+}
+.site-header-inner > .brand {
+  margin-right: auto;
+}
+.brand {
+  text-decoration: none;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.brand:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+.brand:visited {
+  color: var(--ink);
+}
+.brand-logo {
+  display: block;
+  height: 28px;
+  width: auto;
+  /* Wordmark: brand-red mark + warm-grey „СИГМА" lettering on transparent — sits on the warm paper masthead. */
+}
+/* The pre-existing brand-sub tagline competes with the editorial mast tone */
+.brand-sub {
+  display: none;
+}
+
+/* Right-side controls — search icon (always) + menu toggle (mobile only) */
+.site-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-5);
+  flex: 0 0 auto;
+}
+
+.site-nav {
+  display: flex;
+  gap: var(--s-6);
+  font: 11px/1.3 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mid);
+  align-items: center;
+}
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  text-decoration: none;
+  color: var(--ink-mid);
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.site-nav a:hover {
+  color: var(--accent);
+}
+.site-nav a[aria-current='page'] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* Search icon button — opens the search drawer below the masthead */
+.nav-search {
+  background: transparent;
+  border: 0;
+  padding: 3px;
+  margin: 0;
+  color: var(--ink-mid);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  line-height: 0;
+  border-radius: 0;
+  font: inherit;
+}
+.nav-search:hover,
+.nav-search[aria-expanded='true'] {
+  color: var(--accent);
+}
+.nav-search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.nav-search svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.nav-search-text {
+  display: none;
+}
+
+/* Menu toggle — hidden on desktop; revealed when the nav collapses */
+.nav-toggle {
+  display: none;
+  align-items: center;
+  gap: var(--s-2);
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  margin: 0;
+  color: var(--ink-mid);
+  cursor: pointer;
+  min-height: 24px;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.nav-toggle:hover,
+.nav-toggle[aria-expanded='true'] {
+  color: var(--accent);
+}
+.nav-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.nav-toggle-box {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 11px;
+}
+.nav-toggle-box span {
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 1.75px;
+  background: currentColor;
+  transition:
+    transform 0.22s ease,
+    top 0.22s ease;
+}
+.nav-toggle-box span:nth-child(1) {
+  top: 1px;
+}
+.nav-toggle-box span:nth-child(2) {
+  top: 8px;
+}
+.nav-toggle[aria-expanded='true'] .nav-toggle-box span:nth-child(1) {
+  top: 4px;
+  transform: rotate(45deg);
+}
+.nav-toggle[aria-expanded='true'] .nav-toggle-box span:nth-child(2) {
+  top: 4px;
+  transform: rotate(-45deg);
+}
+
+/* ≤960px — collapse the inline nav into a full-width slide-down drawer.
+   Six mono nav items get tight before this; the menu toggle takes over. */
+@media (max-width: 960px) {
+  .site-header-inner {
+    padding: 18px var(--gutter) 16px;
+  }
+  .nav-toggle {
+    display: inline-flex;
+  }
+  .site-nav {
+    order: 3;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 var(--gutter);
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition:
+      max-height 0.28s ease,
+      opacity 0.2s ease,
+      margin-top 0.28s ease;
+  }
+  .site-nav.is-open {
+    max-height: 75vh;
+    opacity: 1;
+    margin-top: var(--s-4);
+    overflow-y: auto;
+    border-top: 1px solid var(--rule);
+  }
+  .site-nav a {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding: 15px var(--s-1);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .site-nav a[aria-current='page'] {
+    color: var(--accent);
+    border-bottom-color: var(--rule-soft);
+  }
+  .site-nav a[aria-current='page']::before {
+    content: '›';
+    color: var(--accent);
+    font: 400 16px/1 var(--font-serif);
+  }
+}
+
+/* Search drawer — drops below masthead on icon click */
+.search-drawer {
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.22s ease;
+}
+.search-drawer[hidden] {
+  display: none;
+}
+.search-drawer.is-open {
+  max-height: 240px;
+}
+.search-drawer-form {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: var(--s-5) var(--gutter);
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  column-gap: var(--s-3);
+  row-gap: var(--s-3);
+  align-items: center;
+}
+.search-drawer-prompt {
+  color: var(--accent);
+  font: 400 24px/1 var(--font-serif);
+  align-self: center;
+  user-select: none;
+}
+.search-drawer-form input {
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font: 400 20px/1.2 var(--font-serif);
+  letter-spacing: -0.01em;
+  padding: 6px 0 8px;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+}
+.search-drawer-form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.search-drawer-form input::placeholder {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.search-drawer-form button[type='submit'] {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 10px var(--s-5);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.search-drawer-form button[type='submit']:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.search-drawer-close {
+  background: transparent;
+  border: 0;
+  color: var(--ink-mid);
+  font: 400 28px/1 var(--font-serif);
+  cursor: pointer;
+  padding: 0 var(--s-2);
+  line-height: 1;
+}
+.search-drawer-close:hover {
+  color: var(--accent);
+}
+.search-drawer-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .search-drawer-form {
+    grid-template-columns: auto 1fr auto;
+  }
+  /* Pin every cell so the close button can't fall to a third row: row 1 is
+     `› input ×`, the submit button takes the full second row. Without explicit
+     placement, grid's sparse auto-flow strands the × bottom-left. */
+  .search-drawer-prompt {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .search-drawer-form input {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .search-drawer-form .search-drawer-close {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .search-drawer-form button[type='submit'] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+}
+
+/* Breadcrumb strip */
+.crumbs {
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.crumbs-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 10px var(--gutter);
+  font: 11px/1.4 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.crumbs a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  color: var(--ink-mid);
+  text-decoration: none;
+}
+.crumbs a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.crumbs .sep {
+  padding: 0 6px;
+  color: var(--rule);
+}
+
+/* Main column */
+main {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: var(--s-7) var(--gutter) var(--s-9);
+}
+main.narrow {
+  max-width: var(--max-narrow);
+}
+
+/* Page header — editorial: eyebrow + serif display + lede */
+.page-header {
+  margin: 0 0 var(--s-7);
+}
+.page-header .kicker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 100%;
+  color: var(--accent);
+  font: 11px/1.3 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+  margin: 0 0 var(--s-4);
+  overflow-wrap: anywhere;
+}
+.page-header .kicker::before {
+  content: '';
+  width: 24px;
+  height: 1px;
+  background: var(--accent);
+}
+.page-header h1 {
+  margin: 0;
+  max-width: 22ch;
+  /* Prefer soft hyphenation for long single words (e.g. „ИНФРАСТРУКТУРА") so a
+     heading that outgrows a narrow screen breaks at a syllable with a hyphen
+     rather than mid-word. `overflow-wrap: anywhere` stays as the fallback when
+     no hyphenation point fits; `word-break: break-word` is dropped because it
+     breaks anywhere with no hyphen. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+/* Length-aware title sizing. Short subjects keep the full editorial serif (the base rule above);
+   longer procurement subjects step down in size and widen the measure so they don't tower. The
+   longest tier additionally line-clamps — nothing is lost, the full subject is shown in the
+   „Подробности → Предмет" row below. Tiers are chosen in routes/contract.tsx by subject length. */
+.page-header h1.t-md {
+  max-width: 32ch;
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.12;
+}
+.page-header h1.t-sm {
+  max-width: 40ch;
+  font-size: clamp(21px, 2.3vw, 30px);
+  line-height: 1.18;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-header .lede {
+  margin: var(--s-5) 0 0;
+  max-width: 60ch;
+  font: 400 clamp(15px, 1.4vw, 17px)/1.55 var(--font-sans);
+  color: var(--ink-mid);
+}
+/* Source CTA — solid, icon-led deep link to the procedure's documents on the public ЦАИС ЕОП
+   portal. Rendered as a child of the page header so it sits under the contract lede and is the
+   first action a reader sees. Solid ink → accent on hover, matching the site's button language. */
+.source-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-6);
+  padding: 11px var(--s-5);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 12px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+/* Keep the label/icon legible once the link is visited — the global `a:visited { color: --ink }`
+   (specificity 0,1,1) would otherwise repaint the text ink-on-ink into an invisible black box. */
+.source-cta:visited {
+  color: var(--paper);
+}
+.source-cta:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+  text-decoration: none;
+}
+.source-cta svg {
+  flex: none;
+}
+.source-cta .cta-ext {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+/* Footer — minimal, single mono-caps line; collapse legacy 3-col gov footer */
+.site-footer {
+  background: var(--paper);
+  color: var(--ink-soft);
+  border-top: 1px solid var(--ink);
+  margin-top: var(--s-8);
+}
+.site-footer-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: var(--s-4) var(--gutter) var(--s-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  font: 11px/1.5 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.site-footer h4 {
+  display: none;
+}
+.site-footer-inner > div {
+  flex: 0 0 auto;
+}
+.site-footer-inner > div p {
+  margin: 0;
+}
+.site-footer-inner > div p + p {
+  margin-top: 4px;
+}
+.site-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  color: var(--ink-mid);
+  text-decoration: none;
+}
+.site-footer a:hover {
+  color: var(--accent);
+}
+.site-footer a:visited {
+  color: var(--ink-mid);
+}
+.site-footer .repo-link {
+  gap: 6px;
+}
+.site-footer .repo-link svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.site-footer .freshness {
+  color: var(--ink-soft);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+/* Touch targets — on coarse pointers, grow the tappable area of small chrome
+   controls (header search/menu, breadcrumb + footer links) to ≥44px without
+   touching the desktop layout or enlarging the visible glyphs/text. */
+@media (hover: none) and (pointer: coarse) {
+  .nav-search,
+  .nav-toggle {
+    padding: 13px 11px;
+    margin: -13px -11px;
+  }
+  .crumbs a,
+  .site-footer a {
+    display: inline-block;
+    padding: 11px 0;
+    margin: -11px 0;
+  }
+}
