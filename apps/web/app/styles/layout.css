@@ -624,3 +624,34 @@ details.row .body .signal .why {
     grid-template-columns: 1fr;
   }
 }
+
+/* Filter rail: no-JS apply button + active-filter chip strip */
+.filter-apply {
+  display: inline-block;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+  margin: var(--s-3) 0;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px var(--s-4);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+  margin: 0 0 var(--s-4);
+  font: 12px/1.5 var(--font-mono);
+  color: var(--ink-soft);
+}
+.filter-rail .small.muted > a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+}
