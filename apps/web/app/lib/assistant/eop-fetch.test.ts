@@ -1,0 +1,62 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  EOP_EARLIEST_DAY,
+  fetchEopDay,
+  isValidUnp,
+  validateEopDate,
+  type FetchImpl,
+} from './eop-fetch';
+
+describe('validateEopDate', () => {
+  const today = '2026-06-19';
+  it('accepts a well-formed day within the covered range', () => {
+    expect(validateEopDate('2023-05-01', today)).toEqual({ ok: true, day: '2023-05-01' });
+  });
+  it('rejects a malformed date', () => {
+    expect(validateEopDate('2023/05/01', today).ok).toBe(false);
+    expect(validateEopDate('hier; DROP', today).ok).toBe(false);
+  });
+  it('rejects dates before coverage and in the future', () => {
+    expect(validateEopDate('2019-12-31', today).ok).toBe(false);
+    expect(validateEopDate('2027-01-01', today).ok).toBe(false);
+    expect(validateEopDate(EOP_EARLIEST_DAY, today).ok).toBe(true);
+  });
+});
+
+describe('isValidUnp', () => {
+  it('accepts a УНП shape and rejects junk', () => {
+    expect(isValidUnp('00044-2023-0018')).toBe(true);
+    expect(isValidUnp('not-a-unp')).toBe(false);
+    expect(isValidUnp('0; DROP TABLE')).toBe(false);
+  });
+});
+
+describe('fetchEopDay', () => {
+  it('parses each day file into untrusted rows (base/URLs are server-fixed, never the model)', async () => {
+    const fetchImpl: FetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => '[{"uniqueProcurementNumber":"00044-2023-0018"}]',
+    }));
+    const files = await fetchEopDay('2023-05-01', fetchImpl);
+    expect(files.length).toBe(3); // три базови файла за ден преди 2026
+    expect(files[0]!.rows).toEqual([{ uniqueProcurementNumber: '00044-2023-0018' }]);
+    // every fetched URL points at the fixed open-data host, not anything model-controlled
+    for (const call of (fetchImpl as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(String(call[0])).toMatch(/^https:\/\/storage\.eop\.bg\/open-data-2023-05-01\//);
+    }
+  });
+
+  it('surfaces a missing day (403) as a per-file error, not a throw', async () => {
+    const fetchImpl: FetchImpl = async () => ({ ok: false, status: 403, text: async () => '' });
+    const files = await fetchEopDay('2023-05-01', fetchImpl);
+    expect(files.every((f) => f.error === 'HTTP 403')).toBe(true);
+  });
+
+  it('caps an oversized response instead of letting it reach the model', async () => {
+    const huge = JSON.stringify(Array.from({ length: 5000 }, (_, i) => ({ i })));
+    const fetchImpl: FetchImpl = async () => ({ ok: true, status: 200, text: async () => huge });
+    const files = await fetchEopDay('2023-05-01', fetchImpl, 256);
+    expect(files.every((f) => f.truncated)).toBe(true);
+  });
+});
