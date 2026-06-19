@@ -1,6 +1,14 @@
 /* Route-specific styles ported from per-page <style> blocks.
    Long-term destination: co-located with each route file. */
 
+/* Let long route-specific names break instead of forcing horizontal overflow */
+.participants-list,
+.participants-list li,
+.toc ol li a {
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
 /* ── Contracts list ───────────────────────────────────────────────────────── */
 
 /* Two-line cell for parties + meta */

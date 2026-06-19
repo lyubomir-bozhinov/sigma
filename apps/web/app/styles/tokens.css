@@ -3,8 +3,6 @@
    :root aliases let component CSS keep using var(--ink), var(--accent), etc.
    The mock uses a system serif/mono stack — no webfont request. */
 
-@import 'tailwindcss' source('..');
-
 @theme {
   --color-paper: oklch(98.5% 0.008 80);
   --color-paper-warm: oklch(96% 0.012 78);
