@@ -343,6 +343,52 @@ canonical URL per `(query, data version)`.
 - **Also a quota shield.** L1 + the LLM-free R2 view mean a viral/repeated prompt reuses one object
   instead of regenerating thousands — the 120 RPM ceiling becomes a rarely-hit cap.
 
+### Guarantees vs. limits — what we promise, and what we don't
+
+Be precise, because three claims get conflated and they have very different strengths. **We guarantee
+traceability and no fabrication — not truth.** Stating this plainly is itself a defamation-risk control
+(architecture §3): it stops a referenced-but-wrong report from reading as official truth.
+
+**Guaranteed by construction:**
+- **Reference integrity.** Every substantive figure in a `totals`/`table`/`facts` block is **bound by
+  the server from a real `run_sql` result set** (values-by-reference, §9.1) — it cannot be invented by
+  the model.
+- **Link form.** The renderer builds hrefs from `{kind,id}` refs; the model never supplies a URL → no
+  spoof / `javascript:` / open-redirect.
+- **Reproducibility.** Each report stores its **resolved SQL + `data_freshness` token + model/prompt
+  version**, so any number is auditable — you can always explain *why* it appeared. Reproducible ≠
+  correct, but it makes every error traceable.
+
+**NOT guaranteed — best-effort, mitigated, never eliminated:**
+- **Data correctness.** A figure can be referenced, cleanly linked, and still **wrong**, in five
+  independent ways: **(1) wrong query** (model writes `SUM(amount)` not `SUM(amount_eur)`, mis-joins
+  `ocid` — faithfully bound, wrong question); **(2) stale** (D1 lags the registry up to the 6h refresh;
+  `eop_fetch` mixes live + stale); **(3) upstream quality** (EOP open data has errors, dupes, "unknown"
+  procedures — garbage-in, faithfully-reported-out); **(4) ETL/derivation bug** (normalization, FX,
+  amendments, rollups); **(5) interpretation** (which CPV codes are "строителство"?). `describe_schema`
+  traps + RAG grounding + Verifier + golden tests + freshness tokens **reduce** these; a weak 27B on
+  imperfect source data leaves **residual error that is structural, not eliminable.**
+
+**Caveats on "always a clean reference":**
+- **Prose is the leak.** `text`/`callout` is model-authored, so "no substantive figures in prose" is a
+  *rule*, not a structural impossibility — enforce it with a **deterministic no-number check** (reject
+  digits/currency in prose), not just a prompt instruction.
+- **Aggregates have no single source URL.** A `SUM` over 500 contracts references a **query/result
+  set**, not one registry record — link it to "the N contracts behind this," don't imply every total
+  deep-links to АОП.
+- **Right-record ≠ well-formed.** A clean link can still point at a removed upstream record (link rot)
+  or be built on the wrong id (`ocid ≠ УНП`, §9.2) — show the **identifier** alongside the link so a
+  dead link is still a verifiable id.
+
+**Honest controls that follow:** the **"AI-generated, unofficial" watermark (§9.12)**, **per-source
+freshness (§9.7)**, the reproducibility metadata above, and a **methodology callout** per report
+("броим `amount_eur` по подписани договори за CPV 45\*, 2023") so the *interpretation* is visible and
+checkable.
+
+**Gap-closers (open work):** (a) deterministic no-number-in-prose check; (b) renderer distinction
+between entity figures (deep-link a registry record) and aggregate figures (link the result set);
+(c) methodology callout; (d) link-health — treat registry deep-links as rot-prone, always show the id.
+
 ## 4. How it serves in the overall view
 
 Rides the existing СИГМА architecture (single `apps/web` Worker, D1 as `env.DB`, edge cache via
