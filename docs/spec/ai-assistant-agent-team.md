@@ -389,6 +389,44 @@ checkable.
 between entity figures (deep-link a registry record) and aggregate figures (link the result set);
 (c) methodology callout; (d) link-health — treat registry deep-links as rot-prone, always show the id.
 
+### Correctness guardrails — doing it right
+
+The implementation foundation already encodes the guidance layer (PR #80 `system-prompt.ts` /
+`describe-schema.ts`): imperative **data traps** (sum `amount_eur` never `amount`; `ocid` ≠ УНП;
+`value_flag`/`date_flag` semantics; prefer rollups that match the site's headline numbers),
+**canonical example queries**, **values-by-reference**, and a **per-source freshness** callout. These
+guardrails **extend** that to harden the residual correctness gaps above — they raise the floor and
+make errors auditable; they do **not** eliminate structural error (staleness, unflagged upstream
+quality).
+
+- **A. Default filters, not just warnings (hardens wrong-query + upstream-quality).** Elevate the traps
+  to defaults the model must apply unless the user opts out: exclude `value_suspect` (`amount_eur IS
+  NULL`); exclude synthetic procedures (`procedure_type='неизвестна'`) for procedure-distribution
+  analysis; "when" = `signed_at`, not `published_at`. Opt-out must be explicit.
+- **B. Reconcile-with-rollup self-check (catches wrong-query + ETL bug).** When an aggregate is computed
+  directly from `contracts`, it must reconcile with the matching rollup (`authority_totals` /
+  `company_totals` / `home_totals`). Divergence beyond a threshold ⇒ **don't publish**, revisit the
+  query. This turns "rollups match the site" from a hint into an actual cross-check — a mismatch flags
+  either a bad query or an ETL/derivation bug.
+- **C. Explicit CPV interpretation (closes the interpretation gap).** When the user names a sector in
+  words ("строителство"), map it to CPV divisions **explicitly** (строителство = CPV 45) and record the
+  mapping in the methodology callout; on ambiguity, show the assumption or ask — never silently choose.
+- **D. Mandatory methodology callout (makes wrong-query/upstream/interpretation auditable).** Every
+  report ends with a "Как е изчислено" callout: measure (`amount_eur`), scope (years, CPV, filters),
+  excluded flags, and per-source freshness.
+- **E. Verifier checks bound to the traps (role ④).** The Verifier asserts not just grounding but
+  trap-compliance: used `amount_eur`? excluded `value_suspect`? total reconciles with the rollup? If
+  not → block. This converts the dictionary from pre-hoc *hope* into post-hoc *enforcement*.
+- **F. Golden-reports harness (§9.9) locks A–E.** CI asserts canonical prompts produce queries that use
+  `amount_eur`, apply the default filters, and reconcile with rollups — so a model/schema/prompt change
+  can't silently regress.
+
+**Honest bottom line:** A–F make the *known* failure modes (wrong query, flagged upstream quality,
+interpretation) rare and **auditable**, and give ETL bugs a detection path via reconciliation. But
+staleness and *unflagged* upstream errors are **structural** — guidance surfaces them, it can't remove
+them. That is why the **"AI-generated, unofficial" watermark (§9.12)** and the **methodology callout**
+stay load-bearing: honesty about *how* a number was computed is the defense, not a promise it is right.
+
 ## 4. How it serves in the overall view
 
 Rides the existing СИГМА architecture (single `apps/web` Worker, D1 as `env.DB`, edge cache via
