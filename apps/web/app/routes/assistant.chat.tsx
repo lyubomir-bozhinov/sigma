@@ -47,5 +47,15 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
   }
 
-  return runAssistant({ env: env as unknown as AgentEnv, ctx, messages, schemaContext });
+  try {
+    return await runAssistant({ env: env as unknown as AgentEnv, ctx, messages, schemaContext });
+  } catch (error) {
+    // Setup-time failure (missing key, bad config, malformed history) — degrade to a readable 503
+    // rather than an unhandled 500. Mid-stream BgGPT errors are handled by the stream's onError.
+    console.error('[assistant] turn failed to start', error);
+    return Response.json(
+      { error: 'Асистентът временно не е достъпен. Опитай отново след малко.' },
+      { status: 503 },
+    );
+  }
 }
