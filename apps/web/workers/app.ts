@@ -1,6 +1,7 @@
 import { createRequestHandler } from 'react-router';
 import { baseSecurityHeaders, nonceLessSecurityHeaders } from '../app/lib/security';
 import { rateLimitAggregationRoute } from './aggregation-rate-limit';
+import { rateLimitAssistantRoute } from './assistant-rate-limit';
 import { cacheKey } from './cache-key';
 import { rateLimitCsvExport } from './csv-rate-limit';
 import { optionsResponse, redirectCleartextHttp, setAllowHeader } from './http';
@@ -125,6 +126,13 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     import.meta.env.PROD,
   );
   if (aggregationRateLimitResponse) return aggregationRateLimitResponse;
+
+  const assistantRateLimitResponse = await rateLimitAssistantRoute(
+    request,
+    env,
+    import.meta.env.PROD,
+  );
+  if (assistantRateLimitResponse) return assistantRateLimitResponse;
 
   const response = await requestHandler(request, { cloudflare: { env, ctx } });
   const cacheable =

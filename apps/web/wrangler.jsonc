@@ -58,6 +58,15 @@
         "namespace_id": "1002",
         "simple": { "limit": 30, "period": 60 },
       },
+      {
+        // Per-IP throttle for POST /assistant/chat — each call runs embeddings + the BgGPT agent loop
+        // (review #80). Tight, since it is far costlier than a page view. A global budget /
+        // circuit-breaker (BGGPT_RATE_LIMIT_RPM) is the remaining launch-gate layer.
+        "name": "ASSISTANT_RATE_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "1003",
+        "simple": { "limit": 10, "period": 60 },
+      },
     ],
   },
   "observability": {
