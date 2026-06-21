@@ -45,6 +45,16 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   return { ...coverage, origin: url.origin };
 }
 
+// Scroll-restoration key for list pages. Filters and sort live in the query string under a stable
+// pathname, so keying on pathname alone preserves the visitor's scroll position when they change a
+// filter or sort instead of jumping to the top (issue #13). Pagination is the deliberate exception:
+// Prev/Next carry a keyset `cursor` (which a filter or sort change resets), so a URL with a cursor
+// gets its own key and lands at the top — the conventional paging behaviour.
+function scrollKey(location: { pathname: string; search: string }): string {
+  const cursor = new URLSearchParams(location.search).get('cursor');
+  return cursor ? `${location.pathname}?cursor=${cursor}` : location.pathname;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const nonce = useNonce();
   const rootData = useRouteLoaderData('root') as { origin?: string } | undefined;
@@ -77,7 +87,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <ScrollRestoration nonce={nonce} />
+        <ScrollRestoration nonce={nonce} getKey={scrollKey} />
         <Scripts nonce={nonce} />
       </body>
     </html>
@@ -115,14 +125,19 @@ export default function App({ loaderData }: Route.ComponentProps) {
   // After a client-side navigation, move focus to the main region so keyboard and
   // screen-reader users aren't stranded on <body> mid-page (and the skip link stays
   // reachable). Skip the first run so SSR/hydration and the initial load are untouched.
+  // Also skip when only search params changed (filter or sort update within the same
+  // page) — clicking a filter checkbox should not yank the user back to the top.
   const location = useLocation();
   const navigationType = useNavigationType();
   const firstRender = useRef(true);
+  const prevPathname = useRef(location.pathname);
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    const isFirst = firstRender.current;
+    firstRender.current = false;
+    const prevPath = prevPathname.current;
+    prevPathname.current = location.pathname;
+    if (isFirst) return;
+    if (location.pathname === prevPath) return;
     const frame = window.requestAnimationFrame(() => {
       const el = document.querySelector<HTMLElement>('main h1') ?? document.getElementById('main');
       if (el) {
