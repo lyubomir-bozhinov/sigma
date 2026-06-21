@@ -22,6 +22,9 @@ import { CANONICAL_QUERIES, DATA_TRAPS, TABLES } from './describe-schema';
 
 export const EMBED_MODEL = '@cf/baai/bge-m3';
 export const EMBED_DIM = 1024;
+// Cap per-text length before embedding — a paraphrase query is short; this bounds an oversized
+// model/user string (review #80).
+export const MAX_EMBED_CHARS = 2048;
 
 export interface EmbeddingRunner {
   run(model: string, inputs: { text: string[] }): Promise<{ data: number[][] }>;
@@ -45,7 +48,15 @@ export interface VectorIndex {
 
 export async function embed(ai: EmbeddingRunner, texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
-  const { data } = await ai.run(EMBED_MODEL, { text: texts });
+  const capped = texts.map((t) => (t.length > MAX_EMBED_CHARS ? t.slice(0, MAX_EMBED_CHARS) : t));
+  const { data } = await ai.run(EMBED_MODEL, { text: capped });
+  // Fail fast on a provider anomaly: indexSchemaCorpus/retrieve align vectors[i]↔chunks[i] by index,
+  // so a count mismatch would silently misattribute embeddings (review #80).
+  if (!Array.isArray(data) || data.length !== capped.length) {
+    throw new Error(
+      `embed: expected ${capped.length} vectors, got ${Array.isArray(data) ? data.length : 'none'}`,
+    );
+  }
   return data;
 }
 

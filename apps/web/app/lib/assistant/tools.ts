@@ -68,7 +68,10 @@ const runSqlTool: AssistantTool = {
       ctx.results.push(qr);
       return forModel(qr);
     } catch (e) {
-      return `Грешка при изпълнение: ${e instanceof Error ? e.message : 'неизвестна'}.`;
+      // Don't echo the raw D1 error to the model/report — it can leak schema/internal detail. Log it
+      // server-side and hand the model a generic, retry-able message (review #80).
+      console.error('[assistant] run_sql failed', e);
+      return 'Грешка при изпълнение на заявката.';
     }
   },
 };

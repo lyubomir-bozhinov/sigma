@@ -43,5 +43,8 @@ export function formatCell(value: string | number | null, format: CellFormat): s
  * the rest of the site.
  */
 export function entityHref(kind: EntityKind, id: string): string {
-  return hrefForEntity(kind, id);
+  // encodeURI (not encodeURIComponent — keep the path separators) as defence-in-depth: the slug
+  // helpers already yield URL-safe segments for well-formed ids; this bounds a malformed/edge id so it
+  // cannot break out of the href (review #80).
+  return encodeURI(hrefForEntity(kind, id));
 }
