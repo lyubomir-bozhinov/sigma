@@ -80,9 +80,15 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
     if (!ALLOWED_TABLES.has(table)) return deny(`table not allowed: ${table}`);
   }
 
-  // Bound the OUTER result with an AST-authoritative LIMIT (a string-literal/sub-query LIMIT does not
-  // set ast.limit, so this is not fooled the way a regex is).
-  const hasOuterLimit = Array.isArray(ast.limit?.value) && ast.limit.value.length > 0;
+  // Bound the OUTER result with an AST-authoritative LIMIT. The SQLite LIMIT offset, count form fools
+  // the regex-based enforceLimit — it captures the offset (the first number), not the count, so a
+  // query like `LIMIT 5, 10000` is passed through unclamped. Reject the comma form outright and ask
+  // for the standard LIMIT n (OFFSET m) syntax (review #80, L1).
+  const limitValues = Array.isArray(ast.limit?.value) ? ast.limit.value : [];
+  if (limitValues.length > 1) {
+    return deny('LIMIT offset, count is not allowed; use LIMIT n or LIMIT n OFFSET m');
+  }
+  const hasOuterLimit = limitValues.length === 1;
   const limited = hasOuterLimit
     ? enforceLimit(sql, maxRows)
     : `${sql.replace(/;?\s*$/u, '')} LIMIT ${maxRows}`;

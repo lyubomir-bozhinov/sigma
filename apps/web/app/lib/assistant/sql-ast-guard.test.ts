@@ -74,4 +74,10 @@ describe('guardSelect', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.sql).toMatch(/LIMIT 500/);
   });
+
+  it('rejects LIMIT offset, count form (fools the regex-based enforceLimit — review #80 L1)', () => {
+    const r = guardSelect('SELECT name FROM authorities LIMIT 5, 10000');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/LIMIT offset, count/);
+  });
 });
