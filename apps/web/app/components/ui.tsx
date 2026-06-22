@@ -11,14 +11,20 @@ export function Chip({ children }: { children: ReactNode }) {
 
 const REGISTRY_URL = 'https://portal.registryagency.bg/CR/bg/Reports/ActiveConditionTabResult';
 
+// Валиден ЕИК е само цифри с дължина 9 или 13 (както eik_normalized в нормализацията).
+// За подизпълнителя стойността идва от суровото contracts.subcontractor_eik, затова пазим тук.
+const EIK_RE = /^\d{9}$|^\d{13}$/;
+
 export function ExternalEikLink({ eik, className }: { eik: string; className?: string }) {
+  // Не рендирай линк за невалиден ЕИК — иначе сочи към грешна/несъществуваща страница в регистъра.
+  if (!EIK_RE.test(eik)) return null;
   return (
     <a
-      href={`${REGISTRY_URL}?uic=${eik}`}
+      href={`${REGISTRY_URL}?uic=${encodeURIComponent(eik)}`}
       target="_blank"
       rel="noopener noreferrer"
       className={`external-eik-link${className ? ` ${className}` : ''}`}
-      aria-label={`Отвори ЕИК ${eik} в Търговския регистър`}
+      aria-label={`Отвори ЕИК ${eik} в Търговския регистър (отваря в нов раздел)`}
       title="Отвори в Търговския регистър"
     >
       <svg
