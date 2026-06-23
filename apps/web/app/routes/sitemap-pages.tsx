@@ -11,6 +11,7 @@ const PAGES: Page[] = [
   { loc: '/authorities' },
   { loc: '/contracts' },
   { loc: '/flows' },
+  { loc: '/trends' },
   { loc: '/map' },
   { loc: '/methodology' },
   { loc: '/privacy', changefreq: 'yearly', priority: '0.1' },

@@ -2331,6 +2331,44 @@ details.row .body .signal .why {
   cursor: pointer;
 }
 
+/* Spending trend (/trends): static styling; the area and line path data are computed inline. */
+.trend-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.trend-svg .grid {
+  stroke: #eceae4;
+  stroke-width: 1;
+}
+.trend-svg .area {
+  fill: color-mix(in oklch, var(--ink) 16%, transparent);
+}
+.trend-svg .line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.trend-svg .label {
+  font: 11px var(--font-mono, monospace);
+  fill: var(--ink-soft, #555);
+}
+.trend-svg .line-partial {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.trend-svg .dot-partial {
+  fill: #fff;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.trend-svg .label-partial {
+  font: 10px var(--font-mono, monospace);
+  fill: var(--ink-soft, #555);
+}
+
 /* Regional choropleth (/map): static styling only; the per-region tier fill is computed inline. */
 .map-wrap svg {
   width: 100%;
