@@ -3,8 +3,10 @@
 // The assistant is stateless: every turn the browser POSTs the prior transcript back to the
 // server, so any `assistant`/`tool` message the model re-reads is attacker-controlled. To make a
 // server-emitted message provable on the next turn, we HMAC-sign the tuple
-// (role, content, conversationId, turnIndex, position) — binding the content to its conversation
-// and exact slot so it cannot be forged, replayed across conversations, duplicated, or reordered.
+// (role, content, conversationId, turnIndex, position, report-chips) — binding the content to its
+// conversation, exact slot, and any /reports/:id chips it carries so it cannot be forged, replayed
+// across conversations, duplicated, reordered, or have its report chips retitled or re-pointed at
+// another report (the credibility-laundering vector the spec flags as the top threat).
 // `user` messages are unsigned by definition (the user authors them; the model never treats them
 // as authoritative). Crypto mechanics mirror apps/web/workers/request-log.ts.
 
@@ -21,9 +23,11 @@ export interface TranscriptMessage {
   /** Lowercase hex HMAC-SHA-256 over the signed tuple; absent on user / unsigned messages. */
   sig?: string;
   /**
-   * Report chips the message references. NOT part of the signed tuple (the spec signs exactly
-   * role/content/conversationId/turnIndex/position); the trim summary instead folds these into its
-   * signed `content` so collapsed chips stay integrity-protected.
+   * Report chips the message references. Bound into the signature (each ref's id + title) so a chip
+   * on a verbatim message cannot be retitled or re-pointed at another `/reports/:id` on a later
+   * turn. This deliberately extends the spec's base tuple
+   * (role/content/conversationId/turnIndex/position) as defense-in-depth against credibility
+   * laundering; the trim summary additionally folds chips into its signed `content`.
    */
   reports?: readonly ReportRef[];
 }
@@ -99,7 +103,14 @@ function canonicalBytes(msg: TranscriptMessage): Uint8Array {
     msg.conversationId,
     integerField('turnIndex', msg.turnIndex),
     integerField('position', msg.position),
+    // Report chips: a count, then each ref's id and title. A message with no chips signs identically
+    // whether `reports` is absent or empty. Length-prefixing every field (below) keeps the encoding
+    // unambiguous, so no chip id/title can be crafted to impersonate another field boundary.
+    integerField('reports.length', (msg.reports ?? []).length),
   ];
+  for (const ref of msg.reports ?? []) {
+    fields.push(ref.id, ref.title);
+  }
   const encoded = fields.map((field) => encoder.encode(field));
   const total = encoded.reduce((sum, bytes) => sum + 4 + bytes.length, 0);
   const out = new Uint8Array(total);
@@ -150,7 +161,7 @@ function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** HMAC-SHA-256 (hex) over (role, content, conversationId, turnIndex, position). */
+/** HMAC-SHA-256 (hex) over (role, content, conversationId, turnIndex, position, report-chips). */
 export function signMessage(env: AssistantHmacEnv, msg: TranscriptMessage): Promise<string> {
   return computeSignature(env, msg);
 }

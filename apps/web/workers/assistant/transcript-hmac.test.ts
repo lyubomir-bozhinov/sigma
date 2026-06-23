@@ -91,6 +91,43 @@ describe('signMessage / verifyMessage', () => {
     expect(c).not.toBe(d);
   });
 
+  it('binds report chips into the signature (anti credibility-laundering)', async () => {
+    const withReports = await signed({ reports: [{ id: 'r1', title: 'Доклад' }] });
+    expect(await verifyMessage(env, withReports)).toBe(true);
+    // Retitling a chip breaks verification.
+    expect(
+      await verifyMessage(env, {
+        ...withReports,
+        reports: [{ id: 'r1', title: 'Подменено заглавие' }],
+      }),
+    ).toBe(false);
+    // Re-pointing a chip at another report id breaks verification.
+    expect(
+      await verifyMessage(env, { ...withReports, reports: [{ id: 'r99', title: 'Доклад' }] }),
+    ).toBe(false);
+    // Adding or removing a chip breaks verification.
+    expect(await verifyMessage(env, { ...withReports, reports: [] })).toBe(false);
+    expect(
+      await verifyMessage(env, {
+        ...withReports,
+        reports: [
+          { id: 'r1', title: 'Доклад' },
+          { id: 'r2', title: 'Втори' },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it('treats absent and empty report chips as the same signed message', async () => {
+    expect(await signMessage(env, msg())).toBe(await signMessage(env, msg({ reports: [] })));
+  });
+
+  it('cannot forge chip field boundaries via crafted id/title', async () => {
+    const a = await signMessage(env, msg({ reports: [{ id: 'ab', title: 'cd' }] }));
+    const b = await signMessage(env, msg({ reports: [{ id: 'a', title: 'bcd' }] }));
+    expect(a).not.toBe(b);
+  });
+
   it('signs empty, unicode/Cyrillic, and very long content unambiguously', async () => {
     const empty = await signed({ content: '' });
     const cyrillic = await signed({ content: 'Строителство — обществена поръчка №42' });
@@ -159,6 +196,14 @@ describe('filterIncomingTranscript', () => {
   it('drops messages with an invalid signature', async () => {
     const m = await signed({ position: 1 });
     const tampered = { ...m, content: 'rewritten' };
+    const { kept, dropped } = await filterIncomingTranscript(env, [tampered], 'conv-1');
+    expect(kept).toHaveLength(0);
+    expect(dropped[0]?.reason).toBe('invalid-signature');
+  });
+
+  it('drops a message whose report chips were tampered', async () => {
+    const m = await signed({ position: 1, reports: [{ id: 'r1', title: 'Доклад' }] });
+    const tampered = { ...m, reports: [{ id: 'r1', title: 'Подменено' }] };
     const { kept, dropped } = await filterIncomingTranscript(env, [tampered], 'conv-1');
     expect(kept).toHaveLength(0);
     expect(dropped[0]?.reason).toBe('invalid-signature');
