@@ -9,6 +9,7 @@ import { FactsList } from '../components/FactsList';
 import { Chip, Flag, Section } from '../components/ui';
 import { publicCache } from '../lib/cache';
 import { eopSourceFiles } from '../lib/eopSource';
+import { seoMeta } from '../lib/meta';
 
 /**
  * Compose the muted sub-line under „Брой оферти". The AOP feed gives us the gross submitted count
@@ -41,17 +42,16 @@ function bidsBreakdown(c: ContractDetail): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-export function meta({ data }: Route.MetaArgs) {
+export function meta({ data, params, matches }: Route.MetaArgs) {
   const c = data?.contract;
-  return [
-    { title: `${c?.subject ?? 'Договор'} — СИГМА` },
-    {
-      name: 'description',
-      content: c
-        ? `Договор по УНП ${c.unp} между ${c.authority.name} и ${c.bidder.displayName}.`
-        : '',
-    },
-  ];
+  return seoMeta({
+    matches,
+    path: `/contracts/${params.id}`,
+    title: `${c?.subject ?? 'Договор'} — СИГМА`,
+    description: c
+      ? `Договор по УНП ${c.unp} между ${c.authority.name} и ${c.bidder.displayName}.`
+      : '',
+  });
 }
 
 export function headers() {
@@ -187,10 +187,10 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
           <div className="two-col">
             <div>
               <h3>Възложител</h3>
-              <p style={{ fontSize: 18, fontWeight: 700, margin: '6px 0 2px' }}>
+              <p className="figure-amount">
                 <Link to={`/authorities/${c.authority.slug}`}>{c.authority.name}</Link>
               </p>
-              <p className="small muted" style={{ margin: '0 0 8px' }}>
+              <p className="small muted figure-sub">
                 {c.authority.typeLabel && <Chip>{c.authority.typeLabel}</Chip>}
                 {c.authority.settlement && <> {c.authority.settlement}</>}
               </p>
@@ -211,10 +211,10 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
             </div>
             <div>
               <h3>Изпълнител</h3>
-              <p style={{ fontSize: 18, fontWeight: 700, margin: '6px 0 2px' }}>
+              <p className="figure-amount">
                 <Link to={`/companies/${c.bidder.slug}`}>{c.bidder.displayName}</Link>
               </p>
-              <p className="small muted" style={{ margin: '0 0 8px' }}>
+              <p className="small muted figure-sub">
                 {c.bidder.eik ? (
                   <>
                     ЕИК <span className="mono">{c.bidder.eik}</span>
@@ -251,7 +251,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                 </li>
               </ul>
               {c.subcontractor && (
-                <p className="small muted" style={{ margin: '8px 0 0' }}>
+                <p className="small muted figure-note">
                   Подизпълнител: <strong>{c.subcontractor.name}</strong>
                   {c.subcontractor.eik && (
                     <>
@@ -386,7 +386,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                 <caption className="sr-only">Обособени позиции по преписката</caption>
                 <thead>
                   <tr>
-                    <th scope="col" style={{ width: 60 }}>
+                    <th scope="col" className="col-w-60">
                       Лот
                     </th>
                     <th scope="col">Участък</th>
@@ -433,7 +433,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               </table>
             </div>
             {(c.lots.estimatedTotalEur || c.lots.signedTotalEur) && (
-              <p className="small muted" style={{ marginTop: 8 }}>
+              <p className="small muted mt-8">
                 {c.lots.estimatedTotalEur && (
                   <>
                     Прогнозна стойност на всички лотове:{' '}
@@ -472,7 +472,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
 
           {sourceFiles.length > 0 && (
             <>
-              <p className="small muted" style={{ margin: '0 0 8px' }}>
+              <p className="small muted figure-sub">
                 Първични данни от ЦАИС ЕОП (отворени данни) за деня на публикуване —{' '}
                 {longDate(c.publishedAt!)}. Свалят се директно от storage.eop.bg, без копие в СИГМА;
                 всеки файл съдържа пълните данни за деня. Записът за този договор е във файла

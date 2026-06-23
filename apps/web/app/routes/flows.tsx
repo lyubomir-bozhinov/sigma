@@ -9,16 +9,16 @@ import { SankeyDiagram } from '../components/SankeyDiagram';
 import { Callout, Section } from '../components/ui';
 import { publicCache } from '../lib/cache';
 import { coverageRange, getCoverageMeta, yearOptions } from '../lib/coverage';
+import { seoMeta } from '../lib/meta';
 
-export function meta(_: Route.MetaArgs) {
-  return [
-    { title: 'Потоци на пари — СИГМА' },
-    {
-      name: 'description',
-      content:
-        'От институциите възложители към компаниите изпълнители. Дебелината на всеки поток отговаря на стойността на договорите.',
-    },
-  ];
+export function meta({ matches }: Route.MetaArgs) {
+  return seoMeta({
+    matches,
+    path: '/flows',
+    title: 'Потоци на пари — СИГМА',
+    description:
+      'От институциите възложители към компаниите изпълнители. Дебелината на всеки поток отговаря на стойността на договорите.',
+  });
 }
 
 export function headers() {
@@ -223,7 +223,7 @@ export default function Flows({ loaderData }: Route.ComponentProps) {
                 </tbody>
               </table>
             </div>
-            <p className="small muted" style={{ marginTop: 'var(--s-3)' }}>
+            <p className="small muted mt-s3">
               Зад всеки ред стоят неговите договори:{' '}
               <Link to="/contracts?sort=value-desc">виж договорите →</Link>
             </p>
