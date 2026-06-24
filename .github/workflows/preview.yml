@@ -68,10 +68,12 @@ jobs:
           set -o pipefail
           # `run deploy` builds, renders wrangler.deploy.json with SIGMA_WEB_NAME/SIGMA_D1_*, and deploys.
           pnpm --filter @sigma/web run deploy 2>&1 | tee deploy.log
+          # The live URL includes the account subdomain (sigma-pr-<n>.<account-subdomain>.workers.dev),
+          # which can't be reconstructed from SIGMA_WEB_NAME alone — so parse it from wrangler's output.
+          # If parsing fails, leave it empty; the comment step says so rather than posting a dead link.
           url="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -n1)"
           if [ -z "$url" ]; then
-            url="https://${SIGMA_WEB_NAME}.workers.dev"
-            echo "::warning::Could not parse preview URL from wrangler output; falling back to $url"
+            echo "::warning::Could not parse the preview URL from wrangler output; see the deploy log above."
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
@@ -82,7 +84,10 @@ jobs:
             const url = process.env.PREVIEW_URL;
             const worker = process.env.SIGMA_WEB_NAME;
             const marker = '<!-- sigma-preview -->';
-            const body = `${marker}\n🌐 **Preview deployed** → ${url}\n\n` +
+            const headline = url
+              ? `🌐 **Preview deployed** → ${url}`
+              : `🌐 **Preview deployed**, but the URL couldn't be auto-detected — see the "Deploy preview worker" step in the [workflow run](${process.env.RUN_URL}).`;
+            const body = `${marker}\n${headline}\n\n` +
               `Worker \`${worker}\` · shares the **dev** D1 (read-only). Updates on each push; removed when this PR closes.`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
@@ -100,6 +105,7 @@ jobs:
         env:
           PREVIEW_URL: ${{ steps.deploy.outputs.url }}
           SIGMA_WEB_NAME: ${{ env.SIGMA_WEB_NAME }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   teardown:
     if: >-
