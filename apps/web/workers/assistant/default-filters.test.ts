@@ -10,9 +10,7 @@ describe('applyDefaultFilters', () => {
       dateField: 'signed_at',
     });
     expect(r.dateColumn).toBe('c.signed_at');
-    expect(r.sql.fragment).toBe(
-      'c.amount_eur IS NOT NULL AND (t.procedure_type IS NULL OR t.procedure_type != ?)',
-    );
+    expect(r.sql.fragment).toBe('c.amount_eur IS NOT NULL AND t.procedure_type != ?');
     expect(r.sql.params).toEqual(['неизвестна']);
   });
 

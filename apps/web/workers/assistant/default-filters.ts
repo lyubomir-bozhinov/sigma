@@ -62,8 +62,9 @@ const CALLOUT_OPTOUT_PUBLISHED_AT =
  * Resolve the default contract filters against an explicit opt-out set. Deterministic and pure.
  *
  * The emitted `sql.fragment` assumes the query aliases `contracts` as `c` and the joined `tenders`
- * as `t`. The synthetic-tender guard keeps `t.procedure_type IS NULL` rows (LEFT-joined orphans)
- * and excludes only the `'неизвестна'` sentinel.
+ * as `t`. Every contract has a tender (`contracts.tender_id NOT NULL REFERENCES tenders`) and
+ * `tenders.procedure_type` is `NOT NULL` ('неизвестна' for synthetic orphan headers), so the
+ * synthetic-tender guard is a plain inequality that excludes only the `'неизвестна'` sentinel.
  */
 export function applyDefaultFilters(options: DefaultFilterOptions = {}): DefaultFilterResult {
   const excludeNullAmount = options.includeUnsummable !== true;
@@ -85,8 +86,9 @@ export function applyDefaultFilters(options: DefaultFilterOptions = {}): Default
   }
 
   if (excludeSynthetic) {
-    // Keep rows whose procedure is NULL (not synthetic) — only the sentinel is excluded.
-    conditions.push('(t.procedure_type IS NULL OR t.procedure_type != ?)');
+    // tenders.procedure_type is NOT NULL ('неизвестна' for synthetic orphan headers) and every
+    // contract has a tender, so a plain inequality suffices — there is no NULL row to guard.
+    conditions.push('t.procedure_type != ?');
     params.push(SYNTHETIC_PROCEDURE);
     callout.push(CALLOUT_DEFAULT_SYNTHETIC);
   } else {

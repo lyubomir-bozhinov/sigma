@@ -198,11 +198,11 @@ CREATE INDEX idx_parties_eik ON parties(eik);
 -- One row (id = 1). Index KPIs + freshness for the home page.
 CREATE TABLE home_totals (
   id           INTEGER PRIMARY KEY CHECK (id = 1),
-  contracts    INTEGER NOT NULL,          -- contracts with a clean (non-NULL) amount_eur
-  value_eur    REAL NOT NULL,             -- SUM(amount_eur) over those same rows (count/sum cover one set)
+  contracts    INTEGER NOT NULL,          -- COUNT(*) over ALL contracts — corpus record tally, NOT the amount_eur-filtered basis the sector/authority/company rollups (and E4) reconcile on
+  value_eur    REAL NOT NULL,             -- COALESCE(SUM(amount_eur),0) over clean (non-NULL) rows only; deliberately a different set than `contracts` above — `suspect` bridges the two
   authorities  INTEGER NOT NULL,
   bidders      INTEGER NOT NULL,
-  suspect      INTEGER NOT NULL,          -- rows excluded from value_eur (NULL amount_eur — unrecoverable): surfaced, never summed
+  suspect      INTEGER NOT NULL,          -- COUNT(value_flag = 'value_suspect') — data-quality badge, surfaced never summed; NOT the NULL-amount set (corrected suspect rows carry a procEst amount and ARE summed)
   first_date   TEXT,
   last_date    TEXT,
   as_of        TEXT,                       -- data_freshness 'admin' as_of (latest real contract date)
