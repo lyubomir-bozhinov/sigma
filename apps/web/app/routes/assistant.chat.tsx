@@ -30,7 +30,9 @@ const MAX_MESSAGES = 24; // keep only the most recent turns (the model has a big
 
 export async function action({ request, context }: Route.ActionArgs) {
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) {
+  // Measure UTF-8 bytes, not raw.length (UTF-16 code units): a Cyrillic-heavy body is ~2 UTF-8 bytes per
+  // char, so raw.length would pass at ~2× the intended cap (same pitfall fixed in eop-fetch.ts, review #80).
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
     return Response.json({ error: 'историята е твърде голяма' }, { status: 413 });
   }
   let parsed: { messages?: UIMessage[] };
