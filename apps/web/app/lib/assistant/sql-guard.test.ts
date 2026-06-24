@@ -35,6 +35,16 @@ describe('assertReadOnlySelect', () => {
     );
   });
 
+  it('treats a doubled-quote escape inside a literal as data (review #80)', () => {
+    // SQLite escapes a quote by doubling it: 'O''Brien; Co' is the single value "O'Brien; Co",
+    // so the embedded ; must not be read as a statement separator.
+    expect(assertReadOnlySelect("SELECT 'O''Brien; Co' AS name FROM contracts").ok).toBe(true);
+    // …and a real stacked statement following an escaped-quote literal is still rejected.
+    expect(
+      assertReadOnlySelect("SELECT 'O''Brien' AS name FROM contracts; DROP TABLE contracts").ok,
+    ).toBe(false);
+  });
+
   it('defeats comment-hidden injection (comments stripped before checks)', () => {
     expect(assertReadOnlySelect('SELECT 1 /* ; DROP TABLE contracts */').ok).toBe(true); // comment is inert
     expect(assertReadOnlySelect('SELECT 1; DROP/**/TABLE contracts').ok).toBe(false); // unmasked → rejected

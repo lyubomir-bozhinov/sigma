@@ -45,14 +45,21 @@ function stripComments(sql: string): string {
 
 // Split on `;` at the top level, treating a `;` inside a single-quoted string literal as data, not a
 // statement separator — otherwise a benign `SELECT ';' …` is mis-counted as stacked statements and
-// rejected (review #80). A real stacked statement still splits; an unbalanced quote just yields one
-// (the AST guard then fails to parse it).
+// rejected (review #80). SQLite escapes a quote inside a literal by doubling it (`'a''b'` is the value
+// `a'b`), so a `''` pair is consumed as data and does NOT toggle the string — a plain toggle on every
+// `'` mis-models the literal (review #80). A real stacked statement still splits; an unbalanced quote
+// just yields one segment (the AST guard then fails to parse it).
 function splitStatements(sql: string): string[] {
   const out: string[] = [];
   let current = '';
   let inString = false;
-  for (const ch of sql) {
-    if (ch === "'") {
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (ch === "'" && inString && sql[i + 1] === "'") {
+      // Escaped quote inside a literal: consume both chars and stay in the string.
+      current += "''";
+      i++;
+    } else if (ch === "'") {
       inString = !inString;
       current += ch;
     } else if (ch === ';' && !inString) {
