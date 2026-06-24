@@ -44,12 +44,26 @@ const cmd = ['delete', '--name', name];
 console.log(`==> wrangler ${cmd.join(' ')}${dryRun ? '  (dry run)' : ''}`);
 if (dryRun) process.exit(0);
 
+// A worker that's already gone is fine (the `closed` event can fire twice, or a deploy was cancelled
+// before it ever created the worker). ANY other failure — auth, network, wrong account — must fail
+// loudly: silently swallowing it would leave a leaked preview worker while the job reports success.
+// Cloudflare returns code 10007 / "workers.api.error.script_not_found" for a missing script.
+const NOT_FOUND = /script_not_found|\b10007\b/i;
+
 try {
-  // --force avoids the interactive confirmation prompt; a missing worker is treated as success.
-  execFileSync('wrangler', [...cmd, '--force'], { stdio: 'inherit' });
-} catch {
-  // Most likely the worker was already deleted (e.g. the close event fired twice). Don't fail cleanup.
-  console.error(
-    `!! delete of "${name}" failed — it may already be gone; treating teardown as done.`,
-  );
+  // --force avoids the interactive confirmation prompt. Capture output so we can classify failures.
+  const out = execFileSync('wrangler', [...cmd, '--force'], { encoding: 'utf8' });
+  process.stdout.write(out);
+} catch (err) {
+  const output = `${err.stdout || ''}${err.stderr || ''}`;
+  if (output) process.stderr.write(output);
+  if (NOT_FOUND.test(output)) {
+    console.error(`!! "${name}" not found — already gone; treating teardown as done.`);
+  } else {
+    console.error(
+      `!! delete of "${name}" failed for a reason other than "not found" — the worker may still be live. ` +
+        `Not masking this; failing so it gets surfaced.`,
+    );
+    process.exit(1);
+  }
 }
