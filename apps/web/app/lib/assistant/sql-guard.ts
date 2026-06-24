@@ -104,6 +104,13 @@ export function assertReadOnlySelect(rawSql: string): GuardResult {
   if (/\bpragma_\w+/i.test(sql)) {
     return { ok: false, reason: 'pragma functions are not allowed' };
   }
+
+  // Common table-valued functions are invisible to the AST allowlist (parser.tableList() returns []
+  // for them), so they are the same blind spot as pragma_*. The AST guard rejects every TVF in a FROM
+  // at any depth; this is the cheap first-layer catch for the well-known ones (review #80, ydimitrof H1).
+  if (/\b(?:json_each|json_tree|generate_series)\s*\(/i.test(sql)) {
+    return { ok: false, reason: 'table-valued functions are not allowed' };
+  }
   return { ok: true, sql };
 }
 

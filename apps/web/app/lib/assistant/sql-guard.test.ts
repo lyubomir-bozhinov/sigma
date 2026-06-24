@@ -61,6 +61,16 @@ describe('assertReadOnlySelect', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/pragma/i);
   });
+
+  it('rejects json_each/json_tree/generate_series table-valued functions (review #80, ydimitrof H1)', () => {
+    for (const sql of [
+      "SELECT value FROM json_each('[1,2,3]')",
+      "SELECT contract_id FROM (SELECT value AS contract_id FROM json_each('[1,2,3]')) x",
+      'SELECT * FROM generate_series(1, 100)',
+    ]) {
+      expect(assertReadOnlySelect(sql).ok, sql).toBe(false);
+    }
+  });
 });
 
 describe('enforceLimit', () => {

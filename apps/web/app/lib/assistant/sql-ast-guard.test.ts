@@ -101,6 +101,27 @@ describe('guardSelect', () => {
     );
   });
 
+  it('rejects a table-valued function nested in a sub-query or WHERE-IN (review #80, ydimitrof H1)', () => {
+    // tableList() is blind to TVFs and the FROM source looks like a legit sub-query; the deep FROM walk
+    // catches the TVF (and the same-class nested ON-less cross-join) at any depth.
+    expect(
+      guardSelect(
+        "SELECT contract_id FROM (SELECT value AS contract_id FROM json_each('[1,2,3]')) x",
+      ).ok,
+    ).toBe(false);
+    expect(
+      guardSelect("SELECT id FROM contracts WHERE id IN (SELECT value FROM json_each('[1,2,3]'))")
+        .ok,
+    ).toBe(false);
+    expect(
+      guardSelect('SELECT x.n FROM (SELECT a.id AS n FROM contracts a JOIN bidders b) x').ok,
+    ).toBe(false);
+    // a legitimate nested sub-query over allowlisted tables still passes
+    expect(
+      guardSelect('SELECT x.id FROM (SELECT id FROM contracts WHERE amount_eur IS NOT NULL) x').ok,
+    ).toBe(true);
+  });
+
   it('allowlists a CTE declared inside a sub-query (nested WITH), but still catches a bad table there', () => {
     // inner_cte is a CTE, not a real table — must not be rejected as "table not allowed"
     expect(

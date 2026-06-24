@@ -81,6 +81,48 @@ function collectCteNames(node: unknown, acc: Set<string>): void {
   for (const key of Object.keys(obj)) collectCteNames(obj[key], acc);
 }
 
+// Validate every FROM source in the statement at ANY nesting depth. A table-valued function or an
+// ON-less cross-join tucked inside a sub-query (`FROM (SELECT … FROM json_each(…)) x`) or a WHERE-IN
+// sub-select is the same row-amplification vector as one at the top level — and `parser.tableList()`
+// is blind to TVFs (it returns [] for the function form), so the allowlist never sees them (review #80,
+// ydimitrof H1). Returns a deny reason for the first bad source, or null. The AST is a finite tree.
+function denyBadFromSource(node: unknown): string | null {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = denyBadFromSource(item);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  const from = Array.isArray(obj.from) ? (obj.from as FromEntry[]) : null;
+  if (from) {
+    for (let i = 0; i < from.length; i++) {
+      const f = from[i];
+      if (!f) continue;
+      // Only plain tables and sub-queries are allowed. A table-valued function (json_each, json_tree,
+      // generate_series, pragma_*) is `{ expr: { type: 'function' } }` — neither a table nor a sub-query.
+      const isTable = typeof f.table === 'string' && f.table.length > 0;
+      const isSubquery = !!(f.expr && typeof f.expr === 'object' && f.expr.ast);
+      if (!isTable && !isSubquery) return 'table-valued functions are not allowed in FROM';
+      // Entries after the first must be an explicit JOIN carrying an ON/USING — a missing join is a
+      // comma cross-join, an ON/USING-less JOIN is an explicit cross-join; both are Cartesian products.
+      if (i > 0) {
+        if (!f.join) return 'comma cross-joins are not allowed; use explicit JOIN … ON';
+        if (f.on == null && f.using == null) {
+          return 'JOIN without an ON/USING condition is a cross-join; add a join condition';
+        }
+      }
+    }
+  }
+  for (const key of Object.keys(obj)) {
+    const r = denyBadFromSource(obj[key]);
+    if (r) return r;
+  }
+  return null;
+}
+
 /**
  * Parse-verify and scope `sql`: assert a single read-only SELECT over allowlisted tables (plain tables
  * / sub-queries only — no table-valued functions), no comma or ON-less cross-join, no recursion, and a
@@ -106,30 +148,13 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   if (ast.type !== 'select')
     return deny(`only SELECT is allowed (found: ${ast.type ?? 'unknown'})`);
 
-  // Every FROM source must be a plain table or a sub-query — fail closed on anything else. This blocks
-  // table-valued functions (`pragma_table_info(…)`, `json_each(…)`, `json_tree(…)`, `generate_series(…)`):
-  // they expose schema or amplify rows, and parser.tableList() returns [] for the function form, so the
-  // allowlist below never sees them (review #80). Sub-queries are allowed — their inner tables DO
-  // surface in tableList and are allowlisted.
-  const from = Array.isArray(ast.from) ? ast.from : [];
-  for (let i = 0; i < from.length; i++) {
-    const f = from[i];
-    if (!f) continue;
-    const isTable = typeof f.table === 'string' && f.table.length > 0;
-    const isSubquery = !!(f.expr && typeof f.expr === 'object' && f.expr.ast);
-    if (!isTable && !isSubquery) {
-      return deny('table-valued functions are not allowed in FROM');
-    }
-    // Entries after the first must be an explicit JOIN carrying an ON/USING. A missing join is a comma
-    // cross-join; a JOIN with neither ON nor USING is an explicit cross-join (incl. CROSS JOIN) — both
-    // are Cartesian products a LIMIT cannot bound (review #80).
-    if (i > 0) {
-      if (!f.join) return deny('comma cross-joins are not allowed; use explicit JOIN … ON');
-      if (f.on == null && f.using == null) {
-        return deny('JOIN without an ON/USING condition is a cross-join; add a join condition');
-      }
-    }
-  }
+  // Every FROM source must be a plain table or a sub-query, at ANY nesting depth — fail closed on
+  // anything else. This blocks table-valued functions (`pragma_table_info(…)`, `json_each(…)`,
+  // `json_tree(…)`, `generate_series(…)`) — invisible to parser.tableList() (it returns [] for the
+  // function form) — and comma/ON-less cross-joins, INCLUDING ones tucked inside a sub-query or a
+  // WHERE-IN sub-select, which the earlier top-level-only check missed (review #80, ydimitrof H1).
+  const badFrom = denyBadFromSource(ast);
+  if (badFrom) return deny(badFrom);
 
   // Positive table allowlist — excludes CTE names (at any nesting depth), which tableList also returns.
   const cteNames = new Set<string>();
