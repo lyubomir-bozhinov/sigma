@@ -1,14 +1,24 @@
 #!/usr/bin/env node
-// Create the Cloudflare resources Sigma needs (one-time per CF account).
+// Create the Cloudflare resources Sigma needs (one-time per environment).
 // Dry-run by default; pass --apply to actually create them.
+//
+// Resource names are taken from the same env vars wrangler-render.mjs / the deploy workflow use, so a
+// new environment is provisioned by exporting its names first, e.g.:
+//   SIGMA_D1_NAME=sigma-dev SIGMA_CSV_CACHE_NAME=sigma-csv-cache-dev node scripts/bootstrap.mjs --apply
 import { execFileSync } from 'node:child_process';
 
 const apply = process.argv.includes('--apply');
 const d1Name = process.env.SIGMA_D1_NAME || 'sigma';
+const csvCacheName = process.env.SIGMA_CSV_CACHE_NAME || 'sigma-csv-cache';
 
-// Page caching is done via `Cache-Control` headers + the per-colo Cache API (no KV). Raw archival
-// is delegated to the external BG feeder (no R2). D1 is the only Cloudflare resource Sigma needs.
-const resources = [{ kind: 'D1', cmd: ['d1', 'create', d1Name] }];
+// Page caching is done via `Cache-Control` headers + the per-colo Cache API (no KV). The two durable
+// resources the web worker binds are D1 (the served data) and the R2 CSV-export cache. The rate-limit
+// "namespaces" are not provisioned — they are account-scoped integer ids declared inline in
+// apps/web/wrangler.jsonc (shared across environments). Workflows are registered by the ETL deploy.
+const resources = [
+  { kind: 'D1', cmd: ['d1', 'create', d1Name] },
+  { kind: 'R2', cmd: ['r2', 'bucket', 'create', csvCacheName] },
+];
 
 console.log(apply ? '==> Creating Cloudflare resources' : '==> Dry run (pass --apply to create)');
 
