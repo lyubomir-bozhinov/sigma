@@ -101,6 +101,21 @@ describe('guardSelect', () => {
     );
   });
 
+  it('allowlists a CTE declared inside a sub-query (nested WITH), but still catches a bad table there', () => {
+    // inner_cte is a CTE, not a real table — must not be rejected as "table not allowed"
+    expect(
+      guardSelect(
+        'SELECT x.id FROM (WITH inner_cte AS (SELECT id FROM contracts) SELECT id FROM inner_cte) x',
+      ).ok,
+    ).toBe(true);
+    // a disallowed table inside the nested sub-query is still caught
+    const bad = guardSelect(
+      'SELECT x.name FROM (WITH t AS (SELECT name FROM sqlite_master) SELECT name FROM t) x',
+    );
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.reason).toMatch(/table not allowed: sqlite_master/);
+  });
+
   it('still allowlists tables referenced inside a sub-query in FROM', () => {
     expect(guardSelect('SELECT x.id FROM (SELECT id FROM contracts) x').ok).toBe(true);
     const bad = guardSelect('SELECT x.name FROM (SELECT name FROM sqlite_master) x');

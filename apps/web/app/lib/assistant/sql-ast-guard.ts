@@ -61,6 +61,26 @@ function outerLimit(ast: LooseSelect): LimitNode {
   return node.limit ?? ast.limit;
 }
 
+// Collect every CTE name in the statement at ANY nesting depth — a CTE declared inside a sub-query or
+// another CTE is still a CTE, not a real table. parser.tableList() flattens CTE references in with the
+// base tables, so without the full set the allowlist would falsely reject a legitimately-nested CTE
+// name (review #80). The parsed AST is a finite tree, so the walk terminates.
+function collectCteNames(node: unknown, acc: Set<string>): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectCteNames(item, acc);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.with)) {
+    for (const cte of obj.with) {
+      const name = (cte as { name?: { value?: string } } | null)?.name?.value;
+      if (name) acc.add(String(name).toLowerCase());
+    }
+  }
+  for (const key of Object.keys(obj)) collectCteNames(obj[key], acc);
+}
+
 /**
  * Parse-verify and scope `sql`: assert a single read-only SELECT over allowlisted tables (plain tables
  * / sub-queries only — no table-valued functions), no comma or ON-less cross-join, no recursion, and a
@@ -111,10 +131,9 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
     }
   }
 
-  // Positive table allowlist — excludes CTE names, which tableList also returns.
-  const cteNames = new Set(
-    (ast.with ?? []).map((w) => String(w?.name?.value ?? '').toLowerCase()).filter(Boolean),
-  );
+  // Positive table allowlist — excludes CTE names (at any nesting depth), which tableList also returns.
+  const cteNames = new Set<string>();
+  collectCteNames(ast, cteNames);
   for (const entry of parser.tableList(sql)) {
     const table = entry.split('::')[2]?.toLowerCase();
     if (!table || cteNames.has(table)) continue;

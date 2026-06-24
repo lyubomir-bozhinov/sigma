@@ -43,6 +43,29 @@ function stripComments(sql: string): string {
     .replace(/--[^\n]*/g, ' '); // -- line
 }
 
+// Split on `;` at the top level, treating a `;` inside a single-quoted string literal as data, not a
+// statement separator — otherwise a benign `SELECT ';' …` is mis-counted as stacked statements and
+// rejected (review #80). A real stacked statement still splits; an unbalanced quote just yields one
+// (the AST guard then fails to parse it).
+function splitStatements(sql: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let inString = false;
+  for (const ch of sql) {
+    if (ch === "'") {
+      inString = !inString;
+      current += ch;
+    } else if (ch === ';' && !inString) {
+      out.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  out.push(current);
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+
 export type GuardResult = { ok: true; sql: string } | { ok: false; reason: string };
 
 /** Structural read-only check. Returns the de-commented, single-statement SQL or a rejection. */
@@ -50,11 +73,8 @@ export function assertReadOnlySelect(rawSql: string): GuardResult {
   const stripped = stripComments(rawSql).trim();
   if (!stripped) return { ok: false, reason: 'empty query' };
 
-  // Reject stacked statements: at most one trailing `;`.
-  const statements = stripped
-    .split(';')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // Reject stacked statements: at most one trailing `;` (ignoring `;` inside string literals).
+  const statements = splitStatements(stripped);
   if (statements.length !== 1) {
     return { ok: false, reason: 'only a single statement is allowed' };
   }

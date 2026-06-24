@@ -27,6 +27,14 @@ describe('assertReadOnlySelect', () => {
     if (!r.ok) expect(r.reason).toMatch(/single statement/);
   });
 
+  it('accepts a semicolon inside a string literal (not a stacked statement, review #80)', () => {
+    expect(assertReadOnlySelect("SELECT ';' AS note FROM contracts").ok).toBe(true);
+    // a genuine stacked statement that merely contains a quoted ; is still rejected
+    expect(assertReadOnlySelect("SELECT ';' AS note FROM contracts; DROP TABLE contracts").ok).toBe(
+      false,
+    );
+  });
+
   it('defeats comment-hidden injection (comments stripped before checks)', () => {
     expect(assertReadOnlySelect('SELECT 1 /* ; DROP TABLE contracts */').ok).toBe(true); // comment is inert
     expect(assertReadOnlySelect('SELECT 1; DROP/**/TABLE contracts').ok).toBe(false); // unmasked → rejected
