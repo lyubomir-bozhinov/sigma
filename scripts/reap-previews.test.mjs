@@ -56,6 +56,25 @@ describe('listWorkerScripts', () => {
     assert.deepEqual(out, [{ id: 'sigma-pr-1' }]);
   });
 
+  it('follows the cursor across pages and concatenates every result', async () => {
+    const calls = [];
+    const fetchImpl = async (url) => {
+      calls.push(url);
+      const onFirstPage = !url.includes('cursor=');
+      return {
+        ok: true,
+        json: async () =>
+          onFirstPage
+            ? { success: true, result: [{ id: 'sigma-pr-1' }], result_info: { cursor: 'next-page' } }
+            : { success: true, result: [{ id: 'sigma-pr-2' }], result_info: { cursor: '' } },
+      };
+    };
+    const out = await listWorkerScripts({ accountId: 'a', token: 't', fetchImpl });
+    assert.deepEqual(out, [{ id: 'sigma-pr-1' }, { id: 'sigma-pr-2' }]);
+    assert.equal(calls.length, 2);
+    assert.match(calls[1], /cursor=next-page/);
+  });
+
   it('throws with the API error on failure', async () => {
     const fetchImpl = async () => ({
       ok: false,

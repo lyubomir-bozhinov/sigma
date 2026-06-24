@@ -167,7 +167,9 @@ console.log(`==> shipping ${workDb} to D1 ${remote ? 'remote' : 'local'}`);
 // out-of-band (apply 0000_init via `wrangler d1 execute <name> --remote --file` first — see
 // docs/deploy.md), set SHIP_SKIP_MIGRATIONS=1 to skip this step; the data ship/precompute below use
 // `d1 execute <name>`, which resolves by name without the config.
-if (process.env.SHIP_SKIP_MIGRATIONS) {
+// Affirmative opt-in only: a bare truthy check would also skip on SHIP_SKIP_MIGRATIONS=0/false.
+const skipMigrations = ['1', 'true'].includes(process.env.SHIP_SKIP_MIGRATIONS);
+if (skipMigrations) {
   console.log('==> SHIP_SKIP_MIGRATIONS set — assuming served D1 schema is already applied');
 } else {
   console.log('==> ensuring served D1 migrations are applied');

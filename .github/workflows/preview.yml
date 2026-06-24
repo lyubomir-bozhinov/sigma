@@ -111,6 +111,11 @@ jobs:
     if: >-
       github.event.action == 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
+    # Teardown must run to completion — never let a racing deploy (same PR, shared workflow-level group)
+    # cancel it and orphan the sigma-pr-<n> worker. Own group, no cancellation; the deletion is idempotent.
+    concurrency:
+      group: preview-teardown-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: preview
     permissions:

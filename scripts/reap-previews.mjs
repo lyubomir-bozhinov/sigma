@@ -39,16 +39,23 @@ export function selectStale(scripts, { maxAgeDays, nowMs }) {
 }
 
 export async function listWorkerScripts({ accountId, token, fetchImpl = fetch }) {
-  const res = await fetchImpl(`${CF_API}/accounts/${accountId}/workers/scripts`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || body.success === false) {
-    throw new Error(
-      `Cloudflare API list scripts failed (${res.status}): ${JSON.stringify(body.errors ?? body)}`,
-    );
-  }
-  return body.result ?? [];
+  // The CF API paginates workers/scripts (~100 per page). Walk every page via the cursor, or a
+  // busy account silently hides older sigma-pr-* workers from the reaper — leaking them forever.
+  const scripts = [];
+  let cursor = '';
+  do {
+    const url = `${CF_API}/accounts/${accountId}/workers/scripts${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.success === false) {
+      throw new Error(
+        `Cloudflare API list scripts failed (${res.status}): ${JSON.stringify(body.errors ?? body)}`,
+      );
+    }
+    scripts.push(...(body.result ?? []));
+    cursor = body.result_info?.cursor ?? '';
+  } while (cursor);
+  return scripts;
 }
 
 function arg(args, name) {
@@ -91,7 +98,9 @@ async function main(argv) {
     if (!apply) continue;
     try {
       const result = deleteWorker(s.name);
-      if (result !== 'dry-run') reaped.push(s.name);
+      // Only an actual delete counts as reaped. 'already-gone' (the worker vanished between list and
+      // delete) must not trigger a misleading "reaped after Nd" comment on its PR.
+      if (result === 'deleted') reaped.push(s.name);
     } catch (err) {
       hardFailures += 1;
       console.error(`!! failed to reap ${s.name}: ${err.message}`);
