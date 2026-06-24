@@ -59,16 +59,22 @@ jobs:
 
       - name: Reap preview workers past the max lifetime
         id: reap
+        # Run through `pnpm --filter @sigma/web exec` (cwd = apps/web, hence the ../../ path) so the
+        # web package's pinned wrangler is on PATH — reap-previews.mjs deletes via teardown-remote.mjs,
+        # which shells out to `wrangler`. A bare `node` invocation leaves node_modules/.bin off PATH
+        # and every delete would fail with ENOENT. Same mechanism the preview.yml teardown step uses.
         # Default to applying; a manual dispatch with apply=false performs a dry run instead.
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.apply }}" = "false" ]; then
-            node scripts/reap-previews.mjs
+            pnpm --filter @sigma/web exec node ../../scripts/reap-previews.mjs
           else
-            node scripts/reap-previews.mjs --apply
+            pnpm --filter @sigma/web exec node ../../scripts/reap-previews.mjs --apply
           fi
 
       - name: Comment on PRs whose preview was reaped
-        if: steps.reap.outputs.reaped != ''
+        # always() so a partial run that reaped some workers but hard-failed on others (reap step exits
+        # 1) still notifies the PRs that WERE reaped, instead of skipping on the upstream failure.
+        if: always() && steps.reap.outputs.reaped != ''
         uses: actions/github-script@v7
         with:
           script: |
