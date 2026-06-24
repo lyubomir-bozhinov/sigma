@@ -1,0 +1,147 @@
+name: PR preview (ephemeral sigma worker)
+
+# Ephemeral per-PR preview of the SSR explorer. Each open PR gets its own Worker named `sigma-pr-<num>`
+# at https://sigma-pr-<num>.<account-subdomain>.workers.dev, deleted when the PR closes.
+#
+# Design (see docs/dev-environments.md):
+#   - Web worker ONLY. The ETL worker is cron-only and WRITES D1 — we never spin a per-PR copy of it.
+#   - Previews SHARE the long-lived dev D1 + dev R2 bucket (read-only from the preview worker). No
+#     per-PR data provisioning, no per-PR seed — the preview shows the same data the dev env has.
+#   - All credentials come from a `preview` GitHub Environment whose SIGMA_D1_ID points at the dev D1.
+#     Keep that environment WITHOUT required reviewers, or every preview deploy will block.
+#
+# Security: fork PRs cannot read repo secrets, so the deploy/teardown jobs are gated to same-repo
+# branches. Fork PRs still get normal CI from ci.yml; they just don't get a live preview.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Shared dev data: SIGMA_D1_ID is the dev database's id (set on the `preview` Environment).
+      SIGMA_D1_ID: ${{ secrets.SIGMA_D1_ID }}
+      SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
+      SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
+      # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
+      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Guard — require preview credentials
+        run: |
+          missing=()
+          [ -z "${CLOUDFLARE_API_TOKEN}" ] && missing+=("CLOUDFLARE_API_TOKEN")
+          [ -z "${CLOUDFLARE_ACCOUNT_ID}" ] && missing+=("CLOUDFLARE_ACCOUNT_ID")
+          [ -z "${SIGMA_D1_ID}" ]          && missing+=("SIGMA_D1_ID")
+          [ -z "${SIGMA_D1_NAME}" ]        && missing+=("SIGMA_D1_NAME (var)")
+          [ -z "${SIGMA_CSV_CACHE_NAME}" ] && missing+=("SIGMA_CSV_CACHE_NAME (var)")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::preview Environment is missing: ${missing[*]} — see docs/dev-environments.md."
+            exit 1
+          fi
+
+      - name: Deploy preview worker
+        id: deploy
+        run: |
+          set -o pipefail
+          # `run deploy` builds, renders wrangler.deploy.json with SIGMA_WEB_NAME/SIGMA_D1_*, and deploys.
+          pnpm --filter @sigma/web run deploy 2>&1 | tee deploy.log
+          url="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -n1)"
+          if [ -z "$url" ]; then
+            url="https://${SIGMA_WEB_NAME}.workers.dev"
+            echo "::warning::Could not parse preview URL from wrangler output; falling back to $url"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = process.env.PREVIEW_URL;
+            const worker = process.env.SIGMA_WEB_NAME;
+            const marker = '<!-- sigma-preview -->';
+            const body = `${marker}\n🌐 **Preview deployed** → ${url}\n\n` +
+              `Worker \`${worker}\` · shares the **dev** D1 (read-only). Updates on each push; removed when this PR closes.`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body,
+              });
+            }
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+          SIGMA_WEB_NAME: ${{ env.SIGMA_WEB_NAME }}
+
+  teardown:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Deletes only the per-PR worker. The shared dev D1/R2 are never touched (teardown-remote.mjs
+      # refuses protected long-lived names). Uses the web package's pinned wrangler.
+      - name: Delete preview worker
+        run: pnpm --filter @sigma/web exec node ../../scripts/teardown-remote.mjs --name "$SIGMA_WEB_NAME"
+
+      - name: Note teardown on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- sigma-preview -->';
+            const body = `${marker}\n🧹 Preview \`${process.env.SIGMA_WEB_NAME}\` torn down (PR closed).`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            }
+        env:
+          SIGMA_WEB_NAME: ${{ env.SIGMA_WEB_NAME }}

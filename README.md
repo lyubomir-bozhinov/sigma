@@ -12,6 +12,7 @@
 
 - [`docs/etl.md`](docs/etl.md) — ETL pipeline-ът и емисията от ЦАИС ЕОП.
 - [`docs/deploy.md`](docs/deploy.md) — деплой към Cloudflare.
+- [`docs/dev-environments.md`](docs/dev-environments.md) — dev среда и ephemeral preview-та за всеки PR.
 - [`docs/architecture.md`](docs/architecture.md) — архитектурни решения (ADR).
 - [`docs/spec/ai-assistant.md`](docs/spec/ai-assistant.md) — спецификация на AI асистента (планиран).
 
