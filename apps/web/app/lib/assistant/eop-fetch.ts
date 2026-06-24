@@ -11,19 +11,25 @@
 import { eopSourceFiles } from '../eopSource';
 
 export const EOP_EARLIEST_DAY = '2020-01-01'; // corpus coverage start (README/etl.md)
-export const EOP_MAX_BYTES = 256 * 1024; // per-file cap on what enters the model context
+export const EOP_MAX_BYTES = 256 * 1024; // per-file byte cap on the untrusted response before it is parsed
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UNP_RE = /^\d{4,5}-\d{4}-\d{4}$/; // e.g. 00044-2023-0018
 
 export type DateValidation = { ok: true; day: string } | { ok: false; reason: string };
 
+// EOP open-data buckets are keyed by the Europe/Sofia publication day (the file names embed the local
+// date), so "today" must be the Sofia calendar day — UTC would reject a legitimately-current-day query
+// in the post-midnight window before UTC rolls over (review #80). en-CA renders as YYYY-MM-DD.
+function sofiaToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Sofia' }).format(new Date());
+}
+
 /** Strictly validate a model-supplied day. ISO dates compare lexically, so string bounds are safe. */
-export function validateEopDate(
-  raw: string,
-  today = new Date().toISOString().slice(0, 10),
-): DateValidation {
-  const day = (raw ?? '').slice(0, 10);
+export function validateEopDate(raw: string, today = sofiaToday()): DateValidation {
+  // Match the WHOLE (trimmed) string, not a slice(0,10) prefix — otherwise `2023-05-01; DROP TABLE`
+  // would validate as `2023-05-01`, smuggling a tail through for any caller that mishandles it (#80).
+  const day = (raw ?? '').trim();
   if (!DAY_RE.test(day)) return { ok: false, reason: 'датата трябва да е във формат YYYY-MM-DD' };
   if (day < EOP_EARLIEST_DAY)
     return { ok: false, reason: `преди началото на обхвата (${EOP_EARLIEST_DAY})` };

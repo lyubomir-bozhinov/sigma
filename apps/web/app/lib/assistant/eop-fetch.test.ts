@@ -16,6 +16,10 @@ describe('validateEopDate', () => {
     expect(validateEopDate('2023/05/01', today).ok).toBe(false);
     expect(validateEopDate('hier; DROP', today).ok).toBe(false);
   });
+  it('rejects trailing input after a valid date prefix (no slice smuggling, review #80)', () => {
+    expect(validateEopDate('2023-05-01; DROP TABLE', today).ok).toBe(false);
+    expect(validateEopDate('2023-05-01T00:00:00', today).ok).toBe(false);
+  });
   it('rejects dates before coverage and in the future', () => {
     expect(validateEopDate('2019-12-31', today).ok).toBe(false);
     expect(validateEopDate('2027-01-01', today).ok).toBe(false);
@@ -50,7 +54,8 @@ describe('fetchEopDay', () => {
   it('surfaces a missing day (403) as a per-file error, not a throw', async () => {
     const fetchImpl: FetchImpl = async () => ({ ok: false, status: 403, text: async () => '' });
     const files = await fetchEopDay('2023-05-01', fetchImpl);
-    expect(files.every((f) => f.error === 'HTTP 403')).toBe(true);
+    // A failed fetch must surface an error AND no rows — not an empty-but-"successful" result.
+    expect(files.every((f) => f.error === 'HTTP 403' && f.rows === undefined)).toBe(true);
   });
 
   it('withholds an oversized response instead of parsing it to the model', async () => {
