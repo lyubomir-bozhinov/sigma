@@ -1,0 +1,109 @@
+name: Reap stale previews
+
+# Enforces the ephemeral preview max-lifetime. Preview workers (sigma-pr-<n>) are deployed by
+# preview.yml on each push to an open same-repo PR and torn down when the PR closes/merges. This
+# scheduled job is the backstop + TTL: it deletes any preview worker that has gone longer than
+# PREVIEW_MAX_AGE_DAYS (default 5) without a redeploy — covering both idle-but-open PR previews and
+# orphans whose close-teardown failed. A new push to the PR redeploys ("re-starts") the preview.
+#
+# Runs from `main` (scheduled workflows always do), so it goes live once this merges. Uses the same
+# `preview` GitHub Environment as preview.yml.
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # daily at 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: Max preview age (days) before reaping
+        type: string
+        default: '5'
+      apply:
+        description: Actually delete (uncheck for a dry run)
+        type: boolean
+        default: true
+
+concurrency:
+  group: preview-reap
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PREVIEW_MAX_AGE_DAYS: ${{ github.event.inputs.max_age_days || '5' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Guard — require preview credentials
+        run: |
+          missing=()
+          [ -z "${CLOUDFLARE_API_TOKEN}" ] && missing+=("CLOUDFLARE_API_TOKEN")
+          [ -z "${CLOUDFLARE_ACCOUNT_ID}" ] && missing+=("CLOUDFLARE_ACCOUNT_ID")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::preview Environment is missing: ${missing[*]} — see docs/dev-environments.md."
+            exit 1
+          fi
+
+      - name: Reap preview workers past the max lifetime
+        id: reap
+        # Default to applying; a manual dispatch with apply=false performs a dry run instead.
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.apply }}" = "false" ]; then
+            node scripts/reap-previews.mjs
+          else
+            node scripts/reap-previews.mjs --apply
+          fi
+
+      - name: Comment on PRs whose preview was reaped
+        if: steps.reap.outputs.reaped != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reaped = (process.env.REAPED || '').split(',').filter(Boolean);
+            const marker = '<!-- sigma-preview -->';
+            for (const worker of reaped) {
+              const m = worker.match(/^sigma-pr-(\d+)$/);
+              if (!m) continue;
+              const issue_number = Number(m[1]);
+              // Only notify still-open PRs; closed ones were already torn down by preview.yml.
+              let pr;
+              try {
+                pr = await github.rest.pulls.get({
+                  owner: context.repo.owner, repo: context.repo.repo, pull_number: issue_number,
+                });
+              } catch {
+                continue;
+              }
+              if (pr.data.state !== 'open') continue;
+              const body = `${marker}\n♻️ Preview \`${worker}\` was reaped after exceeding the ` +
+                `${process.env.PREVIEW_MAX_AGE_DAYS}-day max lifetime. Push a new commit to redeploy it.`;
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number,
+              });
+              const existing = comments.find((c) => c.body && c.body.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number, body,
+                });
+              }
+            }
+        env:
+          REAPED: ${{ steps.reap.outputs.reaped }}
+          PREVIEW_MAX_AGE_DAYS: ${{ env.PREVIEW_MAX_AGE_DAYS }}
