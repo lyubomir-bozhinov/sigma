@@ -36,3 +36,6 @@ jobs:
         run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Script unit tests
+        # scripts/ is not a workspace package, so `pnpm test` (turbo) does not cover it.
+        run: node --test scripts/*.test.mjs
