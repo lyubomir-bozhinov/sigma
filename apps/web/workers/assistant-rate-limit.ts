@@ -6,10 +6,10 @@ interface AssistantRateLimitEnv {
 
 // Per-IP throttle in front of POST /assistant/chat (review #80): every call runs embeddings + the
 // BgGPT agent loop, so it is far more expensive than a normal page. Mirrors the CSV/aggregation
-// limiters, but FAILS CLOSED in production (the `true` below): if the limiter binding is unprovisioned
-// or errors, the paid agent loop is rejected with a 503 rather than running unthrottled. In dev/preview
-// it still degrades to a no-op. A global budget / circuit-breaker (BGGPT_RATE_LIMIT_RPM) is the
-// remaining launch-gate layer.
+// limiters, but FAILS CLOSED in production (the `failClosed` option below): if the limiter binding is
+// unprovisioned or errors, the paid agent loop is rejected with a 503 rather than running unthrottled.
+// In dev/preview it still degrades to a no-op. A global budget / circuit-breaker
+// (BGGPT_RATE_LIMIT_RPM) is the remaining launch-gate layer.
 export async function rateLimitAssistantRoute(
   request: Request,
   env: AssistantRateLimitEnv,
@@ -23,7 +23,7 @@ export async function rateLimitAssistantRoute(
     isProd,
     'Too many assistant requests',
     'ASSISTANT_RATE_LIMITER',
-    true, // fail closed: never run the paid agent loop unthrottled in production
+    { failClosed: true }, // never run the paid agent loop unthrottled in production
   );
 }
 

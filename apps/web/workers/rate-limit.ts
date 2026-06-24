@@ -17,19 +17,29 @@ export function rateLimitKey(request: Request): string {
   return request.headers.get('CF-Connecting-IP')?.trim() || RATE_LIMIT_FALLBACK_KEY;
 }
 
+export interface RateLimitOptions {
+  /**
+   * Fail CLOSED in production: if the limiter binding is unprovisioned or throws, reject with a 503
+   * instead of silently letting the request through. For expensive/paid endpoints (e.g. the assistant
+   * agent loop). Omitted → fail OPEN, which is what CSV/aggregation/search rely on.
+   */
+  failClosed?: boolean;
+}
+
 export async function rateLimitRequest(
   request: Request,
   limiter: RateLimit | undefined,
   isProd: boolean,
   body: string,
   name: string,
-  failClosed = false,
+  { failClosed = false }: RateLimitOptions = {},
 ): Promise<Response | null> {
-  // `failClosed` callers (expensive/paid endpoints) must NOT run unthrottled in production when the
-  // limiter is unprovisioned or throws — reject with a 503 instead of silently allowing. Non-prod
+  // The `failClosed` option lets expensive/paid endpoints reject rather than run unthrottled when the
+  // limiter is unprovisioned or throws in production — a 503 instead of silently allowing. Non-prod
   // (dev/preview, where the binding is routinely absent) still degrades to a no-op so local work is
-  // not blocked (review #80). CSV/aggregation/search keep the default fail-open behaviour. Either way
-  // the degrade is logged once so the misconfiguration is visible.
+  // not blocked (review #80). CSV/aggregation/search keep the default fail-open behaviour. The degrade
+  // is always logged — a missing binding once per isolate, a limiter error every time — so the
+  // misconfiguration stays visible.
   const closed = failClosed && isProd;
 
   if (!limiter) {
