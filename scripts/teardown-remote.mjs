@@ -31,8 +31,10 @@ export const PROTECTED = new Set([
 // any future long-lived worker is protected automatically without anyone remembering to add it.
 export const EPHEMERAL_PREVIEW_RE = /^sigma-pr-\d+$/;
 
-// Cloudflare returns code 10007 / "workers.api.error.script_not_found" when the script is already gone.
-const NOT_FOUND = /script_not_found|\b10007\b/i;
+// Cloudflare returns code 10007 / "workers.api.error.script_not_found" when the script is already
+// gone. Match the error name, or 10007 only in its `[code: 10007]` shape — a bare `\b10007\b` could
+// coincidentally match unrelated numbers in wrangler output and mask a real teardown failure.
+const NOT_FOUND = /script_not_found|code:?\s*10007\b/i;
 
 export function isProtected(name) {
   return PROTECTED.has(name);

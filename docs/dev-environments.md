@@ -107,6 +107,11 @@ gh workflow run deploy.yml --ref <branch> -f environment=dev
   публикува/обновява коментар в PR-а с URL-а.
 - **При затваряне** → трие worker-а със `scripts/teardown-remote.mjs` (споделените dev D1/R2 **не** се
   пипат — скриптът отказва защитените дълготрайни имена).
+- **Авто-почистване (reaper)** → `.github/workflows/preview-reap.yml` се пуска по график и трие всеки
+  `sigma-pr-<номер>`, който е стоял **5 дни** без нов деплой (конфигурира се с `PREVIEW_MAX_AGE_DAYS`).
+  Хваща два случая, които teardown-ът при затваряне изпуска: idle, но още отворени PR preview-та, и
+  orphan-и, чийто teardown при затваряне е пропаднал. Нов push към PR-а ре-деплойва preview-то. Reaper-ът
+  ползва същия allowlist като `teardown-remote.mjs` — споделените dev D1/R2 и дълготрайните worker-и са защитени.
 
 Поведение:
 
@@ -145,4 +150,5 @@ dev D1 от preview потока. За такива PR-и: или преглед
 - **Cloudflare Access** се конфигурира извън кода (Zero Trust dashboard) и не се прилага за
   `*.workers.dev` preview URL-и — те са незащитени; не пускайте чувствително съдържание там.
 - **Изисква Workers Paid plan** (Workflows + размера на D1).
-- **Почистване**: при затваряне на PR worker-ът се трие автоматично; dev средата е дълготрайна.
+- **Почистване**: при затваряне на PR worker-ът се трие автоматично, а reaper-ът трие idle preview-та
+  след 5 дни без деплой (`PREVIEW_MAX_AGE_DAYS`); dev средата е дълготрайна.

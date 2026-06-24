@@ -38,12 +38,18 @@ export function selectStale(scripts, { maxAgeDays, nowMs }) {
   return stale;
 }
 
+// Bound the page walk so a misbehaving API can never hang the scheduled reaper.
+const MAX_PAGES = 1000;
+
 export async function listWorkerScripts({ accountId, token, fetchImpl = fetch }) {
-  // The CF API paginates workers/scripts (~100 per page). Walk every page via the cursor, or a
+  // The CF API may paginate workers/scripts (~100 per page). Walk every page via the cursor, or a
   // busy account silently hides older sigma-pr-* workers from the reaper — leaking them forever.
+  // Guard against an API that returns a stable/repeating cursor (or ignores the param): bail on a
+  // cursor we've already seen and cap total pages, so the loop always terminates.
   const scripts = [];
+  const seen = new Set();
   let cursor = '';
-  do {
+  for (let page = 0; page < MAX_PAGES; page += 1) {
     const url = `${CF_API}/accounts/${accountId}/workers/scripts${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`;
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     const body = await res.json().catch(() => ({}));
@@ -54,8 +60,34 @@ export async function listWorkerScripts({ accountId, token, fetchImpl = fetch })
     }
     scripts.push(...(body.result ?? []));
     cursor = body.result_info?.cursor ?? '';
-  } while (cursor);
+    if (!cursor || seen.has(cursor)) break;
+    seen.add(cursor);
+  }
   return scripts;
+}
+
+// Delete each stale preview when `apply`; dry-run just logs. Returns the names actually reaped and a
+// hard-failure count. `del` is injected so the apply loop is unit-testable without touching wrangler.
+export function reapStale(
+  stale,
+  { apply, del = deleteWorker, log = console.log, errLog = console.error } = {},
+) {
+  const reaped = [];
+  let hardFailures = 0;
+  for (const s of stale) {
+    log(`==> reaping ${s.name} (age ${s.ageDays.toFixed(1)}d, last deploy ${s.modifiedOn})`);
+    if (!apply) continue;
+    try {
+      const result = del(s.name);
+      // Only an actual delete counts as reaped. 'already-gone' (the worker vanished between list and
+      // delete) must not trigger a misleading "reaped after Nd" comment on its PR.
+      if (result === 'deleted') reaped.push(s.name);
+    } catch (err) {
+      hardFailures += 1;
+      errLog(`!! failed to reap ${s.name}: ${err.message}`);
+    }
+  }
+  return { reaped, hardFailures };
 }
 
 function arg(args, name) {
@@ -68,7 +100,14 @@ function arg(args, name) {
 async function main(argv) {
   const args = argv.slice(2);
   const apply = args.includes('--apply');
-  const maxAgeDays = Number(process.env.PREVIEW_MAX_AGE_DAYS || arg(args, 'max-age-days') || 5);
+  // `arg` returns boolean `true` for a bare `--max-age-days` (no `=value`); reject it rather than
+  // letting Number(true) silently coerce to 1 day.
+  const rawMaxAge = process.env.PREVIEW_MAX_AGE_DAYS || arg(args, 'max-age-days') || 5;
+  if (rawMaxAge === true) {
+    console.error('reap-previews: --max-age-days requires a value, e.g. --max-age-days=5.');
+    process.exit(2);
+  }
+  const maxAgeDays = Number(rawMaxAge);
   if (!Number.isFinite(maxAgeDays) || maxAgeDays <= 0) {
     console.error(`reap-previews: invalid max age "${maxAgeDays}" days.`);
     process.exit(2);
@@ -89,23 +128,7 @@ async function main(argv) {
       `${apply ? '' : '  (dry run — pass --apply to delete)'}`,
   );
 
-  const reaped = [];
-  let hardFailures = 0;
-  for (const s of stale) {
-    console.log(
-      `==> reaping ${s.name} (age ${s.ageDays.toFixed(1)}d, last deploy ${s.modifiedOn})`,
-    );
-    if (!apply) continue;
-    try {
-      const result = deleteWorker(s.name);
-      // Only an actual delete counts as reaped. 'already-gone' (the worker vanished between list and
-      // delete) must not trigger a misleading "reaped after Nd" comment on its PR.
-      if (result === 'deleted') reaped.push(s.name);
-    } catch (err) {
-      hardFailures += 1;
-      console.error(`!! failed to reap ${s.name}: ${err.message}`);
-    }
-  }
+  const { reaped, hardFailures } = reapStale(stale, { apply });
 
   // Hand the reaped names to the workflow so it can notify the corresponding open PRs.
   if (process.env.GITHUB_OUTPUT) {

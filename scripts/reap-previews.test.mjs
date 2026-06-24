@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { listWorkerScripts, selectStale } from './reap-previews.mjs';
+import { listWorkerScripts, reapStale, selectStale } from './reap-previews.mjs';
+
+const silent = () => {};
 
 // Fixed reference instant so the test is deterministic (no Date.now()).
 const NOW = Date.parse('2026-06-24T12:00:00Z');
@@ -65,7 +67,11 @@ describe('listWorkerScripts', () => {
         ok: true,
         json: async () =>
           onFirstPage
-            ? { success: true, result: [{ id: 'sigma-pr-1' }], result_info: { cursor: 'next-page' } }
+            ? {
+                success: true,
+                result: [{ id: 'sigma-pr-1' }],
+                result_info: { cursor: 'next-page' },
+              }
             : { success: true, result: [{ id: 'sigma-pr-2' }], result_info: { cursor: '' } },
       };
     };
@@ -85,5 +91,57 @@ describe('listWorkerScripts', () => {
       () => listWorkerScripts({ accountId: 'a', token: 't', fetchImpl }),
       /list scripts failed \(403\).*bad token/,
     );
+  });
+
+  it('terminates instead of looping on a stable/repeating cursor', async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          result: [{ id: 'sigma-pr-1' }],
+          result_info: { cursor: 'stuck' },
+        }),
+      };
+    };
+    const out = await listWorkerScripts({ accountId: 'a', token: 't', fetchImpl });
+    assert.equal(calls, 2);
+    assert.deepEqual(out, [{ id: 'sigma-pr-1' }, { id: 'sigma-pr-1' }]);
+  });
+});
+
+describe('reapStale', () => {
+  const stale = [
+    { name: 'sigma-pr-1', ageDays: 6, modifiedOn: 'x' },
+    { name: 'sigma-pr-2', ageDays: 7, modifiedOn: 'y' },
+  ];
+
+  it('does not delete anything in dry-run', () => {
+    let called = 0;
+    const result = reapStale(stale, {
+      apply: false,
+      del: () => (called += 1),
+      log: silent,
+      errLog: silent,
+    });
+    assert.equal(called, 0);
+    assert.deepEqual(result, { reaped: [], hardFailures: 0 });
+  });
+
+  it('counts only actual deletes as reaped, excluding already-gone', () => {
+    const del = (name) => (name === 'sigma-pr-1' ? 'deleted' : 'already-gone');
+    const result = reapStale(stale, { apply: true, del, log: silent, errLog: silent });
+    assert.deepEqual(result, { reaped: ['sigma-pr-1'], hardFailures: 0 });
+  });
+
+  it('tallies a hard failure without aborting the rest of the run', () => {
+    const del = (name) => {
+      if (name === 'sigma-pr-1') throw new Error('auth');
+      return 'deleted';
+    };
+    const result = reapStale(stale, { apply: true, del, log: silent, errLog: silent });
+    assert.deepEqual(result, { reaped: ['sigma-pr-2'], hardFailures: 1 });
   });
 });

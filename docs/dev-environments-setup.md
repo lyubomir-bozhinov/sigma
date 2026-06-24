@@ -3,7 +3,7 @@
 Copy-paste runbook for standing up the **`dev`** and **`preview`** environments. For the *why* behind
 this design (shared dev D1, web-only previews, etc.), see [`dev-environments.md`](dev-environments.md).
 
-Assumes repo `lyubomir-bozhinov/sigma` and GitHub Environments named exactly **`dev`** and **`preview`** (the
+Assumes repo `midt-bg/sigma` and GitHub Environments named exactly **`dev`** and **`preview`** (the
 workflows match on those names).
 
 > **Secrets:** run the `wrangler`/`gh` commands in your own terminal. Replace `<YOUR_ROTATED_TOKEN>`,
@@ -41,8 +41,8 @@ environments below.
 ## Step 3 — Create the two GitHub Environments
 
 ```bash
-gh api --method PUT repos/lyubomir-bozhinov/sigma/environments/dev
-gh api --method PUT repos/lyubomir-bozhinov/sigma/environments/preview
+gh api --method PUT repos/midt-bg/sigma/environments/dev
+gh api --method PUT repos/midt-bg/sigma/environments/preview
 ```
 
 Leave both **without required reviewers**, or dev deploys and previews will block.
@@ -51,16 +51,16 @@ Leave both **without required reviewers**, or dev deploys and previews will bloc
 
 ```bash
 # secrets
-gh secret   set CLOUDFLARE_API_TOKEN  --env dev --repo lyubomir-bozhinov/sigma --body '<YOUR_ROTATED_TOKEN>'
-gh secret   set CLOUDFLARE_ACCOUNT_ID --env dev --repo lyubomir-bozhinov/sigma --body '<YOUR_CLOUDFLARE_ACCOUNT_ID>'
-gh secret   set SIGMA_D1_ID           --env dev --repo lyubomir-bozhinov/sigma --body '<D1_DATABASE_ID_FROM_STEP_2>'
+gh secret   set CLOUDFLARE_API_TOKEN  --env dev --repo midt-bg/sigma --body '<YOUR_ROTATED_TOKEN>'
+gh secret   set CLOUDFLARE_ACCOUNT_ID --env dev --repo midt-bg/sigma --body '<YOUR_CLOUDFLARE_ACCOUNT_ID>'
+gh secret   set SIGMA_D1_ID           --env dev --repo midt-bg/sigma --body '<D1_DATABASE_ID_FROM_STEP_2>'
 
 # variables
-gh variable set SIGMA_WEB_NAME        --env dev --repo lyubomir-bozhinov/sigma --body 'sigma-dev'
-gh variable set SIGMA_ETL_NAME        --env dev --repo lyubomir-bozhinov/sigma --body 'sigma-etl-dev'
-gh variable set SIGMA_WORKFLOW_NAME   --env dev --repo lyubomir-bozhinov/sigma --body 'sigma-refresh-dev'
-gh variable set SIGMA_D1_NAME         --env dev --repo lyubomir-bozhinov/sigma --body 'sigma-dev'
-gh variable set SIGMA_CSV_CACHE_NAME  --env dev --repo lyubomir-bozhinov/sigma --body 'sigma-csv-cache-dev'
+gh variable set SIGMA_WEB_NAME        --env dev --repo midt-bg/sigma --body 'sigma-dev'
+gh variable set SIGMA_ETL_NAME        --env dev --repo midt-bg/sigma --body 'sigma-etl-dev'
+gh variable set SIGMA_WORKFLOW_NAME   --env dev --repo midt-bg/sigma --body 'sigma-refresh-dev'
+gh variable set SIGMA_D1_NAME         --env dev --repo midt-bg/sigma --body 'sigma-dev'
+gh variable set SIGMA_CSV_CACHE_NAME  --env dev --repo midt-bg/sigma --body 'sigma-csv-cache-dev'
 ```
 
 ## Step 5 — `preview` environment (3 secrets + 2 variables)
@@ -71,13 +71,13 @@ there are no ETL/workflow names. Do **not** set `SIGMA_WEB_NAME` — the workflo
 
 ```bash
 # secrets
-gh secret   set CLOUDFLARE_API_TOKEN  --env preview --repo lyubomir-bozhinov/sigma --body '<YOUR_ROTATED_TOKEN>'
-gh secret   set CLOUDFLARE_ACCOUNT_ID --env preview --repo lyubomir-bozhinov/sigma --body '<YOUR_CLOUDFLARE_ACCOUNT_ID>'
-gh secret   set SIGMA_D1_ID           --env preview --repo lyubomir-bozhinov/sigma --body '<SAME_D1_DATABASE_ID_AS_DEV>'
+gh secret   set CLOUDFLARE_API_TOKEN  --env preview --repo midt-bg/sigma --body '<YOUR_ROTATED_TOKEN>'
+gh secret   set CLOUDFLARE_ACCOUNT_ID --env preview --repo midt-bg/sigma --body '<YOUR_CLOUDFLARE_ACCOUNT_ID>'
+gh secret   set SIGMA_D1_ID           --env preview --repo midt-bg/sigma --body '<SAME_D1_DATABASE_ID_AS_DEV>'
 
 # variables
-gh variable set SIGMA_D1_NAME         --env preview --repo lyubomir-bozhinov/sigma --body 'sigma-dev'
-gh variable set SIGMA_CSV_CACHE_NAME  --env preview --repo lyubomir-bozhinov/sigma --body 'sigma-csv-cache-dev'
+gh variable set SIGMA_D1_NAME         --env preview --repo midt-bg/sigma --body 'sigma-dev'
+gh variable set SIGMA_CSV_CACHE_NAME  --env preview --repo midt-bg/sigma --body 'sigma-csv-cache-dev'
 ```
 
 ## Step 6 — (optional, can be later) load data into the dev D1
@@ -132,3 +132,8 @@ SIGMA_D1_NAME=sigma-dev SIGMA_D1_ID=<dev-d1-id> SHIP_SKIP_MIGRATIONS=1 \
   ```
 - **Ephemeral previews** run automatically: open a PR → `sigma-pr-<n>.<subdomain>.workers.dev` is
   deployed and the URL is posted as a PR comment → torn down on close.
+- **Auto-reaping:** `preview-reap.yml` runs on a schedule and deletes any `sigma-pr-<n>` worker that
+  has gone **5 days** without a redeploy (configurable via `PREVIEW_MAX_AGE_DAYS`). This backstops
+  idle-but-open PRs and orphans whose close-time teardown failed; a new push redeploys the preview.
+  It only ever deletes ephemeral preview workers — the shared dev D1/R2 and long-lived workers are
+  refused by the same allowlist `teardown-remote.mjs` enforces.
