@@ -64,6 +64,11 @@ AST table-allowlist + забрана на comma cross-join/`WITH RECURSIVE` + AS
 `maxRetries`/`maxOutputTokens`; entity-link id-та в bound-натите редове; + low-ове (`encodeURI` на href,
 embed cap + проверка за брой, без raw D1 грешка към модела). Подробности: коментарите на #80.
 
+**Denial-of-Wallet на `run_sql` (#122):** `LIMIT` ограничава върнатите, не сканираните редове, а D1
+таксува по прочетени — затова `run_sql` натрупва `meta.rows_read` за хода и отказва по-нататъшни
+заявки при надхвърляне на `D1_ROWS_READ_BUDGET` (per-ход бюджет, tunable var). raw огледалата
+(`raw_*`) са изрично извън table-allowlist-а, така че неиндексираните им full-scan-ове са недостъпни.
+
 ## Какво остава
 
 - **Фаза 2 — потребителски слой:** глобален dock (`useChat`); renderer `emit_report` → компонентите на

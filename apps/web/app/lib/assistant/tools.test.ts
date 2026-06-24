@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { ASSISTANT_TOOLS, finalizeReport, runTool, type ToolContext } from './tools';
+import {
+  ASSISTANT_TOOLS,
+  DEFAULT_ROWS_READ_BUDGET,
+  finalizeReport,
+  resolveRowsReadBudget,
+  runTool,
+  type ToolContext,
+} from './tools';
 
-function ctx(rows: Record<string, string | number | null>[] = []): ToolContext {
+function ctx(
+  rows: Record<string, string | number | null>[] = [],
+  opts: { rowsRead?: number; rowsReadBudget?: number } = {},
+): ToolContext {
   const db = {
     prepare(_sql: string) {
       return {
@@ -9,7 +19,7 @@ function ctx(rows: Record<string, string | number | null>[] = []): ToolContext {
           return this;
         },
         async all<T>() {
-          return { results: rows as T[] };
+          return { results: rows as T[], meta: { rows_read: opts.rowsRead ?? 0 } };
         },
         async first<T>() {
           return null as T;
@@ -17,7 +27,7 @@ function ctx(rows: Record<string, string | number | null>[] = []): ToolContext {
       };
     },
   } as unknown as D1Database;
-  return { db, results: [] };
+  return { db, results: [], rowsRead: 0, rowsReadBudget: opts.rowsReadBudget };
 }
 
 describe('the tool registry', () => {
@@ -58,6 +68,23 @@ describe('run_sql', () => {
     const out = await runTool('run_sql', { sql: 'UPDATE contracts SET amount_eur = 0' }, c);
     expect(out).toMatch(/отхвърлена/);
     expect(c.results).toHaveLength(0);
+  });
+
+  it('accumulates D1 rows_read across the turn (issue #122)', async () => {
+    const c = ctx([{ n: 1 }], { rowsRead: 250 });
+    await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    expect(c.rowsRead).toBe(500);
+  });
+
+  it('refuses further run_sql once the per-turn rows-read budget is exceeded (issue #122)', async () => {
+    // Budget 500, each query reports 1000 rows read. The first runs (accumulated 0 < 500) and pushes
+    // the turn total to 1000, so the second is refused before it reaches the DB.
+    const c = ctx([{ n: 1 }], { rowsRead: 1000, rowsReadBudget: 500 });
+    expect(await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c)).toContain('R1');
+    const refused = await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    expect(refused).toMatch(/прочетени редове/);
+    expect(c.results).toHaveLength(1);
   });
 });
 
@@ -111,5 +138,15 @@ describe('finalizeReport', () => {
       ctx(),
     );
     expect(out.ok).toBe(false);
+  });
+});
+
+describe('resolveRowsReadBudget', () => {
+  it('defaults on missing/invalid input and clamps to the ceiling', () => {
+    expect(resolveRowsReadBudget(undefined)).toBe(DEFAULT_ROWS_READ_BUDGET);
+    expect(resolveRowsReadBudget('0')).toBe(DEFAULT_ROWS_READ_BUDGET);
+    expect(resolveRowsReadBudget('not-a-number')).toBe(DEFAULT_ROWS_READ_BUDGET);
+    expect(resolveRowsReadBudget('1000000')).toBe(1_000_000);
+    expect(resolveRowsReadBudget('999999999')).toBe(50_000_000);
   });
 });

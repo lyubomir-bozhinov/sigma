@@ -41,6 +41,10 @@
     "BGGPT_MODEL": "bggpt-gemma-3-27b-fp8",
     "MAX_STEPS": "6",
     "BGGPT_RATE_LIMIT_RPM": "120",
+    // Per-turn D1 rows-read budget — Denial-of-Wallet guard (issue #122). D1 bills on rows READ, not
+    // returned, and LIMIT caps only returned rows; once a chat turn's cumulative rows_read crosses
+    // this, further run_sql calls are refused. Tune to a few × the largest scannable table.
+    "D1_ROWS_READ_BUDGET": "5000000",
   },
   "unsafe": {
     "bindings": [

@@ -16,6 +16,24 @@ import { sourceLinks } from './source-link';
 import { validateEmitShape } from './emit-report-schema';
 import { bindReport, type BindResult, type QueryResult } from './report-schema';
 
+// Per-turn D1 rows-read budget — Denial-of-Wallet guard (issue #122). D1 bills on rows READ, not
+// returned, and `LIMIT` bounds only what is RETURNED — so a full scan of a large table costs the same
+// at any LIMIT. The table allowlist already keeps the unindexed `raw_*` mirrors out of reach; this
+// caps the cumulative scan cost of the allowlisted tables across a turn's `maxSteps` queries. Tunable
+// via the `D1_ROWS_READ_BUDGET` var; the absolute ceiling guards against a mis-set (untrusted) config.
+export const DEFAULT_ROWS_READ_BUDGET = 5_000_000;
+const MAX_ROWS_READ_BUDGET = 50_000_000;
+
+/**
+ * Resolve the per-turn rows-read budget from the (untrusted) env string: fall back to the default on a
+ * missing / non-numeric / < 1 value, and clamp to [1, MAX_ROWS_READ_BUDGET].
+ */
+export function resolveRowsReadBudget(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_ROWS_READ_BUDGET;
+  return Math.min(Math.floor(n), MAX_ROWS_READ_BUDGET);
+}
+
 export interface ToolContext {
   db: D1Database;
   ai?: EmbeddingRunner;
@@ -24,6 +42,11 @@ export interface ToolContext {
   // Per-turn accumulator of server-executed result sets, keyed by handle — the only values a report
   // may bind to. The orchestrator creates a fresh array per chat turn.
   results: QueryResult[];
+  // Per-turn D1 rows-read accumulator + budget (Denial-of-Wallet guard, issue #122). run_sql adds each
+  // query's `meta.rows_read` to `rowsRead` and refuses once it crosses `rowsReadBudget` (defaulting to
+  // DEFAULT_ROWS_READ_BUDGET). The orchestrator resets both per chat turn, alongside `results`.
+  rowsRead?: number;
+  rowsReadBudget?: number;
 }
 
 export interface AssistantTool {
@@ -56,6 +79,16 @@ const runSqlTool: AssistantTool = {
     properties: { sql: { type: 'string', description: 'единичен read-only SELECT/WITH…SELECT' } },
   },
   async execute(args, ctx) {
+    // Per-turn D1 rows-read budget (issue #122): `LIMIT` bounds only the rows RETURNED, while D1 bills
+    // on rows READ — so a full scan costs the same at any LIMIT. Once this turn's cumulative rows_read
+    // crosses the budget, refuse further queries. Reactive: the first query always runs (its scan cost
+    // can't be known in advance and D1 has no cancellable per-query timeout); this bounds the repeated/
+    // cumulative cost across a turn's maxSteps queries, not a single query.
+    const budget = ctx.rowsReadBudget ?? DEFAULT_ROWS_READ_BUDGET;
+    if ((ctx.rowsRead ?? 0) >= budget) {
+      return 'Заявката е отхвърлена: достигнат е лимитът за прочетени редове за този ход.';
+    }
+
     // Two-layer read-only guard (spec §9.4): cheap structural check, then a fail-closed AST parse that
     // also enforces the table allowlist, rejects cross-joins/recursion, and bounds the outer LIMIT.
     const guard = assertReadOnlySelect(str(args.sql));
@@ -64,7 +97,11 @@ const runSqlTool: AssistantTool = {
     if (!scoped.ok) return `Заявката е отхвърлена: ${scoped.reason}.`;
     const sql = scoped.sql;
     try {
-      const { results } = await ctx.db.prepare(sql).all<Record<string, string | number | null>>();
+      const { results, meta } = await ctx.db
+        .prepare(sql)
+        .all<Record<string, string | number | null>>();
+      // Account the scan cost (rows READ, not returned) against the turn budget; absent in unit mocks.
+      ctx.rowsRead = (ctx.rowsRead ?? 0) + (meta?.rows_read ?? 0);
       const qr = toQueryResult(resultHandle(ctx.results.length), results ?? []);
       ctx.results.push(qr);
       return forModel(qr);

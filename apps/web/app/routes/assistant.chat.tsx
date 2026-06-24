@@ -10,7 +10,7 @@ import {
   type EmbeddingRunner,
   type VectorIndex,
 } from '../lib/assistant/rag';
-import type { ToolContext } from '../lib/assistant/tools';
+import { resolveRowsReadBudget, type ToolContext } from '../lib/assistant/tools';
 
 function latestUserText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -47,7 +47,16 @@ export async function action({ request, context }: Route.ActionArgs) {
   const env = context.cloudflare.env;
   const ai = env.AI as unknown as EmbeddingRunner | undefined;
   const vectorize = env.VECTORIZE as unknown as VectorIndex | undefined;
-  const ctx: ToolContext = { db: env.DB, ai, vectorize, results: [] };
+  const ctx: ToolContext = {
+    db: env.DB,
+    ai,
+    vectorize,
+    results: [],
+    // Per-turn Denial-of-Wallet guard (issue #122): bound the D1 rows-read cost of this turn's run_sql
+    // calls. `LIMIT` caps only returned rows; D1 bills on rows scanned.
+    rowsRead: 0,
+    rowsReadBudget: resolveRowsReadBudget(env.D1_ROWS_READ_BUDGET),
+  };
 
   // RAG grounding (best-effort): the most relevant schema chunks for the latest question; on any
   // failure the system prompt falls back to the full static dictionary.
