@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { CPV_SECTORS } from '@sigma/config';
+import { CPV_CATEGORIES, CPV_SECTORS } from '@sigma/config';
 import { mapSectorWord } from './cpv-map';
+
+// The canonical division universe per @sigma/config. cpv-map hardcodes a few synonym → division
+// codes ('45', '15') and synonym → category keys; if the taxonomy drifts, these must still resolve.
+const KNOWN_DIVISIONS = new Set([
+  ...CPV_SECTORS.map((s) => s.code),
+  ...CPV_CATEGORIES.flatMap((c) => c.divisions),
+]);
 
 describe('mapSectorWord', () => {
   it('maps "строителство" to CPV division 45, unambiguously', () => {
@@ -68,6 +75,34 @@ describe('mapSectorWord', () => {
     for (const sector of CPV_SECTORS) {
       const r = mapSectorWord(sector.label);
       expect(r.divisions).toEqual([sector.code]);
+    }
+  });
+
+  it('hardcoded sector synonyms still resolve to real @sigma/config divisions', () => {
+    // Mirrors SECTOR_SYNONYMS in cpv-map.ts — guards against silent drift if the taxonomy changes.
+    for (const word of ['строеж', 'строителни работи', 'хранителни продукти', 'храна']) {
+      const r = mapSectorWord(word);
+      expect(r.matchType).toBe('sector');
+      expect(r.divisions).toHaveLength(1);
+      expect(KNOWN_DIVISIONS.has(r.divisions[0])).toBe(true);
+    }
+  });
+
+  it('hardcoded category synonyms still resolve to real @sigma/config categories', () => {
+    // Mirrors CATEGORY_SYNONYMS in cpv-map.ts — a renamed/removed category key would otherwise throw
+    // inside categoryMapping; this fails loudly instead.
+    for (const word of [
+      'инфраструктура',
+      'здравеопазване',
+      'ит',
+      'софтуер',
+      'енергетика',
+      'транспорт',
+    ]) {
+      const r = mapSectorWord(word);
+      expect(r.matchType).toBe('category');
+      expect(r.divisions.length).toBeGreaterThan(0);
+      for (const division of r.divisions) expect(KNOWN_DIVISIONS.has(division)).toBe(true);
     }
   });
 
