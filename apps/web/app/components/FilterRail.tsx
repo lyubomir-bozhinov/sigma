@@ -102,7 +102,7 @@ export function FilterRail({
         ))}
         {groups.map((g) => {
           return (
-            <details className="filter-group" key={g.key} open>
+            <details className="filter-group" key={g.key} open role="group" aria-label={g.label}>
               <summary>
                 {g.label}
                 {g.selected.length > 0 && (
@@ -188,7 +188,7 @@ export function FilterRail({
                     </label>
                   ))}
               {g.more && (
-                <p className="small muted" style={{ marginTop: 'var(--s-2)' }}>
+                <p className="small muted mt-s2">
                   <Link to={g.more.href}>{g.more.label} →</Link>
                 </p>
               )}
@@ -200,7 +200,7 @@ export function FilterRail({
             Покажи резултатите
           </button>
         </noscript>
-        <p className="small muted" style={{ marginTop: 'var(--s-4)' }}>
+        <p className="small muted mt-s4">
           <Link to={clearHref}>Изчисти филтрите</Link>
           {csvHref && (
             <>
