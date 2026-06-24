@@ -6,9 +6,11 @@ this design (shared dev D1, web-only previews, etc.), see [`dev-environments.md`
 Assumes repo `lyubomir-bozhinov/sigma` and GitHub Environments named exactly **`dev`** and **`preview`** (the
 workflows match on those names).
 
-> **Secrets:** run the `wrangler`/`gh` commands in your own terminal. Replace `<YOUR_ROTATED_TOKEN>`
-> and `<D1_DATABASE_ID>` with real values — never commit them or paste them into chat/tickets. The
-> Cloudflare **Account ID is not a secret** and is filled in below.
+> **Secrets:** run the `wrangler`/`gh` commands in your own terminal. Replace `<YOUR_ROTATED_TOKEN>`,
+> `<D1_DATABASE_ID>`, and `<YOUR_CLOUDFLARE_ACCOUNT_ID>` with real values — never commit them or paste
+> them into chat/tickets. The Cloudflare **Account ID is not strictly secret** (it appears in dashboard
+> URLs), but it's a permanent account identifier, so keep it out of the repo too — find it at
+> `dash.cloudflare.com` → any domain/Workers page, or via `wrangler whoami`.
 
 Prerequisites:
 - Cloudflare **Workers Paid** plan (needed for the etl Workflow + the ~1.4 GB D1).
@@ -21,7 +23,7 @@ Prerequisites:
 
 ```bash
 export CLOUDFLARE_API_TOKEN='<YOUR_ROTATED_TOKEN>'
-export CLOUDFLARE_ACCOUNT_ID='f6308e22233e69cba80ed57bdb6d5f44'
+export CLOUDFLARE_ACCOUNT_ID='<YOUR_CLOUDFLARE_ACCOUNT_ID>'
 pnpm exec wrangler whoami        # should show the account + the 4 scopes
 ```
 
@@ -50,7 +52,7 @@ Leave both **without required reviewers**, or dev deploys and previews will bloc
 ```bash
 # secrets
 gh secret   set CLOUDFLARE_API_TOKEN  --env dev --repo lyubomir-bozhinov/sigma --body '<YOUR_ROTATED_TOKEN>'
-gh secret   set CLOUDFLARE_ACCOUNT_ID --env dev --repo lyubomir-bozhinov/sigma --body 'f6308e22233e69cba80ed57bdb6d5f44'
+gh secret   set CLOUDFLARE_ACCOUNT_ID --env dev --repo lyubomir-bozhinov/sigma --body '<YOUR_CLOUDFLARE_ACCOUNT_ID>'
 gh secret   set SIGMA_D1_ID           --env dev --repo lyubomir-bozhinov/sigma --body '<D1_DATABASE_ID_FROM_STEP_2>'
 
 # variables
@@ -70,7 +72,7 @@ there are no ETL/workflow names. Do **not** set `SIGMA_WEB_NAME` — the workflo
 ```bash
 # secrets
 gh secret   set CLOUDFLARE_API_TOKEN  --env preview --repo lyubomir-bozhinov/sigma --body '<YOUR_ROTATED_TOKEN>'
-gh secret   set CLOUDFLARE_ACCOUNT_ID --env preview --repo lyubomir-bozhinov/sigma --body 'f6308e22233e69cba80ed57bdb6d5f44'
+gh secret   set CLOUDFLARE_ACCOUNT_ID --env preview --repo lyubomir-bozhinov/sigma --body '<YOUR_CLOUDFLARE_ACCOUNT_ID>'
 gh secret   set SIGMA_D1_ID           --env preview --repo lyubomir-bozhinov/sigma --body '<SAME_D1_DATABASE_ID_AS_DEV>'
 
 # variables
@@ -111,7 +113,7 @@ SIGMA_D1_NAME=sigma-dev SIGMA_D1_ID=<dev-d1-id> SHIP_SKIP_MIGRATIONS=1 \
 | Name | Type | `dev` | `preview` | Value |
 |---|---|:--:|:--:|---|
 | `CLOUDFLARE_API_TOKEN` | secret | ✅ | ✅ | rotated token |
-| `CLOUDFLARE_ACCOUNT_ID` | secret | ✅ | ✅ | `f6308e22233e69cba80ed57bdb6d5f44` |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | ✅ | ✅ | `<YOUR_CLOUDFLARE_ACCOUNT_ID>` |
 | `SIGMA_D1_ID` | secret | ✅ | ✅ | dev D1 `database_id` (same in both) |
 | `SIGMA_WEB_NAME` | var | ✅ | — | `sigma-dev` |
 | `SIGMA_ETL_NAME` | var | ✅ | — | `sigma-etl-dev` |
