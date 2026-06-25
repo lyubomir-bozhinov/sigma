@@ -101,7 +101,11 @@ const runSqlTool: AssistantTool = {
         .prepare(sql)
         .all<Record<string, string | number | null>>();
       // Account the scan cost (rows READ, not returned) against the turn budget; absent in unit mocks.
-      ctx.rowsRead = (ctx.rowsRead ?? 0) + (meta?.rows_read ?? 0);
+      // `meta.rows_read` is the LAST attempt only, so multiply by `total_attempts`: a query D1 auto-
+      // retried scanned the table on every attempt, and under-billing retried full scans would let the
+      // Denial-of-Wallet guard be undershot (conservative over-estimate is the safe direction — #80).
+      ctx.rowsRead =
+        (ctx.rowsRead ?? 0) + (meta?.rows_read ?? 0) * Math.max(1, meta?.total_attempts ?? 1);
       const qr = toQueryResult(resultHandle(ctx.results.length), results ?? []);
       ctx.results.push(qr);
       return forModel(qr);
