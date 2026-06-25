@@ -10,6 +10,12 @@ describe('validateEopDate', () => {
     expect(validateEopDate('2023/05/01', today).ok).toBe(false);
     expect(validateEopDate('hier; DROP', today).ok).toBe(false);
   });
+  it('rejects a structurally-valid but non-existent calendar date (review #80)', () => {
+    // matches DAY_RE but is not a real day — would otherwise build a URL that just 404s
+    expect(validateEopDate('2023-13-45', today).ok).toBe(false);
+    expect(validateEopDate('2023-02-30', today).ok).toBe(false);
+    expect(validateEopDate('2023-00-10', today).ok).toBe(false);
+  });
   it('rejects trailing input after a valid date prefix (no slice smuggling, review #80)', () => {
     expect(validateEopDate('2023-05-01; DROP TABLE', today).ok).toBe(false);
     expect(validateEopDate('2023-05-01T00:00:00', today).ok).toBe(false);

@@ -24,12 +24,22 @@ function sofiaToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Sofia' }).format(new Date());
 }
 
+// DAY_RE only checks SHAPE — `2023-13-45` / `2023-02-30` match it but are not real days. Verify the
+// parts round-trip through a UTC Date so a nonsense day is rejected up front rather than building a
+// URL that just 404s against the open-data store (review #80).
+function isRealCalendarDay(day: string): boolean {
+  const [y, m, d] = day.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /** Strictly validate a model-supplied day. ISO dates compare lexically, so string bounds are safe. */
 export function validateEopDate(raw: string, today = sofiaToday()): DateValidation {
   // Match the WHOLE (trimmed) string, not a slice(0,10) prefix — otherwise `2023-05-01; DROP TABLE`
   // would validate as `2023-05-01`, smuggling a tail through for any caller that mishandles it (#80).
   const day = (raw ?? '').trim();
   if (!DAY_RE.test(day)) return { ok: false, reason: 'датата трябва да е във формат YYYY-MM-DD' };
+  if (!isRealCalendarDay(day)) return { ok: false, reason: 'несъществуваща дата' };
   if (day < EOP_EARLIEST_DAY)
     return { ok: false, reason: `преди началото на обхвата (${EOP_EARLIEST_DAY})` };
   if (day > today) return { ok: false, reason: 'бъдеща дата' };
