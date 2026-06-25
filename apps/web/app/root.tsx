@@ -129,7 +129,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
         <script src="/assets/accessibility/accessibility.js" defer />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <ScrollRestoration nonce={nonce} getKey={scrollKey} />
         <Scripts nonce={nonce} />

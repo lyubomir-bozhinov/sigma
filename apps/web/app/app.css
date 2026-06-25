@@ -3328,10 +3328,40 @@ tbody td,
 /* ── Report page (D4 / D5 / D6) ────────────────────────────────────────────── */
 
 .report-page {
-  max-width: 720px;
-  margin-inline: auto;
-  padding-inline: var(--s-5);
   padding-block: var(--s-6);
+}
+
+.report-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--s-5);
+}
+
+.report-top-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.report-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: none;
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  padding: 6px var(--s-3);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.report-pdf-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .report-watermark {
@@ -3475,24 +3505,60 @@ tbody td,
 /* ── /reports index ──────────────────────────────────────────────────────────── */
 
 .reports-index {
-  list-style: none;
-  padding: 0;
-  margin: var(--s-5) 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
+  margin-top: var(--s-5);
 }
 
-.reports-index li {
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: var(--s-3);
-}
-
-.reports-index a {
-  font: 15px/1.4 var(--font-sans);
+.reports-index .cell-title a {
   color: var(--ink);
+  text-decoration: none;
 }
 
-.reports-index a:hover {
+.reports-index .cell-title a:hover {
   color: var(--accent);
+}
+
+@media print {
+  .site-header,
+  .site-footer,
+  .search-drawer,
+  .chat-dock,
+  .route-progress,
+  .report-pdf-btn,
+  .accessibility-widget {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  main {
+    max-width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+
+  .report-top-bar {
+    margin-bottom: 1cm;
+  }
+
+  .report-watermark {
+    font-size: 8pt;
+    opacity: 0.5;
+  }
+
+  .callout {
+    border-left: 3px solid #ccc;
+    background: #f9f9f9 !important;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .report-block {
+    break-inside: avoid;
+  }
 }

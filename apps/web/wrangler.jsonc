@@ -25,7 +25,6 @@
   // AI assistant config — overridden per-environment in wrangler.deploy.jsonc.
   // BGGPT_API_KEY must be set via `wrangler secret put BGGPT_API_KEY` in production.
   "vars": {
-    "BGGPT_RATE_LIMIT_RPM": "120",
     "ASSISTANT_MAX_STEPS": "6",
   },
   "unsafe": {

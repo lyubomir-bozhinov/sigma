@@ -70,10 +70,11 @@ function AssistantMessage({ message }: { message: Message }) {
   const parts = message.parts ?? [];
   if (parts.length === 0) {
     // Fallback: render raw content (no parts in transcript — e.g. loaded from localStorage).
+    const text = typeof message.content === 'string' ? message.content : '';
     return (
       <div
         className="chat-dock__msg-body"
-        dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(message.content) }}
+        dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(text) }}
       />
     );
   }

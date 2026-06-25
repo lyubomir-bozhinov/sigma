@@ -8,6 +8,14 @@ import { PageHeader } from '../components/PageHeader';
 
 const STORAGE_KEY = 'sigma:chat';
 
+const MOCK_REFS: ReportRef[] = [
+  {
+    id: 'mock-medisistem-2024',
+    title: 'Медисистем ЕООД — профил на компанията с най-много договора',
+    url: '/reports/mock-medisistem-2024',
+  },
+];
+
 interface ReportRef {
   id: string;
   title: string;
@@ -50,7 +58,10 @@ function ReportsClient() {
   const [refs, setRefs] = useState<ReportRef[]>([]);
 
   useEffect(() => {
-    setRefs(extractReportRefs(localStorage.getItem(STORAGE_KEY)));
+    const fromStorage = extractReportRefs(localStorage.getItem(STORAGE_KEY));
+    const storageIds = new Set(fromStorage.map((r) => r.id));
+    const mocks = MOCK_REFS.filter((r) => !storageIds.has(r.id));
+    setRefs([...fromStorage, ...mocks]);
   }, []);
 
   if (refs.length === 0) {
@@ -63,13 +74,26 @@ function ReportsClient() {
   }
 
   return (
-    <ul className="reports-index">
-      {refs.map((r) => (
-        <li key={r.id}>
-          <Link to={r.url ?? `/reports/${r.id}`}>{r.title}</Link>
-        </li>
-      ))}
-    </ul>
+    <div className="table-wrap tbl-cards reports-index">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col" className="num">#</th>
+            <th scope="col">Справка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {refs.map((r, i) => (
+            <tr key={r.id}>
+              <td className="rank cell-rank" data-label="#">{i + 1}</td>
+              <td className="cell-title" data-label="Справка">
+                <Link to={r.url ?? `/reports/${r.id}`}>{r.title}</Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -85,7 +109,7 @@ export default function ReportsIndex() {
   useEffect(() => setMounted(true), []);
 
   return (
-    <main id="main" className="report-page">
+    <main id="main">
       <PageHeader
         kicker="AI Асистент"
         title="Моите справки"

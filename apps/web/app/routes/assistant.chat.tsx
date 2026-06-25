@@ -47,6 +47,19 @@ export async function action({ request, context }: Route.ActionArgs) {
     return new Response('messages array required', { status: 400 });
   }
 
+  const MAX_MESSAGES = 40;
+  const MAX_CONTENT_BYTES = 8_000;
+  const messages = (body.messages as unknown[])
+    .slice(-MAX_MESSAGES)
+    .map((m) => {
+      if (typeof m !== 'object' || m === null) return m;
+      const msg = m as Record<string, unknown>;
+      if (typeof msg.content === 'string' && msg.content.length > MAX_CONTENT_BYTES) {
+        return { ...msg, content: msg.content.slice(0, MAX_CONTENT_BYTES) };
+      }
+      return m;
+    });
+
   const apiKey = env.BGGPT_API_KEY;
   if (!apiKey) {
     return new Response(
@@ -188,10 +201,10 @@ export async function action({ request, context }: Route.ActionArgs) {
       parameters: ReportArtifactSchema,
       execute: async (artifact, { messages }) => {
         const id = crypto.randomUUID().replace(/-/g, '');
-        const promptSummary = messages
-          .filter((m) => m.role === 'user')
-          .slice(-1)[0]
-          ?.content?.slice(0, 200) as string | undefined;
+        const lastUser = messages.filter((m) => m.role === 'user').slice(-1)[0];
+        const rawContent = lastUser?.content;
+        const promptSummary: string | undefined =
+          typeof rawContent === 'string' ? rawContent.slice(0, 200) : undefined;
 
         const stored: StoredReport = {
           ...artifact,
@@ -201,7 +214,11 @@ export async function action({ request, context }: Route.ActionArgs) {
         };
 
         if (env.REPORT_STORE) {
-          await env.REPORT_STORE.put(`${id}.json`, JSON.stringify(stored), {
+          const body = JSON.stringify(stored);
+          if (body.length > 500_000) {
+            return { error: 'Справката е твърде голяма (>500 KB). Намалете броя на редовете.' };
+          }
+          await env.REPORT_STORE.put(`${id}.json`, body, {
             httpMetadata: { contentType: 'application/json' },
           });
         }
@@ -215,7 +232,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const result = streamText({
     model: bggpt(MODEL_ID),
     system: SYSTEM_PROMPT,
-    messages: body.messages as Parameters<typeof streamText>[0]['messages'],
+    messages: messages as Parameters<typeof streamText>[0]['messages'],
     tools,
     maxSteps,
     temperature: 0.2,

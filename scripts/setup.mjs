@@ -20,11 +20,11 @@ run('pnpm', ['install']);
 // Local D1 state lives under apps/web/.wrangler — run migrate + seed from there
 // so the web worker's `wrangler dev` sees the same database.
 try {
-  run('wrangler', ['d1', 'migrations', 'apply', 'sigma', '--local'], apiDir);
+  run('npx', ['wrangler', 'd1', 'migrations', 'apply', 'sigma', '--local'], apiDir);
   // 1. Domain tables (authorities, bidders, tenders, contracts, nuts_regions, data_freshness)
-  run('wrangler', ['d1', 'execute', 'sigma', '--local', '--file', seedFile], apiDir);
+  run('npx', ['wrangler', 'd1', 'execute', 'sigma', '--local', '--file', seedFile], apiDir);
   // 2. Rollups + FTS — same step as the production import pipeline
-  run('wrangler', ['d1', 'execute', 'sigma', '--local', '--file', precomputeFile], apiDir);
+  run('npx', ['wrangler', 'd1', 'execute', 'sigma', '--local', '--file', precomputeFile], apiDir);
   console.log('\n==> Done. Start everything with: pnpm dev');
 } catch {
   console.error('\n!! Local D1 setup failed — check that wrangler is on PATH, then re-run `pnpm setup`.');

@@ -7,6 +7,7 @@
 // D5: AI watermark + "Как е изчислено" callout on every report.
 // D6: Per-source freshness (admin/ocds/eop) surfaced in the callout.
 
+import { useState } from 'react';
 import { data } from 'react-router';
 import type { SankeyLayout, SankeyNode, SankeyRibbon } from '@sigma/api-contract';
 import { money } from '@sigma/shared';
@@ -104,7 +105,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   }
 
   const report = (await obj.json()) as StoredReport;
-  return { report };
+  return { id, report };
 }
 
 export function headers() {
@@ -134,6 +135,169 @@ function entityHref(kind: string, id: string): string {
   if (kind === 'company') return `/companies/${id}`;
   if (kind === 'contract') return `/contracts/${id}`;
   return '#';
+}
+
+// ── Markdown export ───────────────────────────────────────────────────────────
+
+function mdTable(headers: string[], rows: string[][]): string {
+  const sep = headers.map(() => '---');
+  return [
+    `| ${headers.join(' | ')} |`,
+    `| ${sep.join(' | ')} |`,
+    ...rows.map((r) => `| ${r.join(' | ')} |`),
+  ].join('\n');
+}
+
+function reportToMarkdown(report: StoredReport): string {
+  const lines: string[] = [];
+
+  lines.push(`# ${report.title}`);
+  if (report.lede) lines.push(`\n${report.lede}`);
+  if (report.scope) lines.push(`\n_Обхват: ${report.scope}_`);
+  lines.push('');
+
+  for (const block of report.blocks) {
+    switch (block.type) {
+      case 'text':
+        lines.push(block.content, '');
+        break;
+
+      case 'callout':
+        if (block.title) lines.push(`> **${block.title}**`);
+        lines.push(
+          ...block.content.split('\n').map((l) => `> ${l}`),
+          '',
+        );
+        break;
+
+      case 'totals':
+        if (block.label) lines.push(`## ${block.label}`);
+        lines.push(
+          mdTable(
+            ['Показател', 'Стойност'],
+            block.items.map((i) => [i.label, formatValue(i.value, i.format)]),
+          ),
+          '',
+        );
+        break;
+
+      case 'facts':
+        if (block.label) lines.push(`## ${block.label}`);
+        lines.push(
+          mdTable(
+            ['Поле', 'Стойност'],
+            block.rows.map((r) => [r.term, r.sub ? `${r.value} _(${r.sub})_` : r.value]),
+          ),
+          '',
+        );
+        break;
+
+      case 'table':
+        if (block.caption) lines.push(`## ${block.caption}`);
+        lines.push(
+          mdTable(
+            block.columns.map((c) => c.header),
+            block.rows.map((row) =>
+              block.columns.map((c) =>
+                formatValue(row[c.key] as string | number | null, c.format),
+              ),
+            ),
+          ),
+          '',
+        );
+        break;
+
+      case 'bar':
+        if (block.label) lines.push(`## ${block.label}`);
+        lines.push(
+          ...block.items.map(
+            (item, i) =>
+              `${i + 1}. ${item.label} — ${block.unit ? `${block.unit}${item.value.toLocaleString('bg')}` : money(item.value)}`,
+          ),
+          '',
+        );
+        break;
+
+      case 'flows':
+        if (block.label) lines.push(`## ${block.label}`);
+        lines.push(
+          mdTable(
+            ['Възложител', 'Компания', 'Стойност (EUR)', 'Договори'],
+            block.edges.map((e) => [
+              e.from,
+              e.to,
+              money(e.valueEur),
+              String(e.contracts ?? ''),
+            ]),
+          ),
+          '',
+        );
+        break;
+
+      case 'timeseries': {
+        if (block.label) lines.push(`## ${block.label}`);
+        const pts = block.points ?? block.series?.[0]?.points ?? [];
+        if (block.series && block.series.length > 1) {
+          const headers = ['Период', ...block.series.map((s) => s.label)];
+          const periodMap = new Map<string, string[]>();
+          block.series.forEach((s, si) => {
+            s.points.forEach(({ period, value }) => {
+              if (!periodMap.has(period)) periodMap.set(period, Array(block.series!.length).fill(''));
+              periodMap.get(period)![si] = money(value);
+            });
+          });
+          lines.push(mdTable(headers, [...periodMap.entries()].map(([p, vals]) => [p, ...vals])), '');
+        } else {
+          lines.push(
+            mdTable(
+              ['Период', 'Стойност'],
+              pts.map(({ period, value }) => [period, money(value)]),
+            ),
+            '',
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  if (report.methodology) {
+    lines.push('---', '## Как е изчислено', '', report.methodology, '');
+  }
+
+  lines.push(
+    '---',
+    `_Генерирано от СИГМА AI на ${new Date(report.generatedAt).toLocaleDateString('bg')}. Неофициално._`,
+  );
+
+  return lines.join('\n');
+}
+
+function MarkdownButton({ report }: { report: StoredReport }) {
+  function handleDownload() {
+    const md = reportToMarkdown(report);
+    const blob = new Blob([md], { type: 'text/markdown; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${report.id}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <button
+      type="button"
+      className="report-pdf-btn"
+      onClick={handleDownload}
+      aria-label="Изтегли като Markdown"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" width="16" height="16">
+        <path d="M3 4h14v2H3V4zm0 5h14v2H3V9zm0 5h9v2H3v-2z" fill="currentColor"/>
+      </svg>
+      Markdown
+    </button>
+  );
 }
 
 // ── Block renderers ───────────────────────────────────────────────────────────
@@ -290,13 +454,75 @@ function MethodologyCallout({ report }: { report: StoredReport }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const PDF_SERVER = import.meta.env.VITE_PDF_SERVER_URL ?? '';
+
+function PdfButton({ reportId }: { reportId: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  async function handleDownload() {
+    if (!PDF_SERVER) return;
+    setState('loading');
+    try {
+      const res = await fetch(`${PDF_SERVER}/pdf/${encodeURIComponent(reportId)}`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${reportId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setState('idle');
+    } catch {
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  }
+
+  if (!PDF_SERVER) return null;
+
+  return (
+    <button
+      type="button"
+      className="report-pdf-btn"
+      onClick={handleDownload}
+      disabled={state === 'loading'}
+      aria-label="Изтегли като PDF"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" width="16" height="16">
+        <path d="M10 13L6 9h3V3h2v6h3l-4 4z" fill="currentColor"/>
+        <path d="M3 15h14v2H3v-2z" fill="currentColor"/>
+      </svg>
+      {state === 'loading' ? 'Генериране…' : state === 'error' ? 'Грешка' : 'PDF'}
+    </button>
+  );
+}
+
 export default function ReportPage({ loaderData }: Route.ComponentProps) {
-  const { report } = loaderData;
+  const { id, report } = loaderData;
 
   return (
     <main id="main" className="report-page">
-      <div className="report-watermark" role="note" aria-label="Предупреждение">
-        AI-генерирано, неофициално
+      <div className="report-top-bar">
+        <div className="report-watermark" role="note" aria-label="Предупреждение">
+          AI-генерирано, неофициално
+        </div>
+        <div className="report-top-bar__actions">
+          <MarkdownButton report={report} />
+          <button
+            type="button"
+            className="report-pdf-btn"
+            onClick={() => window.print()}
+            aria-label="Принтирай / запази като PDF"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" width="16" height="16">
+              <path d="M10 13L6 9h3V3h2v6h3l-4 4z" fill="currentColor"/>
+              <path d="M3 15h14v2H3v-2z" fill="currentColor"/>
+            </svg>
+            Принтирай
+          </button>
+          <PdfButton reportId={id} />
+        </div>
       </div>
 
       <PageHeader kicker="AI Доклад" title={report.title} lede={report.lede} />

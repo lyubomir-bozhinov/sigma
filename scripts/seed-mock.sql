@@ -8,8 +8,24 @@
 --   tenders     : 't:' || УНП
 --   contracts   : 'c:' || staging-row-id
 
--- ─── NUTS regions (subset covering mock entities; full table in scripts/load-nuts.sql) ───────
+-- ─── Wipe existing data (FK-safe order: children before parents) ────────────────────────────
+DELETE FROM search_index;
+DELETE FROM flow_pairs;
+DELETE FROM company_totals;
+DELETE FROM authority_totals;
+DELETE FROM home_totals;
+DELETE FROM sector_totals;
+DELETE FROM facet_counts;
+DELETE FROM amendments;
+DELETE FROM contracts;
+DELETE FROM lots;
+DELETE FROM tenders;
+DELETE FROM bidders;
+DELETE FROM authorities;
 DELETE FROM nuts_regions;
+DELETE FROM data_freshness;
+
+-- ─── NUTS regions (subset covering mock entities; full table in scripts/load-nuts.sql) ───────
 INSERT INTO nuts_regions (nuts3, nuts3_name, nuts2, nuts2_name, nuts1, nuts1_name) VALUES
   ('BG311','Видин',             'BG31','Северозападен',       'BG3','Северна и Югоизточна България'),
   ('BG312','Монтана',           'BG31','Северозападен',       'BG3','Северна и Югоизточна България'),
@@ -41,13 +57,11 @@ INSERT INTO nuts_regions (nuts3, nuts3_name, nuts2, nuts2_name, nuts1, nuts1_nam
   ('BG425','Кърджали',          'BG42','Южен централен',      'BG4','Югозападна и Южна централна България');
 
 -- ─── Data freshness ──────────────────────────────────────────────────────────────────────────
-DELETE FROM data_freshness;
 INSERT INTO data_freshness (source, as_of, rows, refreshed_at) VALUES
   ('admin', '2025-03-20', 25, '2026-06-23T10:00:00Z'),
   ('ocds',  '2025-03-20', 25, '2026-06-23T10:00:00Z');
 
 -- ─── Authorities ─────────────────────────────────────────────────────────────────────────────
-DELETE FROM authorities;
 INSERT INTO authorities (id, name, bulstat, type, type_group, nuts, settlement, region) VALUES
   ('auth:000696327', 'Столична община',                                    '000696327', 'Регионален орган',           'община',           'BG411', 'София',    'София-град'),
   ('auth:000670680', 'Министерство на финансите',                          '000670680', 'Орган на централната власт', 'министерство',     'BG411', 'София',    'София-град'),
@@ -57,7 +71,6 @@ INSERT INTO authorities (id, name, bulstat, type, type_group, nuts, settlement, 
   ('auth:000667842', 'Община Пловдив',                                     '000667842', 'Регионален орган',           'община',           'BG421', 'Пловдив',  'Пловдив');
 
 -- ─── Bidders ─────────────────────────────────────────────────────────────────────────────────
-DELETE FROM bidders;
 INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, is_consortium, kind, ownership_kind, settlement, nuts) VALUES
   ('eik:831633284', 'ГБС - Инфраструктурно строителство АД',  '831633284', '831633284', 1, 0, 'company', NULL,    'София',   'BG411'),
   ('eik:202274851', 'Автомагистрали ЕАД',                     '202274851', '202274851', 1, 0, 'company', 'state', 'София',   'BG411'),
@@ -70,7 +83,6 @@ INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, is_consortium
 
 -- ─── Tenders ─────────────────────────────────────────────────────────────────────────────────
 -- procedure_type values must match entries in packages/config/src/index.ts PROCEDURE_GROUPS.types.
-DELETE FROM tenders;
 INSERT INTO tenders (id, source_id, title, authority_id, cpv_code, cpv_description, estimated_value, currency, procedure_type, contract_kind, status, published_at, eop_tender_id) VALUES
   -- Construction (CPV 45) — МРРБ
   ('t:00156714-2022-0001', '00156714-2022-0001', 'Строителство на скоростен път Мездра — Ботевград',
@@ -111,7 +123,6 @@ INSERT INTO tenders (id, source_id, title, authority_id, cpv_code, cpv_descripti
 -- amount_eur is set directly; precompute step-0 derives signing_value_eur / current_value_eur.
 -- bids_received=1 marks single-offer contracts (surfaced on the home page and filters).
 -- eu_funded=1 flags EU co-financed contracts.
-DELETE FROM contracts;
 INSERT INTO contracts
   (id, tender_id, bidder_id, amount, currency, amount_eur, signing_value, current_value,
    value_flag, date_flag, signed_at, bids_received, eu_funded, contract_kind, annex_count, fx_converted) VALUES
