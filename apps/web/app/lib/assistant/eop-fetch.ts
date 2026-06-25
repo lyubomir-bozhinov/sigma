@@ -53,9 +53,12 @@ export interface EopFile {
   truncated?: boolean;
 }
 
-export type FetchImpl = (
-  url: string,
-) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type FetchImpl = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  headers?: { get(name: string): string | null };
+  text(): Promise<string>;
+}>;
 
 /**
  * Fetch the day's open-data files with a hard per-file byte cap. The base/URLs come from the verified
@@ -73,15 +76,23 @@ export async function fetchEopDay(
       try {
         const res = await fetchImpl(url);
         if (!res.ok) return { label, error: `HTTP ${res.status}` };
+        // Bound BEFORE buffering: if the server DECLARES an oversized body via Content-Length, withhold
+        // it without reading — res.text() below would otherwise pull the whole untrusted payload into
+        // Worker memory first. This is the real peak-memory bound; the post-read byte check is the
+        // fallback for a missing / under-stated header (review #80).
+        const declared = Number(res.headers?.get('content-length'));
+        if (Number.isFinite(declared) && declared > maxBytes) {
+          return { label, error: 'отговорът е твърде голям (отрязан)', truncated: true };
+        }
         const body = await res.text();
-        // Use UTF-8 byte count — body.length is UTF-16 code units, which undercount Cyrillic chars
-        // by ~2× (each Cyrillic char is 2 UTF-8 bytes, 1 UTF-16 unit), so the cap fires at ~2×
-        // the intended limit when using body.length directly (review #80, Bozhidar).
+        // UTF-8 byte count — body.length is UTF-16 code units, which undercount Cyrillic chars by ~2×
+        // (each Cyrillic char is 2 UTF-8 bytes, 1 UTF-16 unit), so the cap would fire at ~2× the intended
+        // limit when using body.length directly (review #80, Bozhidar).
         const bodyBytes = new TextEncoder().encode(body).length;
         if (bodyBytes > maxBytes) {
-          // Oversized untrusted file: do NOT parse it. Parsing the full body would defeat the cap
-          // (the model would still see everything) and risks a memory blow-up on a huge JSON array.
-          // Surface a soft error instead. (review #80 — the cap was previously a no-op.)
+          // Fallback when Content-Length was absent/inaccurate: the body is already buffered here, so
+          // this bounds what reaches the MODEL/parse, not peak memory. Do NOT parse it — surface a soft
+          // error so the oversized untrusted file never reaches the model (review #80).
           return { label, error: 'отговорът е твърде голям (отрязан)', truncated: true };
         }
         try {

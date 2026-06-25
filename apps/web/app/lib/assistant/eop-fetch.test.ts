@@ -58,4 +58,22 @@ describe('fetchEopDay', () => {
     // (valid JSON) and returned every row despite the cap.
     expect(files.every((f) => f.truncated && f.rows === undefined && !!f.error)).toBe(true);
   });
+
+  it('withholds an over-cap response by Content-Length WITHOUT reading the body (review #80)', async () => {
+    let read = false;
+    const fetchImpl: FetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (n) => (n.toLowerCase() === 'content-length' ? String(10 * 1024 * 1024) : null),
+      },
+      text: async () => {
+        read = true;
+        return '[]';
+      },
+    });
+    const files = await fetchEopDay('2023-05-01', fetchImpl, 256 * 1024);
+    expect(files.every((f) => f.truncated && f.rows === undefined && !!f.error)).toBe(true);
+    expect(read).toBe(false); // body was never buffered into Worker memory
+  });
 });
