@@ -3584,14 +3584,44 @@ tbody td,
   background: var(--ink);
 }
 
+/* Single source for the panel width and the content-push below. */
+:root {
+  --assistant-panel-w: 400px;
+}
 .assistant-dock--panel {
   position: fixed;
   inset: 0 0 0 auto;
   z-index: 200;
-  width: min(400px, 100vw);
+  width: min(var(--assistant-panel-w), 100vw);
   display: flex;
   background: var(--paper);
   border-left: 1px solid var(--rule);
+}
+
+/* Push the page out from under the open desktop panel so it never obscures focused page content
+   (WCAG 2.2 §2.4.11 Focus Not Obscured). `:has()` matches only the desktop panel — the collapsed launcher
+   and the mobile sheet don't push. `body` width is auto, so padding-right shrinks content without
+   overflow; the fixed panel fills the freed column. Transitions are armed after first paint
+   (html.assistant-ready) so the default-open dock pushes instantly on load; reduced motion is honoured
+   by the global rule. */
+body:has(.assistant-dock--panel) {
+  padding-right: min(var(--assistant-panel-w), 100vw);
+}
+html.assistant-ready body {
+  transition: padding-right 200ms ease;
+}
+html.assistant-ready .assistant-dock--panel {
+  animation: assistant-panel-in 200ms ease-out;
+}
+@keyframes assistant-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .assistant-dock--sheet {
@@ -3785,6 +3815,12 @@ tbody td,
   background: var(--paper);
   color: var(--ink);
   font: inherit;
+}
+/* Explicit AA placeholder colour — the UA-default placeholder grey is borderline on the cream paper
+   (WCAG 1.4.3). `--ink-soft` is documented ≥4.5:1; opacity:1 because some UAs dim placeholders. */
+.assistant-composer__input::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
 }
 /* Match the house focus ring (accent outline) instead of the UA default blue — text inputs aren't
    covered by the generic :focus-visible fallback, so each one styles its own, like .hero-search input. */
