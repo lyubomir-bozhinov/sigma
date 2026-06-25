@@ -6,10 +6,23 @@ export const RATE_LIMIT_FALLBACK_KEY = 'unknown-client';
 export function normalizedPathname(request: Request): string {
   const pathname = new URL(request.url).pathname;
 
+  // Collapse duplicate slashes BEFORE the equality check: `//assistant/chat` would otherwise slip the
+  // path match and bypass the only limiter on the paid endpoint if the router still routes it (review
+  // #80, ydimitrof). `/\/{2,}/` → single slash; the trailing-slash strip stays.
   try {
-    return decodeURIComponent(pathname).toLowerCase().replace(/\/+$/, '') || '/';
+    return (
+      decodeURIComponent(pathname)
+        .toLowerCase()
+        .replace(/\/{2,}/g, '/')
+        .replace(/\/+$/, '') || '/'
+    );
   } catch {
-    return pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    return (
+      pathname
+        .toLowerCase()
+        .replace(/\/{2,}/g, '/')
+        .replace(/\/+$/, '') || '/'
+    );
   }
 }
 

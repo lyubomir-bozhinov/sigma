@@ -25,6 +25,21 @@ describe('rateLimitAssistantRoute', () => {
     expect(response?.headers.get('Retry-After')).toBe('60');
   });
 
+  it('still limits a doubled leading slash //assistant/chat (review #80, ydimitrof)', async () => {
+    // normalizedPathname collapses `//` so the path-equality match — and the limiter — still fire.
+    const { limiter, limit } = rateLimiter(false);
+    const response = await rateLimitAssistantRoute(
+      new Request('http://local//assistant/chat', {
+        method: 'POST',
+        headers: { 'CF-Connecting-IP': '203.0.113.41' },
+      }),
+      { ASSISTANT_RATE_LIMITER: limiter },
+      false,
+    );
+    expect(limit).toHaveBeenCalled();
+    expect(response?.status).toBe(429);
+  });
+
   it('lets a request through while under the limit', async () => {
     const { limiter } = rateLimiter(true);
     await expect(
