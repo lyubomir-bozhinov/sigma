@@ -36,10 +36,14 @@ type ResolvedBlock =
   | { type: 'callout'; title: string; md: string }
   | { type: 'totals'; items: { label: string; value: string | number | null; format: CellFormat }[] }
   | { type: 'facts'; items: { term: string; value: string | number | null; sub?: string }[] }
-  | { type: 'table'; columns: ResolvedColumn[]; rows: ResolvedRow[] }
-  | { type: 'bar'; points: { label: string | number | null; value: number }[] }
-  | { type: 'flows'; edges: { from: string; to: string; valueEur: number }[] }
-  | { type: 'timeseries'; points: { period: string | number | null; value: number }[] };
+  | { type: 'table'; columns: ResolvedColumn[]; rows: ResolvedRow[]; truncated?: boolean }
+  | { type: 'bar'; points: { label: string | number | null; value: number }[]; truncated?: boolean }
+  | { type: 'flows'; edges: { from: string; to: string; valueEur: number }[]; truncated?: boolean }
+  | {
+      type: 'timeseries';
+      points: { period: string | number | null; value: number }[];
+      truncated?: boolean;
+    };
 
 interface ResolvedColumn {
   key: string;
@@ -80,6 +84,9 @@ interface ResolvedRow {
 4. **Watermark винаги.** `watermark: 'ai-generated'` присъства винаги; показвай етикета + `question`.
 5. **Числа в проза:** `text`/`callout` минават детерминистична проверка „без едри числа/валута в
    прозата" (guardrail E2) преди да станат справка — така прозата не носи неподкрепено число.
+6. **`truncated`.** `table`/`bar`/`flows`/`timeseries` носят опционален `truncated?: boolean` — `true`,
+   когато подлежащият резултат е ударил byte cap-а на `run_sql`. Renderer-ът показва индикатор
+   „резултатите са отрязани", за да не се чете отрязана таблица/графика като пълна.
 
 Fixture: [`fixtures/report.fixture.json`](../../apps/web/app/lib/assistant/fixtures/report.fixture.json).
 
@@ -145,12 +152,32 @@ Renderer-ът на dock-а: при `tool-emit_report` с `output.ok === true` р
 renderer-а (т.1) като карта; иначе показва нормалната проза/текст части. Текстовите части (`type:
 'text'`) са разговорният control-plane; продуктът е справката.
 
-**Устойчивост (на какво да разчита FE):**
+**Устойчивост и матрица на грешките (на какво да разчита FE):**
 
-- **Грешка по време на streaming** (BgGPT outage/timeout) идва като четим текст през stream `onError`,
-  не като счупена връзка: низът `"Асистентът временно не е достъпен. Опитай отново след малко."`
-- **Setup грешка** (празно тяло, лош конфиг) → `HTTP 503` с `{ "error": "…" }` (или `400` при липса на
-  `messages`). FE показва приятелско съобщение и оставя retry на потребителя.
+Грешки връщат **два различни слоя**: rate-limit слоят (worker-level, **преди** route-а) и самият
+route. Телата им се различават по форма — затова FE-то **не бива да приема `{ "error": … }` JSON при
+всяка не-2xx**: rate-limit отговорите са `text/plain`, route отговорите са JSON.
+
+| Статус | Слой / условие | Тяло | Форма | `Retry-After` |
+| ------ | -------------- | ---- | ----- | ------------- |
+| `429` | rate-limit: надхвърлен per-IP лимит | `Твърде много заявки към асистента. Опитай отново след малко.` | `text/plain` | `60` |
+| `503` | rate-limit: fail-closed (липсващ/счупен binding, само прод) | `Rate limiting unavailable` (infra-level, EN) | `text/plain` | `60` |
+| `413` | route: тялото надхвърля ~256 KB | `{ "error": "историята е твърде голяма" }` | JSON | — |
+| `413` | route: едно съобщение надхвърля ~64 KB | `{ "error": "съобщението е твърде дълго" }` | JSON | — |
+| `400` | route: невалиден JSON | `{ "error": "невалиден JSON" }` | JSON | — |
+| `400` | route: няма годни `messages` | `{ "error": "няма съобщения" }` | JSON | — |
+| `503` | route: липсва `BGGPT_API_KEY` (непровизиран) | `{ "error": "Асистентът все още не е конфигуриран." }` | JSON | — |
+| `503` | route: грешка при стартиране на хода | `{ "error": "Асистентът временно не е достъпен. Опитай отново след малко." }` | JSON | — |
+| `200` | **грешка по време на streaming** (BgGPT outage/timeout) | четим текст в стрийма през `onError`: `Асистентът временно не е достъпен. Опитай отново след малко.` | в SSE стрийма | — |
+
+- **Грешка СЛЕД като стриймът е тръгнал** не е HTTP грешка: status-ът е вече `200`, а съобщението идва
+  като четим текст в стрийма (не като счупена връзка). `useChat` го показва като нормална реплика.
+- **`Retry-After: 60`** има само на `429` и rate-limit `503` — FE-то може да го ползва за backoff;
+  route-овите `4xx`/`503` нямат заглавка за повторен опит.
+- **Език:** всички съобщения, които достигат потребител, са на български. Единственото изключение е
+  infra-level `Rate limiting unavailable` (`503` при непровизиран лимитер — състояние от провизиране,
+  не потребителско). FE-то така или иначе показва собствена приятелска реплика и оставя retry на
+  потребителя.
 
 Fixture (примерна последователност от raw SSE chunk-ове, за reference): [`fixtures/sse-stream.fixture.txt`](../../apps/web/app/lib/assistant/fixtures/sse-stream.fixture.txt).
 

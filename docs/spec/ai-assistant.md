@@ -184,9 +184,9 @@
 | `totals` | [TotalsStrip](../../apps/web/app/components/TotalsStrip.tsx) | `[{label, value, format}]` |
 | `facts` | [FactsList](../../apps/web/app/components/FactsList.tsx) | `[{term, value, sub?}]` |
 | `table` | [DataTable](../../apps/web/app/components/DataTable.tsx) | декларативни `columns` (key, header, align, format, link?) + plain `rows` |
-| `bar` | [StackedBar](../../apps/web/app/components/StackedBar.tsx) | `[{label, value, key?}]` — renderer-ът изчислява дяловете **и** цветовете на палитрата |
+| `bar` | [StackedBar](../../apps/web/app/components/StackedBar.tsx) | `[{label, value}]` — renderer-ът изчислява дяловете **и** цветовете на палитрата (`key` за наслагване/групиране е post-v1, виж бележката) |
 | `flows` | [SankeyDiagram](../../apps/web/app/components/SankeyDiagram.tsx) | `[{from, to, valueEur}]` ребра — renderer-ът изчислява SVG layout-а |
-| `timeseries` | **НОВ** — ръчно изработен CSS/SVG, без chart библиотека | `[{period, value}]` (+ опционални multi-series) |
+| `timeseries` | **НОВ** — ръчно изработен CSS/SVG, без chart библиотека | `[{period, value}]` (single серия; multi-series е post-v1, виж бележката) |
 | `callout` | `Callout` | заглавие + тяло (уговорки, свежест, бележка за източник) |
 
 - **`timeseries` е единственият нов компонент.** Въпросите за обществените поръчки са силно
@@ -198,6 +198,11 @@
 - **Server-computed представяне** за `bar` (цветове) и `flows` (геометрия): агентът подава смисъл,
   сървърът подава пиксели, преизползвайки layout изчислението на flows loader-а (извлечено, ако
   в момента е inline).
+- **v1 wire-контрактът е single-series.** Достоверният тип е в `report-schema.ts` (и
+  [assistant-contracts.md §1](assistant-contracts.md)): emit-схемата (`EmitBar`/`EmitTimeseries`)
+  подава плоски `{label, value}` / `{period, value}` точки и `bindReport` връща точно тях. `key` за
+  наслагване/групиране на `bar` и multi-series за `timeseries` са замислени, но **отложени за след
+  v1** — изискват серийно измерение в emit-схемата, което Фаза 1 не въвежда.
 
 ### Редакторска форма
 
