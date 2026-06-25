@@ -37,4 +37,19 @@ describe('selectClientMessages', () => {
       selectClientMessages([null as unknown as UIMessage, msg('user', 'ok')], 5).map((m) => m.role),
     ).toEqual(['user']);
   });
+
+  it('returns [] for a non-array payload instead of throwing (review #80, ultra #4)', () => {
+    // {"messages":"x"} / {"messages":{}} must not reach .filter on a non-array (would 500 the endpoint)
+    expect(selectClientMessages('x', 5)).toEqual([]);
+    expect(selectClientMessages({}, 5)).toEqual([]);
+    expect(selectClientMessages(null, 5)).toEqual([]);
+  });
+
+  it('drops a message lacking a parts array (would crash messageTextChars — review #80, ultra #4)', () => {
+    const out = selectClientMessages(
+      [{ role: 'user' }, { role: 'user', parts: 'nope' }, msg('user', 'ok')],
+      5,
+    );
+    expect(out.map(textOf)).toEqual(['ok']);
+  });
 });

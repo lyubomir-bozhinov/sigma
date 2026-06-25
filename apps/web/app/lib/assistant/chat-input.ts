@@ -11,8 +11,17 @@ import type { UIMessage } from 'ai';
  * Filtering BEFORE the recency slice stops injected messages from evicting real turns from the window
  * (review #80, red-team R1).
  */
-export function selectClientMessages(messages: UIMessage[] | undefined, max: number): UIMessage[] {
-  return (messages ?? [])
-    .filter((m): m is UIMessage => !!m && (m.role === 'user' || m.role === 'assistant'))
+export function selectClientMessages(messages: unknown, max: number): UIMessage[] {
+  // `messages` is UNTRUSTED client JSON: it may be a non-array, or carry items without a `parts` array.
+  // Validate structurally here so downstream (messageTextChars/latestUserText/convertToModelMessages)
+  // never deref `.parts` on a bad shape — otherwise a payload like {"messages":"x"} or
+  // {"messages":[{"role":"user"}]} throws and surfaces as a 500 on a public endpoint (review #80).
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m): m is UIMessage => {
+      if (!m || typeof m !== 'object') return false;
+      const msg = m as { role?: unknown; parts?: unknown };
+      return (msg.role === 'user' || msg.role === 'assistant') && Array.isArray(msg.parts);
+    })
     .slice(-max);
 }
