@@ -153,6 +153,17 @@ describe('guardSelect', () => {
     ).toBe(false);
   });
 
+  it('rejects duplicate output column names; aliasing resolves it (review #80)', () => {
+    expect(
+      guardSelect('SELECT t.id, c.id FROM contracts c JOIN tenders t ON t.id = c.tender_id').ok,
+    ).toBe(false);
+    expect(
+      guardSelect(
+        'SELECT t.id AS tid, c.id AS cid FROM contracts c JOIN tenders t ON t.id = c.tender_id',
+      ).ok,
+    ).toBe(true);
+  });
+
   it('still allowlists tables referenced inside a sub-query in FROM', () => {
     expect(guardSelect('SELECT x.id FROM (SELECT id FROM contracts) x').ok).toBe(true);
     const bad = guardSelect('SELECT x.name FROM (SELECT name FROM sqlite_master) x');

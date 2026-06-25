@@ -45,11 +45,30 @@ type FromEntry = {
 } | null;
 type LooseSelect = {
   type?: string;
+  columns?: Array<{ as?: string | null; expr?: { column?: string } | null } | null> | null;
   from?: FromEntry[] | null;
   with?: Array<{ name?: { value?: string } } | null> | null;
   limit?: LimitNode;
   _next?: LooseSelect | null; // compound (UNION/INTERSECT/EXCEPT) continuation
 };
+
+// Reject duplicate output column names. D1's `.all()` returns row OBJECTS keyed by column name, so two
+// columns with the same output name (`SELECT t.id, c.id`) collapse to one — silently dropping a column
+// from the model's view and from report binding (review #80). Ask the model to alias them. `*` is opaque
+// (no schema to expand it here) so it is left to the binding layer.
+function denyDuplicateColumns(ast: LooseSelect): string | null {
+  const cols = Array.isArray(ast.columns) ? ast.columns : null;
+  if (!cols) return null;
+  const seen = new Set<string>();
+  for (const c of cols) {
+    const name = String(c?.as ?? c?.expr?.column ?? '').toLowerCase();
+    if (!name || name === '*') continue;
+    if (seen.has(name))
+      return `duplicate output column "${name}"; give columns distinct AS aliases`;
+    seen.add(name);
+  }
+  return null;
+}
 
 // A compound (UNION/INTERSECT/EXCEPT) hangs its trailing LIMIT off the LAST arm (the `_next` chain),
 // not the top-level `ast.limit`. Walk to the last arm so the outer LIMIT is detected for compounds
@@ -169,6 +188,9 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   const ast = statements[0] as unknown as LooseSelect;
   if (ast.type !== 'select')
     return deny(`only SELECT is allowed (found: ${ast.type ?? 'unknown'})`);
+
+  const dupCol = denyDuplicateColumns(ast);
+  if (dupCol) return deny(dupCol);
 
   // Every FROM source must be a plain table or a sub-query, at ANY nesting depth — fail closed on
   // anything else. This blocks table-valued functions (`pragma_table_info(…)`, `json_each(…)`,
