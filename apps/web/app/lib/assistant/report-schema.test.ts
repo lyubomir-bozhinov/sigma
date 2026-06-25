@@ -466,5 +466,7 @@ describe('sanitizeProse — no raw HTML reaches a public report', () => {
     expect(sanitizeProse('[източник](https://app.eop.bg/today/1)')).toContain(
       'https://app.eop.bg/today/1',
     );
+    // `data:` as a plain prose word (not a link target) is NOT mangled
+    expect(sanitizeProse('виж данните data: важни числа')).toContain('data:');
   });
 });

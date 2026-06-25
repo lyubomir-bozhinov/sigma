@@ -146,9 +146,13 @@ export function sanitizeProse(md: string): string {
   } while (out !== prev);
   // Defang dangerous URL schemes a markdown link/image target could carry — `[t](javascript:…)` is NOT
   // inside <…>, so the tag strip misses it, and a markdown renderer would emit an executable href
-  // (review #80). The Phase-2 renderer MUST additionally allowlist URL schemes (urlTransform →
-  // http/https/mailto only); this is the defence-in-depth until it lands.
-  out = out.replace(/\b(?:javascript|vbscript|data|file)\s*:/gi, 'unsafe:');
+  // (review #80). javascript:/vbscript: are never legitimate prose (and could autolink), so defang them
+  // anywhere; data:/file: are common words, so defang them ONLY inside a markdown link/image target
+  // `](…)` to avoid mangling normal prose. The Phase-2 renderer MUST additionally allowlist URL schemes
+  // (urlTransform → http/https/mailto only); this is the defence-in-depth until it lands.
+  out = out
+    .replace(/\b(?:javascript|vbscript)\s*:/gi, 'unsafe:')
+    .replace(/(\]\(\s*)(?:data|file)\s*:/gi, '$1unsafe:');
   return out.trim();
 }
 
