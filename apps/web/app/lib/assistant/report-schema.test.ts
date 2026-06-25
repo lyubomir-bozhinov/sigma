@@ -460,6 +460,28 @@ describe('findProseNumbers', () => {
     expect(findProseNumbers('сума 12&#48;&#48;&#48; над лимита')).not.toHaveLength(0);
   });
 
+  it('sees through HTML-tag-split digits and uppercase hex entities (review #80, follow-up)', () => {
+    // sanitizeProse STRIPS tags before display, so digits split by inert tags re-join on the page; the
+    // gate must strip them too (via deMarkdown) or a fabricated number lands unbound on the report.
+    expect(findProseNumbers('Сумата е 12<x>345<y>678 според проверката')).not.toHaveLength(0);
+    expect(
+      findProseNumbers('Откраднаха 1<b>0</b>0<b>0</b>0<b>0</b>0<b>0</b>0 от бюджета'),
+    ).not.toHaveLength(0);
+    // HTML5 numeric references are case-insensitive on the `x`: an uppercase `&#X..;` decodes in renderers
+    // too, so the gate must decode it as well as the lowercase form.
+    expect(findProseNumbers('сума &#X31;&#X32; млрд')).not.toHaveLength(0);
+    expect(findProseNumbers('Сумата &#X31;&#X32;&#X33;&#X34;&#X35; е голяма')).not.toHaveLength(0);
+  });
+
+  it('flags spelled-out thousands and non-€/лв currencies (review #80, follow-up)', () => {
+    expect(findProseNumbers('усвоиха триста хиляди лева')).not.toHaveLength(0);
+    expect(findProseNumbers('откраднати сто хиляди евро')).not.toHaveLength(0);
+    expect(findProseNumbers('преведоха 5000 долара')).not.toHaveLength(0);
+    expect(findProseNumbers('платиха 9999 USD')).not.toHaveLength(0);
+    // a genuine `3 < 5` (no tag — `<` not followed by a letter) must stay clean (no false positive)
+    expect(findProseNumbers('3 < 5 е вярно твърдение')).toHaveLength(0);
+  });
+
   it('folds alternative Unicode digit forms a reader still reads as numbers (review #80, red-team R1)', () => {
     const fullwidth = (s: string) => s.replace(/[0-9]/g, (d) => String.fromCharCode(0xff10 + +d));
     const arabicIndic = (s: string) => s.replace(/[0-9]/g, (d) => String.fromCharCode(0x0660 + +d));

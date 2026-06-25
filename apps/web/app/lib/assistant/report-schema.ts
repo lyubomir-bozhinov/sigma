@@ -234,22 +234,29 @@ const PROSE_NUMBER_PATTERNS: RegExp[] = [
   // "3,5 пъти" and land an unbound quantity on the public report (review #80). Flag the unit words too.
   // NB: no `\b` adjacent to Cyrillic — JS `\b` is ASCII-`\w`-only, so `\bмилиард` never matches after a
   // space. Match the distinctive stem (covers all inflections: милиард/милиарда/милиарди, …).
-  /милиард|милион/giu, // spelled magnitudes (incl. word-only "два милиарда")
+  /милиард|милион|хиляд/giu, // spelled magnitudes (incl. word-only "два милиарда", "триста хиляди")
   /%|процент|(?<!\p{L})на\s+сто/giu, // percentages (%, процент-stem, or the phrase "на сто")
   /\d[\d.,]*\s*пъти/giu, // numeric ratios (3,5 пъти)
+  // Non-€/лв currency units the suffix pattern above omits — a sub-5-digit dollar amount ("5000 долара",
+  // "9999 USD", "$1 000") otherwise slips every digit pattern (review #80, follow-up).
+  /\d[\d.,\s]{0,40}(?:долар|usd|\$)/giu, // 5000 долара, 9999 USD (currency-after)
+  /(?:\$|usd)\s*\d[\d.,\s]{0,40}/giu, // $1234, USD 1 234 (currency-first)
 ];
 
 const codePoint = (n: number, fallback: string): string =>
   Number.isInteger(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : fallback;
 
-// Decode numeric HTML entities (`&#58;` / `&#x3a;`) to their character. A markdown renderer decodes
-// these, so the sanitizer must see through them before stripping tags / defanging schemes — otherwise an
-// entity-encoded tag or scheme (`&#60;script&#62;`, `javascript&#58;…`) survives sanitizeProse, the SOLE
-// pre-renderer barrier — and the number gate must decode them before scanning (review #80, ydimitrof).
+// Decode numeric HTML entities (`&#58;` / `&#x3a;` / `&#X3A;`) to their character. A markdown renderer
+// decodes these, so the sanitizer must see through them before stripping tags / defanging schemes —
+// otherwise an entity-encoded tag or scheme (`&#60;script&#62;`, `javascript&#58;…`) survives
+// sanitizeProse, the SOLE pre-renderer barrier — and the number gate must decode them before scanning
+// (review #80, ydimitrof). The hex form accepts BOTH `&#x..;` and `&#X..;`: HTML5 numeric references are
+// case-insensitive on the `x`, so an uppercase `&#X31;` is decoded by renderers too and a case-sensitive
+// `x`-only match let it bypass both the number gate and the tag strip (review #80, follow-up).
 function decodeNumericEntities(s: string): string {
   return s
     .replace(/&#(\d{1,7});/g, (m, d) => codePoint(Number(d), m))
-    .replace(/&#x([0-9a-fA-F]{1,6});/g, (m, h) => codePoint(parseInt(h, 16), m));
+    .replace(/&#[xX]([0-9a-fA-F]{1,6});/g, (m, h) => codePoint(parseInt(h, 16), m));
 }
 
 // Fold every Unicode decimal digit to its ASCII value so the number gate is not blinded by a digit a
@@ -275,8 +282,12 @@ function foldDigits(text: string): string {
 // Markdown can split a number from its magnitude word (`**12** **млрд.**` → "12 млрд."); a renderer
 // collapses zero-width separators (`1​234​567` → "1234567") and decodes numeric HTML entities
 // (`12&#48;&#48;&#48;` → "12000"). Decode/strip those, drop emphasis, collapse whitespace (review #80).
+// NB: stripTags here mirrors the display path (sanitizeProse → stripTags). Without it a model can split a
+// number with inert tags (`12<x>345<y>678`): the digit run never forms for the patterns above, the gate
+// passes, yet sanitizeProse removes the tags and re-joins it to a fabricated "12345678" on the page — the
+// §9.1 vector. Decode entities → strip tags → fold digits, so the gate scans the displayed string (#80 f/u).
 function deMarkdown(text: string): string {
-  return foldDigits(decodeNumericEntities(text))
+  return foldDigits(stripTags(decodeNumericEntities(text)))
     .replace(/[\u200b-\u200d\ufeff]/g, '') // zero-width space / non-joiner / joiner / BOM
     .replace(/[*_`~\\]/g, '')
     .replace(/\s+/g, ' ');
@@ -313,7 +324,9 @@ function gateProse(value: string, label: string, errors: string[]): void {
 // Coerce a charted cell to a number — but ONLY a plain decimal string. `Number()` also parses hex
 // (`0x10`→16), scientific (`1e3`→1000) and binary/octal literals, so a TEXT value-column could plot a
 // value that diverges from the cited cell (review #80). Numeric D1 columns arrive as `number` already.
-function asNumber(v: string | number | null): number | null {
+// Exported as the SINGLE coercion the renderer (render-format.ts) also uses, so the §9.1 "rendered value
+// equals cited cell" rule cannot drift between binder and renderer (review #80, follow-up).
+export function asNumber(v: string | number | null): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'string' && /^[+-]?\d+(?:\.\d+)?$/.test(v.trim())) {
     const n = Number(v);
