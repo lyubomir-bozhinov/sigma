@@ -14,7 +14,7 @@ workflows match on those names).
 
 Prerequisites:
 - Cloudflare **Workers Paid** plan (needed for the etl Workflow + the ~1.4 GB D1).
-- **R2 enabled on the account** — one-time, dashboard only (`dash.cloudflare.com/<acct>/r2` → Enable R2). `bootstrap.mjs`'s bucket create fails with `code: 10042` until this is done; no token/CLI can enable it.
+- **R2 enabled on the account** — one-time, dashboard only (`dash.cloudflare.com/<acct>/r2` → Enable R2). `bootstrap-r2.mjs`'s bucket create fails with `code: 10042` until this is done; no token/CLI can enable it.
 - An API token scoped to **Account-level only** — `Workers Scripts: Edit`, `D1: Edit`, `Workers R2 Storage: Edit`, `Account Settings: Read` (no Zone permissions, so it cannot touch domains/DNS in the account).
 
 ---
@@ -30,9 +30,11 @@ pnpm exec wrangler whoami        # should show the account + the 4 scopes
 ## Step 2 — Provision the dev D1 + R2 (yields SIGMA_D1_ID)
 
 ```bash
-SIGMA_D1_NAME=sigma-dev \
-SIGMA_CSV_CACHE_NAME=sigma-csv-cache-dev \
-node scripts/bootstrap.mjs --apply
+# D1 (served data) — prints the database_id
+SIGMA_D1_NAME=sigma-dev node scripts/bootstrap.mjs --apply
+
+# R2 (CSV-export cache) — separate script so bootstrap.mjs stays untouched on this PR
+SIGMA_CSV_CACHE_NAME=sigma-csv-cache-dev node scripts/bootstrap-r2.mjs --apply
 ```
 
 Copy the **`database_id`** UUID that `wrangler d1 create` prints — that is `SIGMA_D1_ID` for both
@@ -92,13 +94,20 @@ SIGMA_D1_NAME=sigma-dev wrangler d1 execute sigma-dev --remote --file packages/d
 ```
 
 Then load the corpus. The work-DB path builds a local SQLite from the EOP feed, then ships it
-chunked to the remote D1 and runs precompute. `SHIP_SKIP_MIGRATIONS=1` skips the ship's
-`migrations apply` step (schema is already applied above):
+chunked to the remote D1 and runs precompute:
 
 ```bash
-SIGMA_D1_NAME=sigma-dev SIGMA_D1_ID=<dev-d1-id> SHIP_SKIP_MIGRATIONS=1 \
+SIGMA_D1_NAME=sigma-dev SIGMA_D1_ID=<dev-d1-id> \
   node scripts/import.mjs --work-db --remote
 ```
+
+> **Migrate step / alternate-named D1.** `scripts/ship-domain.mjs` first runs
+> `wrangler d1 migrations apply $SIGMA_D1_NAME`, which only resolves DB names present in the committed
+> migrate config (`apps/web/wrangler.jsonc`) — `sigma-dev` is not there, so that step errors. The schema
+> is already applied via `d1 execute` above, so for this one-time seed add a **temporary, uncommitted**
+> `d1_databases` entry for `sigma-dev` to `apps/web/wrangler.jsonc` for the duration of the load, then
+> revert it. (Ongoing freshness is handled by the deployed `sigma-etl-dev` cron, so this manual path is
+> only needed for the initial seed or a full reset.)
 
 > **Timing.** Only fast (~20 min) if `data/eop` is already cached. With no cache it first fetches the
 > **whole feed (2020→today)** — plausibly 1–3 h. For a quick, still-useful dev dataset, narrow the

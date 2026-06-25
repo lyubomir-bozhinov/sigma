@@ -56,9 +56,7 @@ function d1File(file) {
     } catch (err) {
       if (i >= attempts) throw err;
       const backoff = Math.min(30, 2 ** i);
-      console.error(
-        `!! d1 execute failed (attempt ${i}/${attempts}) for ${file}; retrying in ${backoff}s`,
-      );
+      console.error(`!! d1 execute failed (attempt ${i}/${attempts}) for ${file}; retrying in ${backoff}s`);
       execFileSync('sleep', [String(backoff)]);
     }
   }
@@ -152,8 +150,7 @@ function insertStatements(table, cols, rows) {
   for (const row of rows) {
     const tuple = `(${cols.map((c) => sqlLiteral(row[c])).join(',')})`;
     const tupleBytes = Buffer.byteLength(tuple) + 2;
-    if (batch.length && (batch.length >= MAX_BATCH_ROWS || bytes + tupleBytes > MAX_BATCH_BYTES))
-      flush();
+    if (batch.length && (batch.length >= MAX_BATCH_ROWS || bytes + tupleBytes > MAX_BATCH_BYTES)) flush();
     batch.push(tuple);
     bytes += tupleBytes;
   }
@@ -162,19 +159,8 @@ function insertStatements(table, cols, rows) {
 }
 
 console.log(`==> shipping ${workDb} to D1 ${remote ? 'remote' : 'local'}`);
-// `wrangler d1 migrations apply <name>` resolves the DB through the migrate config (apps/web), so it
-// only works for DB names declared there. For a dev/preview/alternate-named D1 whose schema is managed
-// out-of-band (apply 0000_init via `wrangler d1 execute <name> --remote --file` first — see
-// docs/deploy.md), set SHIP_SKIP_MIGRATIONS=1 to skip this step; the data ship/precompute below use
-// `d1 execute <name>`, which resolves by name without the config.
-// Affirmative opt-in only: a bare truthy check would also skip on SHIP_SKIP_MIGRATIONS=0/false.
-const skipMigrations = ['1', 'true'].includes(process.env.SHIP_SKIP_MIGRATIONS);
-if (skipMigrations) {
-  console.log('==> SHIP_SKIP_MIGRATIONS set — assuming served D1 schema is already applied');
-} else {
-  console.log('==> ensuring served D1 migrations are applied');
-  d1MigrationsApply();
-}
+console.log('==> ensuring served D1 migrations are applied');
+d1MigrationsApply();
 
 const sourceCounts = Object.fromEntries(TABLES.map((table) => [table, tableCount(table)]));
 for (const table of ['authorities', 'bidders', 'tenders', 'contracts']) {
@@ -188,11 +174,7 @@ if (remote && targetPopulated && !replaceRemote) {
 }
 if (targetPopulated) {
   for (const table of ['authorities', 'bidders', 'tenders', 'contracts']) {
-    if (
-      !allowShrink &&
-      beforeCounts[table] > 0 &&
-      sourceCounts[table] < beforeCounts[table] * 0.5
-    ) {
+    if (!allowShrink && beforeCounts[table] > 0 && sourceCounts[table] < beforeCounts[table] * 0.5) {
       throw new Error(
         `refusing to ship: source ${table} ${sourceCounts[table]} is less than half of target ${beforeCounts[table]}`,
       );
