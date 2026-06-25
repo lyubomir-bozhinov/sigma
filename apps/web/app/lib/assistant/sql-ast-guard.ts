@@ -154,6 +154,18 @@ function denyBadFromSource(node: unknown): string | null {
         if (f.on == null && f.using == null) {
           return 'JOIN without an ON/USING condition is a cross-join; add a join condition';
         }
+        // A non-null ON is not enough: `ON 1=1` / `ON true` (or a single-side predicate) is a tautology
+        // that yields a full Cartesian product the LIMIT cannot bound — D1 bills on rows SCANNED, so one
+        // such query can scan trillions of rows (DoW; review #80, ydimitrof C2). Require the ON to
+        // actually connect two relations: ≥2 distinct table qualifiers among its column refs. USING(...)
+        // connects by construction, so an ON-less USING join is left to the check above.
+        if (f.on != null) {
+          const quals = new Set<string>();
+          collectColumnTables(f.on, quals);
+          if (quals.size < 2) {
+            return 'JOIN ON must connect both tables (e.g. a.id = b.id); a constant or single-side condition is a cross-join';
+          }
+        }
       }
     }
   }
@@ -162,6 +174,96 @@ function denyBadFromSource(node: unknown): string | null {
     if (r) return r;
   }
   return null;
+}
+
+// Collect the distinct, non-null table qualifiers of every column_ref in an expression subtree — used to
+// check a JOIN ON actually connects two relations rather than being a constant/tautological cross-join.
+function collectColumnTables(node: unknown, acc: Set<string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const x of node) collectColumnTables(x, acc);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (obj.type === 'column_ref' && typeof obj.table === 'string' && obj.table.length > 0) {
+    acc.add(obj.table.toLowerCase());
+  }
+  for (const k of Object.keys(obj)) collectColumnTables(obj[k], acc);
+}
+
+// True if a CTE body references its own name in any FROM — the defining trait of a RECURSIVE CTE (the
+// name is only in scope inside the body for recursion). The parser parses `cte.stmt.ast` as the body.
+function cteReferencesOwnName(body: unknown, name: string): boolean {
+  let found = false;
+  const walk = (node: unknown): void => {
+    if (found || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const x of node) walk(x);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (Array.isArray(obj.from)) {
+      for (const f of obj.from as FromEntry[]) {
+        if (f && typeof f.table === 'string' && f.table.toLowerCase() === name) {
+          found = true;
+          return;
+        }
+      }
+    }
+    for (const k of Object.keys(obj)) walk(obj[k]);
+  };
+  walk(body);
+  return found;
+}
+
+// SQLite does NOT require the `RECURSIVE` keyword, so `WITH r AS (… FROM r) …` parses as a plain SELECT
+// and the keyword regex misses it — yet it loops unbounded feeding an aggregate (LIMIT does not cut
+// recursion; D1 has no cancellable timeout; the rows-read budget is checked only BEFORE the next query,
+// so a hang never trips it — DoW, review #80, ydimitrof C1). Walk the AST and reject any CTE whose body
+// references its own name. Returns the first offender, or null.
+function denyRecursiveCte(node: unknown): string | null {
+  if (!node || typeof node !== 'object') return null;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = denyRecursiveCte(item);
+      if (r) return r;
+    }
+    return null;
+  }
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.with)) {
+    for (const cte of obj.with) {
+      const c = cte as { name?: { value?: string }; stmt?: { ast?: unknown } } | null;
+      const name = c?.name?.value?.toLowerCase();
+      const body = c?.stmt?.ast;
+      if (name && body && cteReferencesOwnName(body, name)) {
+        return `recursive CTE "${c!.name!.value}" is not allowed`;
+      }
+    }
+  }
+  for (const k of Object.keys(obj)) {
+    const r = denyRecursiveCte(obj[k]);
+    if (r) return r;
+  }
+  return null;
+}
+
+// Read a LIMIT/OFFSET value node's number (handles `-1` whether parsed as a negative literal or a unary
+// minus). NaN for a non-numeric node — those are left to enforceLimit/parse to handle.
+function limitCount(v: unknown): number {
+  if (v && typeof v === 'object') {
+    const o = v as {
+      type?: string;
+      operator?: string;
+      value?: unknown;
+      expr?: { value?: unknown };
+    };
+    if (o.type === 'unary_expr' && o.operator === '-' && typeof o.expr?.value === 'number') {
+      return -o.expr.value;
+    }
+    if (typeof o.value === 'number') return o.value;
+  }
+  return NaN;
 }
 
 /**
@@ -189,6 +291,10 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   if (ast.type !== 'select')
     return deny(`only SELECT is allowed (found: ${ast.type ?? 'unknown'})`);
 
+  // A self-referencing CTE is recursive even without the `RECURSIVE` keyword — reject it (review #80, C1).
+  const recursive = denyRecursiveCte(ast);
+  if (recursive) return deny(recursive);
+
   const dupCol = denyDuplicateColumns(ast);
   if (dupCol) return deny(dupCol);
 
@@ -215,6 +321,12 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   // LIMIT lives on the last arm rather than the top-level node.
   const lim = outerLimit(ast);
   const limitValues = Array.isArray(lim?.value) ? lim.value : [];
+  // Reject a negative LIMIT/OFFSET: `LIMIT -1` means UNBOUNDED in SQLite, and the regex enforceLimit
+  // misses the `-` and would append a second LIMIT that only fails by an accidental syntax error — make
+  // the rejection explicit (review #80, ydimitrof).
+  for (const v of limitValues) {
+    if (limitCount(v) < 0) return deny('negative LIMIT/OFFSET is not allowed');
+  }
   if (lim?.seperator === ',') {
     return deny('LIMIT offset, count is not allowed; use LIMIT n OFFSET m');
   }

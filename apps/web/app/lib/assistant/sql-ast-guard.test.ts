@@ -203,4 +203,36 @@ describe('guardSelect', () => {
       expect(r.sql).not.toMatch(/LIMIT\s+\d+\s+LIMIT/i); // not `… LIMIT 100000 LIMIT 500` (SQLite syntax error)
     }
   });
+
+  it('rejects a recursive CTE even without the RECURSIVE keyword (DoW — review #80, C1)', () => {
+    // SQLite does not require `RECURSIVE`; a self-referencing CTE loops unbounded feeding an aggregate.
+    const r = guardSelect(
+      'WITH r(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM r) SELECT max(x) AS m FROM r',
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/recursive/i);
+    // a non-recursive CTE (body references only real tables) still passes
+    expect(
+      guardSelect('WITH t AS (SELECT spent_eur FROM authority_totals) SELECT * FROM t LIMIT 5').ok,
+    ).toBe(true);
+  });
+
+  it('rejects a tautological / single-side JOIN ON as a cross-join (DoW — review #80, C2)', () => {
+    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON 1=1').ok).toBe(false);
+    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON 1 = 1').ok).toBe(false);
+    // a single-side predicate (only references table c) is still a Cartesian product over b
+    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON c.id = c.tender_id').ok).toBe(
+      false,
+    );
+    // a real connecting condition passes
+    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok).toBe(
+      true,
+    );
+  });
+
+  it('rejects a negative LIMIT (LIMIT -1 = unbounded in SQLite — review #80)', () => {
+    const r = guardSelect('SELECT name FROM authorities LIMIT -1');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/negative LIMIT/i);
+  });
 });
