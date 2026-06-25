@@ -137,6 +137,22 @@ describe('guardSelect', () => {
     if (!bad.ok) expect(bad.reason).toMatch(/table not allowed: sqlite_master/);
   });
 
+  it('rejects CTE-name poisoning of the allowlist — an out-of-scope CTE cannot exempt a real table (review #80)', () => {
+    // SQLite scopes CTEs lexically, so a throwaway CTE named like a disallowed table, declared inside an
+    // UNRELATED sub-query, does NOT shadow the outer real reference. A global CTE-name set let these
+    // enumerate the schema; the scoped walk rejects them.
+    expect(
+      guardSelect(
+        'WITH dummy AS (WITH sqlite_master AS (SELECT 1 AS k) SELECT 1 AS k) SELECT name FROM sqlite_master',
+      ).ok,
+    ).toBe(false);
+    expect(
+      guardSelect(
+        'WITH dummy AS (WITH fx_rates AS (SELECT 1 AS k) SELECT 1 AS k) SELECT a.name FROM authorities a JOIN fx_rates f ON 1 = 1',
+      ).ok,
+    ).toBe(false);
+  });
+
   it('still allowlists tables referenced inside a sub-query in FROM', () => {
     expect(guardSelect('SELECT x.id FROM (SELECT id FROM contracts) x').ok).toBe(true);
     const bad = guardSelect('SELECT x.name FROM (SELECT name FROM sqlite_master) x');

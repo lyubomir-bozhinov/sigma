@@ -111,6 +111,13 @@ export function assertReadOnlySelect(rawSql: string): GuardResult {
   if (/\b(?:json_each|json_tree|generate_series)\s*\(/i.test(sql)) {
     return { ok: false, reason: 'table-valued functions are not allowed' };
   }
+
+  // Schema-catalog tables are the crown-jewel enumeration target. The AST guard now scopes CTE names
+  // lexically (so an out-of-scope `sqlite_master` CTE can't exempt the real table), but keep a cheap
+  // structural backstop on the two catalog names too — no legitimate query references them (review #80).
+  if (/\bsqlite_(?:master|schema)\b/i.test(sql)) {
+    return { ok: false, reason: 'system catalog tables are not allowed' };
+  }
   return { ok: true, sql };
 }
 

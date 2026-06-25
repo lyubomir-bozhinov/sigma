@@ -61,24 +61,46 @@ function outerLimit(ast: LooseSelect): LimitNode {
   return node.limit ?? ast.limit;
 }
 
-// Collect every CTE name in the statement at ANY nesting depth — a CTE declared inside a sub-query or
-// another CTE is still a CTE, not a real table. parser.tableList() flattens CTE references in with the
-// base tables, so without the full set the allowlist would falsely reject a legitimately-nested CTE
-// name (review #80). The parsed AST is a finite tree, so the walk terminates.
-function collectCteNames(node: unknown, acc: Set<string>): void {
+// Positive table allowlist with LEXICAL CTE scoping. Every plain-table FROM reference must be either an
+// allowlisted table or a CTE that is IN SCOPE at that reference. A CTE is in scope for the query that
+// declares it (its WITH) and that query's descendants — NOT for sibling or unrelated queries (SQLite
+// scopes CTEs lexically). A flat, global CTE-name set (the previous approach) was UNSOUND: a throwaway
+// CTE named `sqlite_master` declared inside an unrelated sub-query would exempt the REAL outer
+// `FROM sqlite_master` from the check — a schema-enumeration bypass (review #80). Returns the first
+// disallowed table, or null. The parsed AST is a finite tree, so the walk terminates.
+function denyDisallowedTable(node: unknown, cteScope: ReadonlySet<string>): string | null {
   if (Array.isArray(node)) {
-    for (const item of node) collectCteNames(item, acc);
-    return;
+    for (const item of node) {
+      const r = denyDisallowedTable(item, cteScope);
+      if (r) return r;
+    }
+    return null;
   }
-  if (!node || typeof node !== 'object') return;
+  if (!node || typeof node !== 'object') return null;
   const obj = node as Record<string, unknown>;
+  // CTEs declared on THIS node extend the scope for it and all its descendants (incl. sibling CTE bodies).
+  let scope = cteScope;
   if (Array.isArray(obj.with)) {
+    const next = new Set(cteScope);
     for (const cte of obj.with) {
       const name = (cte as { name?: { value?: string } } | null)?.name?.value;
-      if (name) acc.add(String(name).toLowerCase());
+      if (name) next.add(String(name).toLowerCase());
+    }
+    scope = next;
+  }
+  if (Array.isArray(obj.from)) {
+    for (const f of obj.from as FromEntry[]) {
+      if (f && typeof f.table === 'string' && f.table.length > 0) {
+        const table = f.table.toLowerCase();
+        if (!scope.has(table) && !ALLOWED_TABLES.has(table)) return `table not allowed: ${f.table}`;
+      }
     }
   }
-  for (const key of Object.keys(obj)) collectCteNames(obj[key], acc);
+  for (const key of Object.keys(obj)) {
+    const r = denyDisallowedTable(obj[key], scope);
+    if (r) return r;
+  }
+  return null;
 }
 
 // Validate every FROM source in the statement at ANY nesting depth. A table-valued function or an
@@ -156,14 +178,10 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   const badFrom = denyBadFromSource(ast);
   if (badFrom) return deny(badFrom);
 
-  // Positive table allowlist — excludes CTE names (at any nesting depth), which tableList also returns.
-  const cteNames = new Set<string>();
-  collectCteNames(ast, cteNames);
-  for (const entry of parser.tableList(sql)) {
-    const table = entry.split('::')[2]?.toLowerCase();
-    if (!table || cteNames.has(table)) continue;
-    if (!ALLOWED_TABLES.has(table)) return deny(`table not allowed: ${table}`);
-  }
+  // Positive table allowlist with lexical CTE scoping (see denyDisallowedTable): a real disallowed
+  // table cannot be smuggled past the check by an out-of-scope CTE of the same name (review #80).
+  const badTable = denyDisallowedTable(ast, new Set<string>());
+  if (badTable) return deny(badTable);
 
   // Bound the OUTER result with an AST-authoritative LIMIT. The SQLite LIMIT offset, count form fools
   // the regex-based enforceLimit — it captures the offset (the first number), not the count, so a
