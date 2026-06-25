@@ -139,6 +139,13 @@ function denyBadFromSource(node: unknown): string | null {
   const obj = node as Record<string, unknown>;
   const from = Array.isArray(obj.from) ? (obj.from as FromEntry[]) : null;
   if (from) {
+    // Count plain base tables in THIS FROM to reject a self-join that repeats one table ≥3× (`contracts
+    // c1 JOIN contracts c2 … JOIN contracts c3 …`). Even with a valid ON, an equijoin on a low-cardinality
+    // column then scans ~N³ rows the LIMIT cannot bound — a DoW the ≥2-qualifier ON check below can't see
+    // (it has no column cardinality; verified ~843M scanned rows / 9 s on a 1.5k-row table). No legitimate
+    // analytics query self-joins one table 3 times; a real 3-way join uses distinct tables. The 2× residual
+    // is bounded by the per-turn rows-read budget (tools.ts, issue #122). (review #80, follow-up)
+    const sameTable = new Map<string, number>();
     for (let i = 0; i < from.length; i++) {
       const f = from[i];
       if (!f) continue;
@@ -147,6 +154,14 @@ function denyBadFromSource(node: unknown): string | null {
       const isTable = typeof f.table === 'string' && f.table.length > 0;
       const isSubquery = !!(f.expr && typeof f.expr === 'object' && f.expr.ast);
       if (!isTable && !isSubquery) return 'table-valued functions are not allowed in FROM';
+      if (isTable) {
+        const t = (f.table as string).toLowerCase();
+        const count = (sameTable.get(t) ?? 0) + 1;
+        if (count >= 3) {
+          return `self-join repeats table "${f.table}" 3+ times; rewrite without the repeated self-join`;
+        }
+        sameTable.set(t, count);
+      }
       // Entries after the first must be an explicit JOIN carrying an ON/USING — a missing join is a
       // comma cross-join, an ON/USING-less JOIN is an explicit cross-join; both are Cartesian products.
       if (i > 0) {

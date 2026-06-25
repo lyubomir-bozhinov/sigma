@@ -47,6 +47,22 @@ describe('guardSelect', () => {
     if (!r.ok) expect(r.reason).toMatch(/cross-join/);
   });
 
+  it('rejects a 3×+ self-join even with valid ONs (low-cardinality ~N³ DoW; review #80, follow-up)', () => {
+    // Each ON has 2 distinct qualifiers so the anti-tautology check passes, but on a boolean column this
+    // is a near-Cartesian scan an aggregate/ORDER BY hides past the LIMIT — caught by the self-join cap.
+    const r = guardSelect(
+      'SELECT COUNT(*) FROM contracts c1 JOIN contracts c2 ON c1.eu_funded = c2.eu_funded JOIN contracts c3 ON c2.eu_funded = c3.eu_funded',
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/self-join/);
+    // a legitimate 3-way join over DISTINCT tables is still accepted
+    expect(
+      guardSelect(
+        'SELECT a.name, t.id, c.amount_eur FROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id',
+      ).ok,
+    ).toBe(true);
+  });
+
   it('rejects WITH RECURSIVE (unbounded recursion)', () => {
     const r = guardSelect(
       'WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM r) SELECT x FROM r',
