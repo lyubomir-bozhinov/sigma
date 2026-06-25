@@ -230,6 +230,26 @@ describe('guardSelect', () => {
     );
   });
 
+  it('rejects a JOIN whose ON connects only via a sub-query qualifier (Cartesian bypass — review #80, ultra)', () => {
+    // qualifiers harvested from a sub-query INSIDE the ON must not count as connecting the two tables
+    expect(
+      guardSelect(
+        'SELECT c.id FROM contracts c JOIN bidders b ON c.bidder_id = (SELECT x.id FROM authorities x LIMIT 1)',
+      ).ok,
+    ).toBe(false);
+    expect(
+      guardSelect(
+        'SELECT a.id FROM authorities a JOIN contracts b ON a.id = (SELECT max(d.id) FROM bidders d)',
+      ).ok,
+    ).toBe(false);
+    // a genuinely connecting ON that ALSO carries a sub-query filter still passes
+    expect(
+      guardSelect(
+        'SELECT c.id FROM contracts c JOIN bidders b ON c.bidder_id = b.id AND b.id IN (SELECT bidder_id FROM company_totals)',
+      ).ok,
+    ).toBe(true);
+  });
+
   it('rejects a negative LIMIT (LIMIT -1 = unbounded in SQLite — review #80)', () => {
     const r = guardSelect('SELECT name FROM authorities LIMIT -1');
     expect(r.ok).toBe(false);

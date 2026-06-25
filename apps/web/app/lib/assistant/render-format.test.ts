@@ -14,6 +14,13 @@ describe('formatCell', () => {
     expect(formatCell('1234567', 'money')).toBe(money(1234567));
   });
 
+  it('does not coerce hex/scientific strings (matches strict asNumber — review #80, ultra)', () => {
+    // a TEXT value column with "0x10"/"1e3" must not render a value diverging from the cited cell
+    expect(formatCell('0x10', 'number')).toBe(count(null));
+    expect(formatCell('1e3', 'money')).toBe(money(null));
+    expect(formatCell('42', 'number')).toBe(count(42)); // a plain decimal still formats
+  });
+
   it('renders text as-is and absent/blank values as the em-dash', () => {
     expect(formatCell('Министерство на финансите', 'text')).toBe('Министерство на финансите');
     expect(formatCell(null, 'text')).toBe('—');

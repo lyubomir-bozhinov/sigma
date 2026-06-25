@@ -185,6 +185,11 @@ function collectColumnTables(node: unknown, acc: Set<string>): void {
     return;
   }
   const obj = node as Record<string, unknown>;
+  // Do NOT descend into a sub-query: its column refs belong to its OWN scope and do not connect the
+  // outer join. Counting them let `ON a.id = (SELECT z.id FROM other z)` masquerade as a two-table
+  // connection (the qualifiers were {a, z}, size 2) while the joined tables share no predicate — a
+  // Cartesian product, i.e. a structural bypass of the anti-tautology check (review #80, ultra).
+  if (obj.type === 'select') return;
   if (obj.type === 'column_ref' && typeof obj.table === 'string' && obj.table.length > 0) {
     acc.add(obj.table.toLowerCase());
   }

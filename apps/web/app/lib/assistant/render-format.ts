@@ -11,7 +11,11 @@ import type { CellFormat, EntityKind } from './report-schema';
 
 function num(v: string | number | null): number | null {
   if (v == null) return null;
-  if (typeof v === 'number') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  // Only a plain decimal string — NOT the hex/scientific/Infinity forms `Number()` would also parse —
+  // so a formatted TEXT cell can't render a value diverging from the cited cell (matches asNumber in
+  // report-schema.ts; preserves the §9.1 value-integrity property — review #80, ultra).
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(v.trim())) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }

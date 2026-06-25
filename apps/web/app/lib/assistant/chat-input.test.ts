@@ -52,4 +52,18 @@ describe('selectClientMessages', () => {
     );
     expect(out.map(textOf)).toEqual(['ok']);
   });
+
+  it('drops a message whose parts contain a null/primitive element (avoids a 500 deref — review #80, ultra)', () => {
+    // `parts:[null]` slips the array check but crashes `p.type` in messageTextChars (outside try/catch)
+    const out = selectClientMessages(
+      [
+        { role: 'user', parts: [null] },
+        { role: 'user', parts: [42] },
+        { role: 'user', parts: ['x'] },
+        msg('user', 'ok'),
+      ],
+      5,
+    );
+    expect(out.map(textOf)).toEqual(['ok']);
+  });
 });

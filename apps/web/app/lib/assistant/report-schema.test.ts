@@ -570,6 +570,10 @@ describe('ultra review fixes (review #80)', () => {
     if (!out.ok) expect(out.errors.join(' ')).toMatch(/too long/);
   });
 
+  it('catches a number grouped with the Arabic thousands separator U+066C (ultra)', () => {
+    expect(findProseNumbers('Сумата е 2٬500٬000.')).not.toHaveLength(0);
+  });
+
   it('gates spelled-out magnitudes, percentages and ratios (ultra #3)', () => {
     for (const s of [
       '12 милиарда лева',

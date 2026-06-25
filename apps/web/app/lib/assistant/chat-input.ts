@@ -21,7 +21,15 @@ export function selectClientMessages(messages: unknown, max: number): UIMessage[
     .filter((m): m is UIMessage => {
       if (!m || typeof m !== 'object') return false;
       const msg = m as { role?: unknown; parts?: unknown };
-      return (msg.role === 'user' || msg.role === 'assistant') && Array.isArray(msg.parts);
+      // Validate the parts ELEMENTS too, not just that `parts` is an array: a null/primitive part
+      // (`parts:[null]`) slips an array check but then crashes the `p.type` deref in messageTextChars /
+      // latestUserText — which run BEFORE the route's try/catch — surfacing as an unhandled 500 on the
+      // public endpoint (the malformed-payload class the array check alone did not fully close; #80).
+      return (
+        (msg.role === 'user' || msg.role === 'assistant') &&
+        Array.isArray(msg.parts) &&
+        msg.parts.every((p) => !!p && typeof p === 'object')
+      );
     })
     .slice(-max);
 }

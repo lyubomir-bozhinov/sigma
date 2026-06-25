@@ -226,7 +226,7 @@ const PROSE_NUMBER_PATTERNS: RegExp[] = [
   /(?:€|eur)\s*\d[\d.,\s]{0,40}/giu, // €1234, EUR 1 234 (currency-first)
   /\d[\d.,\s]{0,40}(?:€|лв\.?|eur|евро|лева)/giu, // 1 234 лв, 1234 евро
   /\d[\d.,\s]{0,40}(?:млн|млрд|хил)\.?/giu, // 12 млрд, 1,2 млн
-  /\d{1,3}(?:[.,\s'’]\d{3})+/gu, // grouped: 1 234, 1,234,567, 1.234.567, 12'000'000 (apostrophe)
+  /\d{1,3}(?:[.,\s'’٫٬]\d{3})+/gu, // grouped: 1 234, 1,234,567, 12'000'000, 2٬500٬000 (Arabic sep)
   /\d(?:[.,]\d+)?[eE][+-]?\d+/gu, // scientific notation: 1.2e10, 12E9
   /\d{5,}/gu, // 10000+ (years are ≤4 digits)
   // Spelled-out magnitudes / percentages / ratios bypassed the digit-only patterns above — a model could
@@ -262,7 +262,11 @@ function foldDigits(text: string): string {
     const cp = ch.codePointAt(0)!;
     if (cp >= 0x30 && cp <= 0x39) return ch; // already ASCII 0-9
     let zero = cp;
-    while (zero > 0 && /\p{Nd}/u.test(String.fromCodePoint(zero - 1))) zero -= 1;
+    // Cap the down-walk at 9 steps: a decimal-digit block is exactly 10 wide, so the block's zero is ≤9
+    // below any digit in it. Without the cap, two ADJACENT \p{Nd} blocks (e.g. the Takri region, whose
+    // lower neighbour is also Nd) let the walk cross the boundary and fold an upper-block digit to a
+    // wrong multi-digit value (review #80, ultra). Normal isolated blocks are unaffected.
+    while (zero > 0 && cp - zero < 9 && /\p{Nd}/u.test(String.fromCodePoint(zero - 1))) zero -= 1;
     return String(cp - zero);
   });
 }
