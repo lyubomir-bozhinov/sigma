@@ -113,14 +113,25 @@ export type ResolvedBlock =
       items: { label: string; value: string | number | null; format: CellFormat }[];
     }
   | { type: 'facts'; items: { term: string; value: string | number | null; sub?: string }[] }
+  // `truncated` is set when the backing result hit the run_sql byte cap — the renderer surfaces a
+  // "results truncated" indicator so a capped table/chart never reads as complete (review #80).
   | {
       type: 'table';
       columns: EmitTableColumn[];
       rows: ResolvedRow[];
+      truncated?: boolean;
     }
-  | { type: 'bar'; points: { label: string | number | null; value: number }[] }
-  | { type: 'flows'; edges: { from: string; to: string; valueEur: number }[] }
-  | { type: 'timeseries'; points: { period: string | number | null; value: number }[] };
+  | { type: 'bar'; points: { label: string | number | null; value: number }[]; truncated?: boolean }
+  | {
+      type: 'flows';
+      edges: { from: string; to: string; valueEur: number }[];
+      truncated?: boolean;
+    }
+  | {
+      type: 'timeseries';
+      points: { period: string | number | null; value: number }[];
+      truncated?: boolean;
+    };
 
 export interface ResolvedReport {
   title: string;
@@ -140,21 +151,43 @@ export interface BindOptions {
   question?: string;
 }
 
-// Strip raw HTML so model prose can never inject markup into the public report (spec §7/§9). Loops the
-// strip to a FIXPOINT: a single `<[^>]*>` pass can REASSEMBLE a live tag from nested/overlapping input
-// (`<scr<script>ipt>` collapses to `<script>`), so it must repeat until the string stops changing
-// (review #80, ydimitrof H2). Each pass also drops a trailing UNTERMINATED tag-open (`<img src=x
-// onerror=…` with no closing `>`). Until the Phase-2 markdown renderer (no raw-HTML passthrough) lands
-// as the second layer, this strip is the SOLE barrier, so it must hold on its own.
+// Strip raw HTML in a SINGLE LINEAR pass: scan left-to-right; when a `<` begins a tag (`<`, optional
+// `/`, then a letter) skip to the next `>`. O(n), and it inherently handles nested/overlapping input
+// (`<scr<script>ipt>` — the `<…>` is consumed greedily, leaving inert text) with NO fixpoint loop. The
+// previous `/<[^>]*>/g` was QUADRATIC on input with many `<` and no `>`: each `<` re-scanned to EOL for a
+// `>` that never comes, so one crafted ~64 KB cell (sanitizeCell runs this on up to 500 untrusted result
+// rows) burned seconds of single-request Worker CPU (review #80). A `<` that does NOT begin a tag (a
+// genuine `3 < 5`) is kept verbatim; a trailing unterminated tag-open drops the rest.
+function stripTags(s: string): string {
+  let out = '';
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    const lt = s.indexOf('<', i);
+    if (lt === -1) {
+      out += s.slice(i);
+      break;
+    }
+    const nameChar = s[lt + 1] === '/' ? s[lt + 2] : s[lt + 1];
+    if (nameChar !== undefined && /[a-zA-Z]/.test(nameChar)) {
+      out += s.slice(i, lt); // text before the tag
+      const close = s.indexOf('>', lt + 1);
+      if (close === -1) break; // trailing unterminated tag-open → drop the rest
+      i = close + 1;
+    } else {
+      out += s.slice(i, lt + 1); // keep a non-tag '<' verbatim
+      i = lt + 1;
+    }
+  }
+  return out;
+}
+
+// Until the Phase-2 markdown renderer (no raw-HTML passthrough) lands, this strip is the SOLE barrier
+// against markup in the public report (spec §7/§9), so it must hold on its own.
 export function sanitizeProse(md: string): string {
-  let prev: string;
   // Decode numeric HTML entities first so an entity-encoded tag or scheme (`&#60;script&#62;`,
   // `javascript&#58;…`) is seen by the tag strip and the scheme defang below (review #80, ydimitrof).
-  let out = decodeNumericEntities(md);
-  do {
-    prev = out;
-    out = out.replace(/<[^>]*>/g, '').replace(/<\/?[a-zA-Z][^>]*$/g, '');
-  } while (out !== prev);
+  let out = stripTags(decodeNumericEntities(md));
   // Defang dangerous URL schemes a markdown link/image target could carry — `[t](javascript:…)` is NOT
   // inside <…>, so the tag strip misses it, and a markdown renderer would emit an executable href
   // (review #80). javascript:/vbscript: are never legitimate prose (and could autolink), so defang them
@@ -183,12 +216,22 @@ export function sanitizeCell(v: string | number | null): string | number | null 
 // 1.234.567) and integers ≥ 5 digits. Bare ≤4-digit numbers (years, small counts, ordinals) pass, to
 // keep false positives low.
 const PROSE_NUMBER_PATTERNS: RegExp[] = [
-  /(?:€|eur)\s*\d[\d.,\s]*/giu, // €1234, EUR 1 234
-  /\d[\d.,\s]*\s*(?:€|лв\.?|eur|евро|лева)/giu, // 1 234 лв, 1234 евро
-  /\d[\d.,\s]*\s*(?:млн|млрд|хил)\.?/giu, // 12 млрд, 1,2 млн
+  /(?:€|eur)\s*\d[\d.,\s]*/giu, // €1234, EUR 1 234 (currency-first; nothing trails → linear)
+  // NB: NO separate trailing `\s*` before the unit — it overlapped `[\d.,\s]*` and backtracked
+  // quadratically on a digit/space run with no unit (`9 9 9 …`); the class already absorbs the space.
+  /\d[\d.,\s]*(?:€|лв\.?|eur|евро|лева)/giu, // 1 234 лв, 1234 евро
+  /\d[\d.,\s]*(?:млн|млрд|хил)\.?/giu, // 12 млрд, 1,2 млн (review #80 ReDoS)
   /\d{1,3}(?:[.,\s'’]\d{3})+/gu, // grouped: 1 234, 1,234,567, 1.234.567, 12'000'000 (apostrophe)
   /\d(?:[.,]\d+)?[eE][+-]?\d+/gu, // scientific notation: 1.2e10, 12E9
   /\d{5,}/gu, // 10000+ (years are ≤4 digits)
+  // Spelled-out magnitudes / percentages / ratios bypassed the digit-only patterns above — a model could
+  // write "12 милиарда", "два милиарда", "5 милиона", "95%", "деветдесет процента", "12 на сто",
+  // "3,5 пъти" and land an unbound quantity on the public report (review #80). Flag the unit words too.
+  // NB: no `\b` adjacent to Cyrillic — JS `\b` is ASCII-`\w`-only, so `\bмилиард` never matches after a
+  // space. Match the distinctive stem (covers all inflections: милиард/милиарда/милиарди, …).
+  /милиард|милион/giu, // spelled magnitudes (incl. word-only "два милиарда")
+  /%|процент|(?<!\p{L})на\s+сто/giu, // percentages (%, процент-stem, or the phrase "на сто")
+  /\d[\d.,]*\s*пъти/giu, // numeric ratios (3,5 пъти)
 ];
 
 const codePoint = (n: number, fallback: string): string =>
@@ -242,9 +285,31 @@ export function findProseNumbers(text: string): string[] {
   return [...new Set(hits)].filter(Boolean);
 }
 
+// Model-authored prose fields are bounded by the generation cap, but the number-gate patterns are
+// super-linear, so an unbounded field is a ReDoS vector (review #80). Reject an over-long field instead
+// of scanning it — no legitimate label/header/title/callout approaches this. Realistic prose is tiny.
+const MAX_PROSE_LEN = 2000;
+
+// THE single material-number gate for every model-authored prose slot (folds the previously open-coded
+// copies — a new slot can no longer forget it, review #80). `label` is the slot-specific error prefix.
+function gateProse(value: string, label: string, errors: string[]): void {
+  if (value.length > MAX_PROSE_LEN) {
+    errors.push(`${label}: too long (${value.length} chars); keep prose concise`);
+    return; // do NOT scan an over-long string (ReDoS guard)
+  }
+  const nums = findProseNumbers(value);
+  if (nums.length) errors.push(`${label} (${nums.join(', ')})`);
+}
+
+// Coerce a charted cell to a number — but ONLY a plain decimal string. `Number()` also parses hex
+// (`0x10`→16), scientific (`1e3`→1000) and binary/octal literals, so a TEXT value-column could plot a
+// value that diverges from the cited cell (review #80). Numeric D1 columns arrive as `number` already.
 function asNumber(v: string | number | null): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+  if (typeof v === 'string' && /^[+-]?\d+(?:\.\d+)?$/.test(v.trim())) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
   return null;
 }
 
@@ -314,20 +379,14 @@ export function bindReport(
     const at = `block[${bi}] (${b.type})`;
     switch (b.type) {
       case 'text': {
-        const nums = findProseNumbers(b.md);
-        if (nums.length)
-          errors.push(
-            `${at}: material numbers belong in a value block, not text prose (${nums.join(', ')})`,
-          );
+        gateProse(b.md, `${at}: material numbers belong in a value block, not text prose`, errors);
         blocks.push({ type: 'text', md: sanitizeProse(b.md) });
         break;
       }
       case 'callout': {
-        const nums = [...findProseNumbers(b.title), ...findProseNumbers(b.md)];
-        if (nums.length)
-          errors.push(
-            `${at}: material numbers belong in a value block, not callout prose (${nums.join(', ')})`,
-          );
+        const where = `${at}: material numbers belong in a value block, not callout prose`;
+        gateProse(b.title, where, errors);
+        gateProse(b.md, where, errors);
         blocks.push({ type: 'callout', title: sanitizeProse(b.title), md: sanitizeProse(b.md) });
         break;
       }
@@ -335,11 +394,11 @@ export function bindReport(
         blocks.push({
           type: 'totals',
           items: b.items.map((it) => {
-            const nums = findProseNumbers(it.label);
-            if (nums.length)
-              errors.push(
-                `${at}: material number in totals label — put it in a value slot (${nums.join(', ')})`,
-              );
+            gateProse(
+              it.label,
+              `${at}: material number in totals label — put it in a value slot`,
+              errors,
+            );
             return {
               label: sanitizeProse(it.label),
               value: sanitizeCell(cell(it.ref, at)),
@@ -352,18 +411,17 @@ export function bindReport(
         blocks.push({
           type: 'facts',
           items: b.items.map((it) => {
-            const numsT = findProseNumbers(it.term);
-            if (numsT.length)
-              errors.push(
-                `${at}: material number in facts term — put it in a value slot (${numsT.join(', ')})`,
+            gateProse(
+              it.term,
+              `${at}: material number in facts term — put it in a value slot`,
+              errors,
+            );
+            if (it.sub)
+              gateProse(
+                it.sub,
+                `${at}: material number in facts sub — put it in a value slot`,
+                errors,
               );
-            if (it.sub) {
-              const numsS = findProseNumbers(it.sub);
-              if (numsS.length)
-                errors.push(
-                  `${at}: material number in facts sub — put it in a value slot (${numsS.join(', ')})`,
-                );
-            }
             return {
               term: sanitizeProse(it.term),
               value: sanitizeCell(cell(it.ref, at)),
@@ -374,39 +432,45 @@ export function bindReport(
         break;
       case 'table': {
         const r = requireResult(b.resultId, at);
-        // Require both the display columns AND the link id columns to exist — without the latter an
-        // immutable report could not reconstruct its entity links.
-        const needed = [
-          ...b.columns.map((c) => c.key),
-          ...b.columns.flatMap((c) => (c.link ? [c.link.idCol] : [])),
-        ];
-        if (r && requireCols(r, needed, at)) {
-          for (const col of b.columns) {
-            const nums = findProseNumbers(col.header);
-            if (nums.length)
-              errors.push(
-                `${at}: material number in column header "${col.key}" (${nums.join(', ')})`,
-              );
+        if (r) {
+          for (const col of b.columns)
+            gateProse(col.header, `${at}: material number in column header "${col.key}"`, errors);
+          const columns = b.columns.map((c) => ({ ...c, header: sanitizeProse(c.header) }));
+          if (r.rows.length === 0) {
+            // An empty (0-row) result carries no column metadata, so requireCols would reject every
+            // reference and force the model to retry on dangling errors — render an empty table instead
+            // (a legitimate "no results" answer; review #80).
+            blocks.push({ type: 'table', columns, rows: [], truncated: r.truncated ?? false });
+          } else {
+            // Require both the display columns AND the link id columns to exist — without the latter an
+            // immutable report could not reconstruct its entity links.
+            const needed = [
+              ...b.columns.map((c) => c.key),
+              ...b.columns.flatMap((c) => (c.link ? [c.link.idCol] : [])),
+            ];
+            if (requireCols(r, needed, at)) {
+              const idx = b.columns.map((c) => r.columns.indexOf(c.key));
+              const linkIdx = b.columns.map((c) => (c.link ? r.columns.indexOf(c.link.idCol) : -1));
+              blocks.push({
+                type: 'table',
+                columns,
+                rows: r.rows.map((row) => ({
+                  cells: idx.map((i) => sanitizeCell(row[i] ?? null)),
+                  links: linkIdx.map((i) => {
+                    const v = i < 0 ? null : row[i];
+                    return v == null ? null : String(v);
+                  }),
+                })),
+                truncated: r.truncated ?? false, // surfaced by the renderer; result hit the byte cap (#80)
+              });
+            }
           }
-          const idx = b.columns.map((c) => r.columns.indexOf(c.key));
-          const linkIdx = b.columns.map((c) => (c.link ? r.columns.indexOf(c.link.idCol) : -1));
-          blocks.push({
-            type: 'table',
-            columns: b.columns.map((c) => ({ ...c, header: sanitizeProse(c.header) })),
-            rows: r.rows.map((row) => ({
-              cells: idx.map((i) => sanitizeCell(row[i] ?? null)),
-              links: linkIdx.map((i) => {
-                const v = i < 0 ? null : row[i];
-                return v == null ? null : String(v);
-              }),
-            })),
-          });
         }
         break;
       }
       case 'bar': {
         const r = requireResult(b.resultId, at);
-        if (r && requireCols(r, [b.labelCol, b.valueCol], at)) {
+        if (r && (r.rows.length === 0 || requireCols(r, [b.labelCol, b.valueCol], at))) {
           const labels = colValues(r, b.labelCol);
           const vals = colValues(r, b.valueCol);
           const points: { label: string | number | null; value: number }[] = [];
@@ -414,13 +478,13 @@ export function bindReport(
             const value = asNumber(vals[i] ?? null);
             if (value !== null) points.push({ label: sanitizeCell(labels[i] ?? null), value });
           }
-          blocks.push({ type: 'bar', points });
+          blocks.push({ type: 'bar', points, truncated: r.truncated ?? false });
         }
         break;
       }
       case 'flows': {
         const r = requireResult(b.resultId, at);
-        if (r && requireCols(r, [b.fromCol, b.toCol, b.valueCol], at)) {
+        if (r && (r.rows.length === 0 || requireCols(r, [b.fromCol, b.toCol, b.valueCol], at))) {
           const from = colValues(r, b.fromCol);
           const to = colValues(r, b.toCol);
           const val = colValues(r, b.valueCol);
@@ -434,13 +498,13 @@ export function bindReport(
                 valueEur,
               });
           }
-          blocks.push({ type: 'flows', edges });
+          blocks.push({ type: 'flows', edges, truncated: r.truncated ?? false });
         }
         break;
       }
       case 'timeseries': {
         const r = requireResult(b.resultId, at);
-        if (r && requireCols(r, [b.periodCol, b.valueCol], at)) {
+        if (r && (r.rows.length === 0 || requireCols(r, [b.periodCol, b.valueCol], at))) {
           const period = colValues(r, b.periodCol);
           const vals = colValues(r, b.valueCol);
           const points: { period: string | number | null; value: number }[] = [];
@@ -448,7 +512,7 @@ export function bindReport(
             const value = asNumber(vals[i] ?? null);
             if (value !== null) points.push({ period: sanitizeCell(period[i] ?? null), value });
           }
-          blocks.push({ type: 'timeseries', points });
+          blocks.push({ type: 'timeseries', points, truncated: r.truncated ?? false });
         }
         break;
       }
@@ -456,21 +520,21 @@ export function bindReport(
   });
 
   if (!input.title.trim()) errors.push('report title is empty');
-  const titleNums = findProseNumbers(input.title);
-  if (titleNums.length)
-    errors.push(
-      `report title: material number in title — put it in a value block (${titleNums.join(', ')})`,
-    );
+  gateProse(
+    input.title,
+    'report title: material number in title — put it in a value block',
+    errors,
+  );
   // The displayed question is server-owned when the route supplies the real user text (the user's own
   // question may legitimately carry numbers — it is not a model claim). Only the model-authored
   // fallback is number-gated, so a model cannot smuggle an unbound number through the question slot.
   const serverQuestion = opts.question?.trim() ? opts.question : undefined;
   if (serverQuestion === undefined) {
-    const questionNums = findProseNumbers(input.question);
-    if (questionNums.length)
-      errors.push(
-        `report question: material number in question — the server fills it from the user's message (${questionNums.join(', ')})`,
-      );
+    gateProse(
+      input.question,
+      "report question: material number in question — the server fills it from the user's message",
+      errors,
+    );
   }
   if (errors.length) return { ok: false, errors };
   return {

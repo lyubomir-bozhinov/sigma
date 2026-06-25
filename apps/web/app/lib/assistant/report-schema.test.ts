@@ -545,3 +545,91 @@ describe('sanitizeProse — no raw HTML reaches a public report', () => {
     expect(sanitizeProse('&#60;script&#62;alert(1)&#60;/script&#62;')).not.toMatch(/<script/i);
   });
 });
+
+describe('ultra review fixes (review #80)', () => {
+  it('sanitizeProse stays linear on many "<" with no ">" (ReDoS guard — ultra #1)', () => {
+    const evil = '<a '.repeat(80_000); // ~240 KB; the old /<[^>]*>/g was multi-second on this
+    const out = sanitizeProse(evil);
+    expect(out).not.toMatch(/<a/); // every tag-open consumed, no quadratic scan
+  }, 3000);
+
+  it('rejects an over-long prose field instead of scanning it (ReDoS guard — ultra #2)', () => {
+    const out = bindReport(emit([{ type: 'text', md: 'a'.repeat(5000) }]), results);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.join(' ')).toMatch(/too long/);
+  });
+
+  it('gates spelled-out magnitudes, percentages and ratios (ultra #3)', () => {
+    for (const s of [
+      '12 милиарда лева',
+      'два милиарда',
+      '5 милиона лева',
+      '95%',
+      'деветдесет процента',
+      '12 на сто',
+      '3,5 пъти',
+    ]) {
+      expect(findProseNumbers(s), s).not.toHaveLength(0);
+    }
+  });
+
+  it('propagates the truncated flag onto the resolved table (ultra #5)', () => {
+    const r: QueryResult[] = [
+      { handle: 'R1', columns: ['name', 'spent_eur'], rows: [['X', 5]], truncated: true },
+    ];
+    const out = bindReport(
+      emit([
+        {
+          type: 'table',
+          resultId: 'R1',
+          columns: [
+            { key: 'name', header: 'Име', format: 'text' },
+            { key: 'spent_eur', header: '€', format: 'money' },
+          ],
+        },
+      ]),
+      r,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]?.type === 'table')
+      expect(out.report.blocks[0].truncated).toBe(true);
+  });
+
+  it('renders an empty table for a 0-row result instead of erroring (ultra #8)', () => {
+    const empty: QueryResult[] = [{ handle: 'R1', columns: [], rows: [] }];
+    const out = bindReport(
+      emit([
+        {
+          type: 'table',
+          resultId: 'R1',
+          columns: [{ key: 'name', header: 'Име', format: 'text' }],
+        },
+      ]),
+      empty,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]?.type === 'table')
+      expect(out.report.blocks[0].rows).toEqual([]);
+  });
+
+  it('does not coerce hex/scientific strings in a charted TEXT column (ultra #10)', () => {
+    const r: QueryResult[] = [
+      {
+        handle: 'R1',
+        columns: ['label', 'v'],
+        rows: [
+          ['a', '0x10'],
+          ['b', '1e3'],
+          ['c', '42'],
+        ],
+      },
+    ];
+    const out = bindReport(
+      emit([{ type: 'bar', resultId: 'R1', labelCol: 'label', valueCol: 'v' }]),
+      r,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]?.type === 'bar')
+      expect(out.report.blocks[0].points).toEqual([{ label: 'c', value: 42 }]);
+  });
+});
