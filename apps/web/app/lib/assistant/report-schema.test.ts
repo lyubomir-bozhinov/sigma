@@ -445,6 +445,15 @@ describe('findProseNumbers', () => {
     expect(findProseNumbers(`укрити 1${zwsp}234${zwsp}567 лв`)).not.toHaveLength(0);
     expect(findProseNumbers('сума 12&#48;&#48;&#48; над лимита')).not.toHaveLength(0);
   });
+
+  it('folds alternative Unicode digit forms a reader still reads as numbers (review #80, red-team R1)', () => {
+    const fullwidth = (s: string) => s.replace(/[0-9]/g, (d) => String.fromCharCode(0xff10 + +d));
+    const arabicIndic = (s: string) => s.replace(/[0-9]/g, (d) => String.fromCharCode(0x0660 + +d));
+    expect(findProseNumbers(`усвоени ${fullwidth('12')} млрд лв`)).not.toHaveLength(0);
+    expect(findProseNumbers(`откраднати ${fullwidth('500000')} лева`)).not.toHaveLength(0);
+    expect(findProseNumbers(`укрити ${arabicIndic('1234567')} лв`)).not.toHaveLength(0); // \p{Nd} fold
+    expect(findProseNumbers('над ¹²³⁴⁵ договора')).not.toHaveLength(0); // superscript (NFKC)
+  });
 });
 
 describe('prompt-injection content binds as data, never interpreted (review #80)', () => {

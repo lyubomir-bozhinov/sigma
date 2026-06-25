@@ -157,8 +157,10 @@ export function sanitizeProse(md: string): string {
   // inside <…>, so the tag strip misses it, and a markdown renderer would emit an executable href
   // (review #80). javascript:/vbscript: are never legitimate prose (and could autolink), so defang them
   // anywhere; data:/file: are common words, so defang them ONLY inside a markdown link/image target
-  // `](…)` to avoid mangling normal prose. The Phase-2 renderer MUST additionally allowlist URL schemes
-  // (urlTransform → http/https/mailto only); this is the defence-in-depth until it lands.
+  // `](…)` to avoid mangling normal prose. This string defang is INHERENTLY INCOMPLETE — a scheme split
+  // by whitespace a browser ignores (`java<TAB>script:`, `java&Tab;script:`) slips past it (review #80,
+  // red-team R3) — so the Phase-2 renderer MUST allowlist URL schemes (urlTransform → http/https/mailto
+  // only) as the AUTHORITATIVE barrier; this string pass is only defence-in-depth until that lands.
   out = out
     .replace(/\b(?:javascript|vbscript)\s*:/gi, 'unsafe:')
     .replace(/(\]\(\s*)(?:data|file)\s*:/gi, '$1unsafe:');
@@ -190,14 +192,30 @@ const PROSE_NUMBER_PATTERNS: RegExp[] = [
 const codePoint = (n: number, fallback: string): string =>
   Number.isInteger(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : fallback;
 
+// Fold every Unicode decimal digit to its ASCII value so the number gate is not blinded by a digit a
+// reader still reads as a number — fullwidth (１２), superscript (¹²), circled (⑫), Arabic-Indic,
+// Devanagari, … NFKC folds the compatibility forms; the \p{Nd} pass then folds the remaining script
+// digits by their position within their (contiguous, 10-wide) Unicode block — value = codepoint − the
+// block's zero, found by walking down to the first non-digit (review #80, red-team R1).
+function foldDigits(text: string): string {
+  return text.normalize('NFKC').replace(/\p{Nd}/gu, (ch) => {
+    const cp = ch.codePointAt(0)!;
+    if (cp >= 0x30 && cp <= 0x39) return ch; // already ASCII 0-9
+    let zero = cp;
+    while (zero > 0 && /\p{Nd}/u.test(String.fromCodePoint(zero - 1))) zero -= 1;
+    return String(cp - zero);
+  });
+}
+
 // Normalise prose to what a reader/renderer actually sees, so the number gate is not blinded by markup.
 // Markdown can split a number from its magnitude word (`**12** **млрд.**` → "12 млрд."); a renderer
 // collapses zero-width separators (`1​234​567` → "1234567") and decodes numeric HTML entities
 // (`12&#48;&#48;&#48;` → "12000"). Decode/strip those, drop emphasis, collapse whitespace (review #80).
 function deMarkdown(text: string): string {
-  return text
+  const decoded = text
     .replace(/&#(\d{1,7});/g, (m, d) => codePoint(Number(d), m))
-    .replace(/&#x([0-9a-fA-F]{1,6});/g, (m, h) => codePoint(parseInt(h, 16), m))
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (m, h) => codePoint(parseInt(h, 16), m));
+  return foldDigits(decoded)
     .replace(/[\u200b-\u200d\ufeff]/g, '') // zero-width space / non-joiner / joiner / BOM
     .replace(/[*_`~\\]/g, '')
     .replace(/\s+/g, ' ');
