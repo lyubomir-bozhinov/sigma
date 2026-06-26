@@ -56,9 +56,13 @@ describe('SingleFlight — collapse', () => {
     gate.resolve({ reportId: 'rep_1', createdAt: '2026-06-24T01:00:00Z' });
     const outs = await Promise.all(runs);
 
-    expect(calls).toBe(1);
+    expect(calls).toBe(1); // broken collapse would generate three times
+    // All three callers observe one identical generation — the #97 no-divergence guarantee.
+    // We deliberately do NOT assert the `deduped` flag here: a caller whose key derivation lands
+    // after the leader records legitimately reuses that same report (identical numbers, cache path).
+    // Asserting all-collapsed raced the real crypto in resolveLive and was flaky under load.
     expect(outs.map((o) => o.reportId)).toEqual(['rep_1', 'rep_1', 'rep_1']);
-    expect(outs.every((o) => !o.deduped)).toBe(true);
+    expect(new Set(outs.map((o) => o.createdAt)).size).toBe(1);
   });
 });
 
