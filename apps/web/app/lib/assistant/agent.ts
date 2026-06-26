@@ -105,7 +105,10 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // a per-step output backstop (the model emits block structure + refs, not the bound data values).
     abortSignal: opts.abortSignal,
     maxRetries: 1,
-    maxOutputTokens: 4096,
+    // Per-step output backstop. The model emits block structure + refs (not the bound data values),
+    // but a longer multi-block справка plus reasoning can exceed 4k and get truncated mid-report; 8k
+    // leaves headroom while still capping worst-case tokens per step.
+    maxOutputTokens: 8192,
   });
   return result.toUIMessageStreamResponse({
     // Graceful degradation (§7): a BgGPT outage / rate-limit / timeout surfaces mid-stream as a
