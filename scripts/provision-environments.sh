@@ -112,12 +112,26 @@ if [ -n "$REVIEWER_TEAMS" ]; then
   for t in "${teams[@]}"; do
     _trim t
     [ -z "$t" ] && continue
+    if [[ "$t" != */* ]]; then
+      echo "❌ Team '$t' must be in org/team-slug form (e.g. midt-bg/maintainers)." >&2
+      exit 1
+    fi
     org="${t%%/*}"; slug="${t##*/}"
     id="$(gh api "orgs/$org/teams/$slug" --jq .id)" || { echo "❌ Could not resolve team '$t'." >&2; exit 1; }
     [[ "$id" =~ ^[0-9]+$ ]] || { echo "❌ Could not resolve team '$t' to a numeric id (got: '$id')." >&2; exit 1; }
     echo "  reviewer (team):  $t → $id"
     add_reviewer "Team" "$id"
   done
+fi
+
+# Guard against malformed input that passes the early non-empty check but resolves to zero
+# reviewers (e.g. REVIEWER_USERS="," or whitespace-only entries). Sending an empty reviewers[]
+# would silently disable the approval gate while the PUT below still reports success — exactly
+# the failure this script exists to prevent. Fail loud instead.
+if [ "$(jq 'length' <<<"$reviewers_json")" -eq 0 ]; then
+  echo "❌ No valid reviewers resolved — every entry in REVIEWER_USERS/REVIEWER_TEAMS was empty." >&2
+  echo "   Refusing to apply an environment with no required reviewers (gate would not exist)." >&2
+  exit 1
 fi
 
 echo "→ Applying required reviewers + tag policy to '$ENVIRONMENT' on $REPO …"
