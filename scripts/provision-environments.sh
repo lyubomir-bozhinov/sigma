@@ -100,6 +100,9 @@ if [ -n "$REVIEWER_USERS" ]; then
   for u in "${users[@]}"; do
     _trim u
     [ -z "$u" ] && continue
+    # Validate before interpolating into the gh api path: a login containing '/' or '.' could
+    # otherwise traverse to a different endpoint. GitHub logins are letters/digits/hyphens only.
+    [[ "$u" =~ ^[A-Za-z0-9-]+$ ]] || { echo "❌ Invalid GitHub username '$u' (allowed: letters, digits, hyphens)." >&2; exit 1; }
     id="$(gh api "users/$u" --jq .id)" || { echo "❌ Could not resolve user '$u'." >&2; exit 1; }
     [[ "$id" =~ ^[0-9]+$ ]] || { echo "❌ Could not resolve user '$u' to a numeric id (got: '$id')." >&2; exit 1; }
     echo "  reviewer (user):  $u → $id"
@@ -117,6 +120,11 @@ if [ -n "$REVIEWER_TEAMS" ]; then
       exit 1
     fi
     org="${t%%/*}"; slug="${t##*/}"
+    # Same path-traversal guard as for users, applied to both segments before interpolation.
+    if ! [[ "$org" =~ ^[A-Za-z0-9-]+$ ]] || ! [[ "$slug" =~ ^[A-Za-z0-9_-]+$ ]]; then
+      echo "❌ Invalid team ref '$t' (org: letters/digits/hyphens; slug: letters/digits/hyphens/underscores)." >&2
+      exit 1
+    fi
     id="$(gh api "orgs/$org/teams/$slug" --jq .id)" || { echo "❌ Could not resolve team '$t'." >&2; exit 1; }
     [[ "$id" =~ ^[0-9]+$ ]] || { echo "❌ Could not resolve team '$t' to a numeric id (got: '$id')." >&2; exit 1; }
     echo "  reviewer (team):  $t → $id"
@@ -128,9 +136,18 @@ fi
 # reviewers (e.g. REVIEWER_USERS="," or whitespace-only entries). Sending an empty reviewers[]
 # would silently disable the approval gate while the PUT below still reports success — exactly
 # the failure this script exists to prevent. Fail loud instead.
-if [ "$(jq 'length' <<<"$reviewers_json")" -eq 0 ]; then
+reviewer_count="$(jq 'length' <<<"$reviewers_json")"
+if [ "$reviewer_count" -eq 0 ]; then
   echo "❌ No valid reviewers resolved — every entry in REVIEWER_USERS/REVIEWER_TEAMS was empty." >&2
   echo "   Refusing to apply an environment with no required reviewers (gate would not exist)." >&2
+  exit 1
+fi
+
+# GitHub caps required reviewers at 6 per environment. Catch it here so the user gets a clear
+# message instead of a raw 422 from the PUT below.
+if [ "$reviewer_count" -gt 6 ]; then
+  echo "❌ $reviewer_count reviewers resolved, but GitHub allows at most 6 required reviewers per environment." >&2
+  echo "   Reduce REVIEWER_USERS/REVIEWER_TEAMS to 6 or fewer entries." >&2
   exit 1
 fi
 
