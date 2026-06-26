@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "react-router dev",
+    "dev:remote": "VITE_REMOTE=1 react-router dev",
     "build": "react-router build",
     "preview": "react-router build && vite preview",
     "deploy": "react-router build && node ../../scripts/wrangler-render.mjs build/server/wrangler.json && wrangler deploy --config build/server/wrangler.deploy.json",

@@ -4,15 +4,20 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
-// Local dev reads the miniflare D1 that `pnpm run import` ships into apps/web/.wrangler/state (the seed of
-// ~4.9k authorities / ~190k contracts) — no re-import here. `scripts/ship-domain.mjs` writes that D1.
+// Remote bindings: set VITE_REMOTE=1 (or VITE_REMOTE=true) to route D1/R2/etc through the real
+// Cloudflare account instead of the local miniflare state. Requires `wrangler login` or
+// CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID in the environment. Bindings are resolved by
+// the names in wrangler.jsonc against the authenticated account (same resources as sigma-dev).
+const useRemoteBindings = process.env.VITE_REMOTE === '1' || process.env.VITE_REMOTE === 'true';
+
+// Local dev reads the miniflare D1 shipped by `scripts/ship-domain.mjs` into .wrangler/state.
 const persistPath = fileURLToPath(new URL('.wrangler/state', import.meta.url));
 
 export default defineConfig({
   plugins: [
     cloudflare({
       viteEnvironment: { name: 'ssr' },
-      persistState: { path: persistPath },
+      ...(useRemoteBindings ? { remoteBindings: true } : { persistState: { path: persistPath } }),
     }),
     tailwindcss(),
     reactRouter(),
