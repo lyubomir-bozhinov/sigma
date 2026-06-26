@@ -179,3 +179,68 @@ describe('SingleFlight — progress', () => {
     expect(good).toContainEqual({ phase: 'planning', label: 'P' });
   });
 });
+
+describe('SingleFlight — write failures are safe', () => {
+  const failPut: DedupKv = {
+    get: async () => null,
+    put: async () => {
+      throw new Error('kv down');
+    },
+  };
+
+  it('swallows a failed cache write and still returns the report', async () => {
+    const sf = new SingleFlight({ kv: failPut, r2Exists: alwaysPresent });
+    const gen: Generator = async () => ({ reportId: 'rep_1', createdAt: 't' });
+    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
+    expect(out).toMatchObject({ reportId: 'rep_1', deduped: false });
+  });
+
+  it('a lost write only causes the next request to regenerate — numbers never diverge', async () => {
+    const sf = new SingleFlight({ kv: failPut, r2Exists: alwaysPresent });
+    let calls = 0;
+    const gen: Generator = async () => {
+      calls += 1;
+      return { reportId: `rep_${calls}`, createdAt: 't' };
+    };
+    await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
+    await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
+    expect(calls).toBe(2); // nothing persisted ⇒ regenerated; worst case is a duplicate, never a contradiction
+  });
+});
+
+describe('SingleFlight — r2Exists failure falls toward regeneration', () => {
+  it('treats an r2Exists throw (not just a false) as a miss and regenerates', async () => {
+    const kv = new FakeKv();
+    await record(kv, RECORD_AS, FRESH, { reportId: 'rep_0', createdAt: 't' });
+    let calls = 0;
+    const gen: Generator = async () => {
+      calls += 1;
+      return { reportId: 'rep_new', createdAt: 't2' };
+    };
+    const sf = new SingleFlight({
+      kv,
+      r2Exists: async () => {
+        throw new Error('r2 unreachable');
+      },
+    });
+    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
+    expect(out).toMatchObject({ reportId: 'rep_new', deduped: false });
+    expect(calls).toBe(1);
+  });
+});
+
+describe('SingleFlight — cross-isolate KV backstop', () => {
+  it('a second instance dedups on the first instance’s recorded report', async () => {
+    const kv = new FakeKv(); // one shared store stands in for KV seen by two isolates
+    const a = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    const b = new SingleFlight({ kv, r2Exists: alwaysPresent });
+
+    const first = await a.run(FRESH, SIGNALS, RECORD_AS, async () => ({ reportId: 'rep_1', createdAt: 't' }));
+    expect(first.deduped).toBe(false);
+
+    const second = await b.run(FRESH, SIGNALS, RECORD_AS, async () => {
+      throw new Error('must not regenerate — should hit the KV backstop');
+    });
+    expect(second).toMatchObject({ reportId: 'rep_1', deduped: true, layer: 'L2' });
+  });
+});

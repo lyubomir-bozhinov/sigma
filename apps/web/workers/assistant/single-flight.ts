@@ -1,18 +1,26 @@
 // F2 — single-flight report generation (coordinator).
 //
 // One generation per key, ever. Two people asking the same fixed-period question concurrently must
-// collapse onto ONE generation, not race two that could diverge (a #97 violation). The Durable
-// Object addressed `idFromName(L2key)` routes every request for a key to one isolate; this
-// coordinator is what then collapses the concurrent calls inside that isolate onto a single shared
-// in-flight promise. JS is single-threaded within an isolate, so a shared promise IS the lock —
-// no extra synchronisation needed. See docs/spec/ai-assistant-dedup.md §3.
+// collapse onto ONE generation, not race two that could diverge (a #97 violation).
 //
-// The DO key folds the freshness token (L2 keys do — see dedup.ts), so one instance is implicitly
-// pinned to one freshness: a data refresh changes the L2 key, hence idFromName, hence the isolate.
-// We therefore take freshness per-run rather than per-instance and do not re-check it here.
+// Scope of THIS module — in-isolate collapse: concurrent `run` calls sharing one SingleFlight
+// instance join a single in-flight promise. JS is single-threaded within an isolate, so the shared
+// promise IS the lock — no extra synchronisation needed. Across isolates, KV is the backstop: the
+// leader `record`s its report, so a later isolate dedups on the cache hit instead of regenerating
+// (eventually consistent, not a hard lock).
+//
+// Phase 3 (NOT in this module): a Durable Object keyed `idFromName(L2key)` will route every request
+// for a key to ONE isolate, upgrading the KV backstop to a hard single-flight. That DO does not exist
+// yet — this coordinator is written to drop into that wrapper unchanged. See docs/spec/ai-assistant-dedup.md §3.
+//
+// Freshness is taken per-run, not per-instance: the L2 key folds the freshness token (see dedup.ts),
+// so a data refresh yields a different key — and, once wired, a different DO instance. We do not
+// re-check freshness here; `lookup` already rejects any cache entry whose token has moved.
 //
 // Fail toward regeneration everywhere: a KV hit whose R2 artifact was GC'd is a miss; a generator
-// throw clears the flight so the next request regenerates; a failed cache write is swallowed.
+// throw clears the flight so the next request regenerates; a failed cache write is swallowed — and
+// even then the numbers can't diverge (values are bound by reference, #97), so the worst case is a
+// duplicate artifact, never a contradictory one.
 
 import {
   record,
@@ -58,8 +66,8 @@ export interface ResolveOutcome {
 }
 
 /**
- * One instance per key (one per DO instance). Collapses concurrent `run` calls onto a single
- * generation and rebroadcasts that generation's coarse progress to every waiter.
+ * One instance per key (intended: one per DO instance once wired — see file header). Collapses
+ * concurrent `run` calls onto a single generation and rebroadcasts its coarse progress to every waiter.
  */
 export class SingleFlight {
   private inFlight: Promise<ResolveOutcome> | null = null;

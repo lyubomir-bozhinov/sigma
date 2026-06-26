@@ -133,6 +133,6 @@ Phase 0 unblocks Phase 1 (BE) and Phase 4 (FE) **in parallel** — the reason to
 
 ## 7. Test obligations (adversarial)
 
-- F1: freshness mismatch → miss; KV error → miss; no key collision across layers (canonical serialization); each layer round-trips; global L2 key stable across two differently-phrased prompts resolving to identical SQL.
-- F2: exactly one `generator()` call under N concurrent requests for one key; R2-absent hit → regenerate; generator throw → next request regenerates; waiter receives the driver's `reportId`.
+- F1: freshness mismatch → miss; KV error → miss; no key collision across layers (canonical serialization); each layer round-trips; global L2 key stable across two differently-phrased prompts resolving to identical SQL. **Canonical value encoding is injective over its domain** (JSON values + `Date`): distinct `Date`, `NaN`, `±Infinity`, `undefined`, and `bigint` params each yield distinct keys — never the `JSON.stringify` collapse (`Date`→`{}`, `NaN`/`undefined`→`null`, `bigint` throws). A collision here would serve one question's numbers for another (#97).
+- F2: exactly one `generator()` call under N concurrent requests for one key; R2-absent hit → regenerate; generator throw → next request regenerates; **failed cache write swallowed → next request regenerates (numbers never diverge)**; **`r2Exists` throw treated as miss → regenerate**; **cross-isolate: a second instance dedups on the first's KV record**; waiter receives the driver's `reportId`.
 - Cross-cutting divergence canary (Phase 5): identical L2 key ⇒ identical `reportId`, asserted in CI; feeds #97.
