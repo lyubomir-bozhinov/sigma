@@ -119,6 +119,19 @@ Custom token-ът се нуждае само от тези **Account**-ниво 
 не е нужно отделно **Workflows** право — то се покрива от Workers Scripts: Edit; някои dashboard-и не
 изброяват самостоятелен Workflows scope.)
 
+> **Expiry + ротация.** Cloudflare token-ите по подразбиране **не изтичат**. Задайте `expires_on` ~90
+> дни напред при създаване и сложете напомняне за тримесечна ротация: регенерирайте token-а и обновете
+> GitHub секрета `CLOUDFLARE_API_TOKEN`. IP филтриране е непрактично за GitHub-hosted runner-ите
+> (голям, променлив egress диапазон) — пропуснете го, освен ако не минете на self-hosted runner с
+> фиксиран изходящ IP.
+>
+> **Защо все още дълголетен token, а не OIDC?** Към юни 2026 Cloudflare **няма** OIDC / workload
+> identity federation за Wrangler (за разлика от AWS `configure-aws-credentials` / GCP WIF) — няма
+> token-exchange endpoint, който да размени GitHub OIDC token за краткотраен Cloudflare credential.
+> Отвореното искане ([workers-sdk#11434](https://github.com/cloudflare/workers-sdk/discussions/11434))
+> няма отговор от Cloudflare. Затова смекчаването е **минимални scope-ове + expiry + ротация**, не
+> keyless auth. Преразгледайте, ако Cloudflare пусне OIDC.
+
 ## 1. Provisioning на D1 (за всяка среда, локално)
 
 Всяка среда получава **собствена** база. `SIGMA_D1_NAME` избира името (по подразбиране `sigma`):
@@ -191,8 +204,28 @@ domain таблиците и преизчислява rollup-ите + FTS.
 > job-а, GitHub все още излага repo-ниво секретите, така че production продължава да се деплойва с
 > днешните repo секрети, докато не решите да ги преместите в средата.
 
-> Опционално подсилване: дайте на `production` **required reviewers**, за да изчака prod деплой ръчен
-> клик "Review deployments".
+### Approval gate за production (задължително)
+
+Production деплой **изисква човешко одобрение**. Един `v*` таг сам по себе си повече **не** пуска прод
+автоматично — job-ът спира на „Review deployments“ преди да стигне runner (т.е. преди Cloudflare
+автентикацията изобщо да се изпълни). Това е protection rule на средата, не YAML — затова го кодираме
+в скрипт, за да е възпроизводимо и одитируемо вместо невидим клик в UI-я:
+
+```bash
+REVIEWER_USERS="lyubomir-bozhinov" ./scripts/provision-environments.sh   # required reviewers + v* tag policy
+# или с екип:
+REVIEWER_TEAMS="midt-bg/maintainers" ./scripts/provision-environments.sh
+```
+
+Скриптът ([scripts/provision-environments.sh](../scripts/provision-environments.sh)) задава на
+`production`:
+1. **Required reviewers** (+ `prevent_self_review`) — поне един човек трябва да одобри прод деплоя.
+2. **Deployment tag policy `v*`** — GitHub сам отказва прод деплой, ако ref-ът не е release таг, дори
+   ако `detect` логиката в [deploy.yml](../.github/workflows/deploy.yml) някога сгреши (defense in
+   depth). Job-ът има и изричен `timeout-minutes: 10` вместо 360-мин default.
+
+> Изчакването за одобрение **не** влиза в `timeout-minutes` — таймерът тръгва чак щом job-ът хване
+> runner, след одобрението.
 
 ## 4. Деплой
 
