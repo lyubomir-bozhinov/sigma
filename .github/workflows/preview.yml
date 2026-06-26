@@ -27,6 +27,9 @@ jobs:
       github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    # Build + single-Worker deploy is a few minutes; cap well under the 360-min default so a wedged
+    # wrangler or stalled network fails fast instead of holding a runner for hours.
+    timeout-minutes: 10
     environment: preview
     permissions:
       contents: read
@@ -171,6 +174,8 @@ jobs:
       group: preview-teardown-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    # Just an idempotent worker delete — minutes at most. Cap low vs the 360-min default.
+    timeout-minutes: 5
     environment: preview
     permissions:
       contents: read
