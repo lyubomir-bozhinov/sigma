@@ -26,6 +26,15 @@ export const EMIT_REPORT_POLICY =
   'ЗАДЪЛЖИТЕЛНО се връща чрез инструмента `emit_report`. Само уточняващи или мета отговори остават ' +
   'като обикновен текст. Чатът е control plane; продуктът е справката.';
 
+// Ordering rule paired with agent.ts forcing a tool call on the first step (toolChoice 'required'):
+// without it a weak 27B narrates the call as prose, or jumps straight to emit_report with no data to
+// bind. States the contract so the FORCED first call lands on run_sql, not emit_report.
+export const TOOL_WORKFLOW_RULE =
+  'РАБОТЕН ПОТОК: За въпрос с данни ВИНАГИ първо извикай `run_sql` (изпълни SELECT и получи хендъл ' +
+  'R1…), и едва СЛЕД като имаш реален резултат — `emit_report`, чиито блокове реферират хендъла. НЕ ' +
+  'извиквай `emit_report`, преди да имаш резултат от `run_sql`. НИКОГА не пиши SQL заявката или ' +
+  'извикването на инструмент като текст/код-блок — извиквай инструментите директно.';
+
 export const VALUES_BY_REFERENCE_RULE =
   'СТОЙНОСТИ: Никога не пиши числа сам. Блоковете на справката РЕФЕРЕНЦИРАТ хендъли към резултати от ' +
   'инструментите (напр. R1, ред 0, колона "total_eur"); сървърът свързва реалните стойности. ' +
@@ -61,6 +70,7 @@ export function buildSystemPrompt(input: SystemPromptInput = {}): string {
   const parts = [
     ROLE,
     EMIT_REPORT_POLICY,
+    TOOL_WORKFLOW_RULE,
     VALUES_BY_REFERENCE_RULE,
     DATA_TRUST_RULE,
     EDITORIAL_SKELETON,
