@@ -47,6 +47,8 @@ export const trimMessages = (
   maxBytes = MAX_BYTES,
 ): UIMessage[] => {
   let kept = messages.slice(-maxMessages);
+  // Always keep at least one message: a single over-budget turn is sent anyway, the server 413s it, and
+  // the dock surfaces that error (errors.ts) — so the turn isn't dropped silently.
   while (kept.length > 1 && byteLength(JSON.stringify(kept)) > maxBytes) {
     kept = kept.slice(1);
   }
