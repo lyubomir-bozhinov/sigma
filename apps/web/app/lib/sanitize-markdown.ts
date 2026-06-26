@@ -70,6 +70,7 @@ function renderLine(raw: string): string {
 }
 
 export function sanitizeMarkdown(source: string): string {
+  if (!source) return '';
   const lines = source.split('\n');
   const out: string[] = [];
   let i = 0;

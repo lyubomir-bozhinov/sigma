@@ -71,7 +71,6 @@ const toNumber = (value: string | number | null): number | null => {
 
 // Mirrors the foundation's render-format.formatCell so the chip's lead stat reads like the rest of the
 // site (money in EUR, percent as a 0..1 ratio, blank as an em-dash).
-// TODO(foundation-merge): replace with `formatCell` from `~/lib/assistant/render-format`.
 const formatByHint = (value: string | number | null, format: CellFormat): string => {
   switch (format) {
     case 'money':
@@ -84,9 +83,8 @@ const formatByHint = (value: string | number | null, format: CellFormat): string
       return date(value == null ? null : String(value));
     case 'text':
     default:
-      // value is typed string | number | null, but it crosses an untrusted tool boundary; guard against
-      // a non-primitive slipping through (String({}) → '[object Object]' in the chip) by showing the
-      // em-dash instead.
+      // value crosses an untrusted tool boundary; guard against a non-primitive slipping through
+      // (String({}) → '[object Object]') by showing the em-dash instead.
       if (typeof value === 'string') return value === '' ? '—' : value;
       if (typeof value === 'number') return String(value);
       return '—';

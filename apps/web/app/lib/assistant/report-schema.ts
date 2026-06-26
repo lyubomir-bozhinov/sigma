@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 // Zod schemas for the emit_report tool — the closed block vocabulary (v1).
-// These mirror the ReportArtifact types in routes/report.tsx but are the authoritative
-// Zod-validated form (invalid output from the model triggers a retry via the SDK).
+// Field names align with the PR 80 frozen contract in ~/lib/assistant-dock/contract.ts:
+//   text/callout use `md`, facts use `items`, bar uses `points`.
 
 const FormatHint = z.enum(['money', 'number', 'percent', 'date', 'text']);
 
@@ -10,14 +10,13 @@ const FormatHint = z.enum(['money', 'number', 'percent', 'date', 'text']);
 
 const BlockText = z.object({
   type: z.literal('text'),
-  content: z.string().describe('Markdown prose string (no raw HTML)'),
+  md: z.string().describe('Markdown prose string (no raw HTML)'),
 });
 
 const BlockCallout = z.object({
   type: z.literal('callout'),
-  title: z.string().optional(),
-  content: z.string().describe('Markdown body text (notes, caveats, source citation)'),
-  variant: z.enum(['info', 'warning']).optional().default('info'),
+  title: z.string().describe('Short heading for the callout box'),
+  md: z.string().describe('Markdown body text (notes, caveats, source citation)'),
 });
 
 const BlockTotals = z.object({
@@ -35,7 +34,7 @@ const BlockTotals = z.object({
 const BlockFacts = z.object({
   type: z.literal('facts'),
   label: z.string().optional(),
-  rows: z.array(
+  items: z.array(
     z.object({
       term: z.string(),
       value: z.string(),
@@ -49,21 +48,26 @@ const TableColumn = z.object({
   header: z.string(),
   align: z.enum(['left', 'right', 'center', 'num', 'money']).optional(),
   format: FormatHint.optional(),
-  // link: {kind, field} — renderer builds href from entity kind + value in that field
+  // link: {kind, idCol} — renderer builds href from entity kind + value in idCol field
   link: z
     .object({
       kind: z.enum(['authority', 'company', 'contract']),
-      field: z.string().describe('Row key whose value is the entity slug/id'),
+      idCol: z.string().describe('Column key whose value is the entity slug/id'),
     })
     .optional(),
+});
+
+// Table rows use cell arrays aligned to columns (matches the resolved contract ResolvedRow shape).
+const TableRow = z.object({
+  cells: z.array(z.union([z.string(), z.number(), z.null()])),
+  links: z.array(z.union([z.string(), z.null()])).optional(),
 });
 
 const BlockTable = z.object({
   type: z.literal('table'),
   caption: z.string().optional(),
   columns: z.array(TableColumn),
-  // Each row is a plain object keyed by column.key
-  rows: z.array(z.record(z.union([z.string(), z.number(), z.null()]))),
+  rows: z.array(TableRow),
 });
 
 // bar: renderer computes shares and palette colours from raw values
@@ -71,11 +75,10 @@ const BlockBar = z.object({
   type: z.literal('bar'),
   label: z.string().optional(),
   unit: z.string().optional().describe('e.g. "€" — displayed as prefix on value labels'),
-  items: z.array(
+  points: z.array(
     z.object({
       label: z.string(),
       value: z.number(),
-      key: z.string().optional().describe('Stable identifier for palette determinism'),
     }),
   ),
 });

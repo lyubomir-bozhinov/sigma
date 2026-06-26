@@ -21,7 +21,7 @@ const totalsReport = (value: string | number | null, format: CellFormat): Resolv
 
 describe('reportOutputFromMessage', () => {
   it('returns the output of a settled emit_report part', () => {
-    const output = { ok: true, report: totalsReport(1, 'money') };
+    const output = { ok: true, id: 'r1', url: '/reports/r1', report: totalsReport(1, 'money') };
     const message = {
       parts: [{ type: 'text' }, { type: 'tool-emit_report', state: 'output-available', output }],
     };

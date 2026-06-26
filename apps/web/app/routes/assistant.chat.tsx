@@ -197,10 +197,11 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     emit_report: tool({
       description:
-        'Finalise and persist a report artifact. Call this once you have gathered all data. Returns {id, title} — the /reports/:id URL is /reports/{id}.',
+        'Finalise and persist a report artifact. Call this once you have gathered all data. Returns the resolved report for the chat chip plus the /reports/:id URL.',
       parameters: ReportArtifactSchema,
       execute: async (artifact, { messages }) => {
         const id = crypto.randomUUID().replace(/-/g, '');
+        const url = `/reports/${id}`;
         const lastUser = messages.filter((m) => m.role === 'user').slice(-1)[0];
         const rawContent = lastUser?.content;
         const promptSummary: string | undefined =
@@ -216,14 +217,24 @@ export async function action({ request, context }: Route.ActionArgs) {
         if (env.REPORT_STORE) {
           const body = JSON.stringify(stored);
           if (body.length > 500_000) {
-            return { error: 'Справката е твърде голяма (>500 KB). Намалете броя на редовете.' };
+            return { ok: false, errors: ['Справката е твърде голяма (>500 KB). Намалете броя на редовете.'] };
           }
           await env.REPORT_STORE.put(`${id}.json`, body, {
             httpMetadata: { contentType: 'application/json' },
           });
         }
 
-        return { id, title: artifact.title, url: `/reports/${id}` };
+        return {
+          ok: true,
+          id,
+          url,
+          report: {
+            title: artifact.title,
+            question: promptSummary ?? '',
+            blocks: artifact.blocks,
+            watermark: 'ai-generated' as const,
+          },
+        };
       },
     }),
   };

@@ -1,11 +1,11 @@
-// Local mirror of the report contract the dock consumes. The canonical schema is the server foundation's
-// `~/lib/assistant/report-schema` (not yet on this branch); the v1 block model it encodes is documented
-// in docs/spec/ai-assistant.md ("Block речник (v1)").
+// The emit_report tool contract — the frozen interface from PR 80.
 //
-// The dock is built against this mirror so the branch compiles and tests without that foundation present.
-// On foundation merge to `main`, delete this file and import the same types from the schema module above
-// (the source of truth).
-// TODO(foundation-merge): replace this module with `import type { ... } from '~/lib/assistant/report-schema'`.
+// ResolvedReport is the server-resolved artifact the dock and report page both consume.
+// Block values are always scalars here (refs resolved by the server before this is returned).
+// Canonical block vocabulary: text/callout use `md`, facts use `items`, bar uses `points`.
+//
+// On foundation merge, ~/lib/assistant/report-schema.ts will align to these names and this file
+// will be replaced by `import type { ... } from '~/lib/assistant/report-schema'`.
 
 export type CellFormat = 'money' | 'number' | 'percent' | 'date' | 'text';
 export type EntityKind = 'company' | 'authority' | 'contract';
@@ -20,7 +20,7 @@ export interface ResolvedColumn {
 
 export interface ResolvedRow {
   cells: (string | number | null)[];
-  // Raw entity id per column for columns that declare a `link` (else null), aligned to `columns`.
+  // Resolved entity id per column for columns that declare a `link` (else null), aligned to `columns`.
   links?: (string | null)[];
 }
 
@@ -45,7 +45,9 @@ export interface ResolvedReport {
   watermark: 'ai-generated';
 }
 
-// The `emit_report` tool part `output` shape (contract §3): a finished report or validation errors.
+// The `emit_report` tool part `output` shape (contract §3).
+// On success the server returns the full resolved report plus the R2 persistence metadata (id/url).
+// On failure (validation errors or storage error) it returns the error list.
 export type EmitReportOutput =
-  | { ok: true; report: ResolvedReport }
+  | { ok: true; id: string; url: string; report: ResolvedReport }
   | { ok: false; errors: string[] };

@@ -99,8 +99,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     : null;
   return (
     <html lang="bg">
-      <head>
-        <meta charSet="utf-8" />
+      <head suppressHydrationWarning>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="СИГМА" />
