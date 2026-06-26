@@ -8,7 +8,7 @@
 //           Zod-validated emit_report (invalid output → model retries).
 
 import { createOpenAI } from '@ai-sdk/openai';
-import { createUIMessageStream, createUIMessageStreamResponse, streamText, tool } from 'ai';
+import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, streamText, tool } from 'ai';
 import { z } from 'zod';
 import type { Route } from './+types/assistant.chat';
 import { guardSql, truncateResult } from '../lib/assistant/sql-guard';
@@ -276,14 +276,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   };
 
   // ── Stream ───────────────────────────────────────────────────────────────
+  const modelMessages = await convertToModelMessages(
+    messages as Parameters<typeof convertToModelMessages>[0],
+  );
   const result = streamText({
-    model: bggpt(MODEL_ID),
+    model: bggpt.chat(MODEL_ID),
     system: SYSTEM_PROMPT,
-    messages: messages as Parameters<typeof streamText>[0]['messages'],
+    messages: modelMessages,
     tools,
     maxSteps,
     temperature: 0.2,
   });
 
-  return result.toDataStreamResponse();
+  return result.toUIMessageStreamResponse();
 }
