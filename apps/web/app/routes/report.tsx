@@ -159,13 +159,13 @@ function reportToMarkdown(report: StoredReport): string {
   for (const block of report.blocks) {
     switch (block.type) {
       case 'text':
-        lines.push(block.content, '');
+        lines.push(block.md, '');
         break;
 
       case 'callout':
-        if (block.title) lines.push(`> **${block.title}**`);
+        lines.push(`> **${block.title}**`);
         lines.push(
-          ...block.content.split('\n').map((l) => `> ${l}`),
+          ...block.md.split('\n').map((l) => `> ${l}`),
           '',
         );
         break;
@@ -186,7 +186,7 @@ function reportToMarkdown(report: StoredReport): string {
         lines.push(
           mdTable(
             ['Поле', 'Стойност'],
-            block.rows.map((r) => [r.term, r.sub ? `${r.value} _(${r.sub})_` : r.value]),
+            block.items.map((r) => [r.term, r.sub ? `${r.value} _(${r.sub})_` : r.value]),
           ),
           '',
         );
@@ -198,8 +198,8 @@ function reportToMarkdown(report: StoredReport): string {
           mdTable(
             block.columns.map((c) => c.header),
             block.rows.map((row) =>
-              block.columns.map((c) =>
-                formatValue(row[c.key] as string | number | null, c.format),
+              block.columns.map((c, ci) =>
+                formatValue(row.cells[ci] ?? null, c.format),
               ),
             ),
           ),
@@ -210,9 +210,9 @@ function reportToMarkdown(report: StoredReport): string {
       case 'bar':
         if (block.label) lines.push(`## ${block.label}`);
         lines.push(
-          ...block.items.map(
-            (item, i) =>
-              `${i + 1}. ${item.label} — ${block.unit ? `${block.unit}${item.value.toLocaleString('bg')}` : money(item.value)}`,
+          ...block.points.map(
+            (pt, i) =>
+              `${i + 1}. ${pt.label} — ${block.unit ? `${block.unit}${pt.value.toLocaleString('bg')}` : money(pt.value)}`,
           ),
           '',
         );
@@ -300,6 +300,248 @@ function MarkdownButton({ report }: { report: StoredReport }) {
   );
 }
 
+// ── DOCX export ───────────────────────────────────────────────────────────────
+// docx is imported lazily (dynamic import) so the library never executes at
+// module initialisation time during SSR — it injects a <link> into <head>
+// which would cause a hydration mismatch.
+
+async function reportToDocx(report: StoredReport): Promise<Blob> {
+  const {
+    AlignmentType, Document, HeadingLevel, Packer, Paragraph,
+    Table, TableCell, TableRow, TextRun, WidthType, BorderStyle,
+    convertMillimetersToTwip, ShadingType,
+  } = await import('docx');
+
+  // ── inline helpers (need docx constructors in scope) ──────────────────────
+
+  function parseInline(text: string) {
+    const runs = [];
+    const re = /(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`)/g;
+    let last = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      if (match.index > last) runs.push(new TextRun(text.slice(last, match.index)));
+      const token = match[0];
+      if (token.startsWith('**')) runs.push(new TextRun({ text: token.slice(2, -2), bold: true }));
+      else if (token.startsWith('_')) runs.push(new TextRun({ text: token.slice(1, -1), italics: true }));
+      else runs.push(new TextRun({ text: token.slice(1, -1), font: 'Courier New', size: 18 }));
+      last = match.index + token.length;
+    }
+    if (last < text.length) runs.push(new TextRun(text.slice(last)));
+    return runs;
+  }
+
+  function mdParagraph(text: string, opts?: { indent?: boolean; spacing?: number }) {
+    return new Paragraph({
+      children: parseInline(text),
+      indent: opts?.indent ? { left: convertMillimetersToTwip(12) } : undefined,
+      spacing: opts?.spacing != null ? { after: opts.spacing } : { after: 120 },
+    });
+  }
+
+  const HEADER_SHADING = { fill: 'F2F2F2', type: ShadingType.SOLID, color: 'auto' };
+  const NO_BORDER = { style: BorderStyle.NIL, size: 0, color: 'auto' };
+  const THIN = { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC' };
+
+  function makeTable(headers: string[], rows: (string | number | null)[][]) {
+    const colWidth = Math.floor(9000 / headers.length);
+    return new Table({
+      width: { size: 9000, type: WidthType.DXA },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: headers.map((h) =>
+            new TableCell({
+              shading: HEADER_SHADING,
+              borders: { top: THIN, bottom: THIN, left: NO_BORDER, right: NO_BORDER },
+              width: { size: colWidth, type: WidthType.DXA },
+              children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 18 })] })],
+            }),
+          ),
+        }),
+        ...rows.map((row) =>
+          new TableRow({
+            children: row.map((cell) =>
+              new TableCell({
+                borders: { top: THIN, bottom: THIN, left: NO_BORDER, right: NO_BORDER },
+                width: { size: colWidth, type: WidthType.DXA },
+                children: [new Paragraph({ children: parseInline(cell == null ? '—' : String(cell)), spacing: { after: 60 } })],
+              }),
+            ),
+          }),
+        ),
+      ],
+    });
+  }
+
+  function spacer(points = 200) {
+    return new Paragraph({ text: '', spacing: { after: points } });
+  }
+
+  function blockToDocx(block: ReportBlockType) {
+    switch (block.type) {
+      case 'text':
+        return block.md.split('\n\n').filter(Boolean).map((para) => mdParagraph(para));
+
+      case 'callout': {
+        const border = { left: { style: BorderStyle.SINGLE, size: 12, color: 'E8A317', space: 8 } };
+        return [
+          new Paragraph({ children: [new TextRun({ text: block.title, bold: true })], indent: { left: convertMillimetersToTwip(8) }, spacing: { after: 60 }, border }),
+          ...block.md.split('\n\n').filter(Boolean).map((para) =>
+            new Paragraph({ children: parseInline(para), indent: { left: convertMillimetersToTwip(8) }, spacing: { after: 80 }, border }),
+          ),
+        ];
+      }
+
+      case 'totals': {
+        const out = [];
+        if (block.label) out.push(new Paragraph({ text: block.label, heading: HeadingLevel.HEADING_3, spacing: { after: 100 } }));
+        out.push(makeTable(['Показател', 'Стойност'], block.items.map((i) => [i.label, formatValue(i.value, i.format)])));
+        return out;
+      }
+
+      case 'facts': {
+        const out = [];
+        if (block.label) out.push(new Paragraph({ text: block.label, heading: HeadingLevel.HEADING_3, spacing: { after: 100 } }));
+        out.push(makeTable(['Поле', 'Стойност'], block.items.map((r) => [r.term, r.sub ? `${r.value} (${r.sub})` : r.value])));
+        return out;
+      }
+
+      case 'table': {
+        const out = [];
+        if (block.caption) out.push(new Paragraph({ text: block.caption, heading: HeadingLevel.HEADING_3, spacing: { after: 100 } }));
+        out.push(makeTable(
+          block.columns.map((c) => c.header),
+          block.rows.map((row) => block.columns.map((c, ci) => formatValue(row.cells[ci] ?? null, c.format))),
+        ));
+        return out;
+      }
+
+      case 'bar': {
+        const out = [];
+        if (block.label) out.push(new Paragraph({ text: block.label, heading: HeadingLevel.HEADING_3, spacing: { after: 100 } }));
+        out.push(makeTable(
+          ['#', 'Наименование', 'Стойност'],
+          block.points.map((pt, i) => [i + 1, pt.label, block.unit ? `${block.unit}${Number(pt.value).toLocaleString('bg')}` : money(pt.value)]),
+        ));
+        return out;
+      }
+
+      case 'flows': {
+        const out = [];
+        if (block.label) out.push(new Paragraph({ text: block.label, heading: HeadingLevel.HEADING_3, spacing: { after: 100 } }));
+        out.push(makeTable(['Възложител', 'Изпълнител', 'Стойност (EUR)'], block.edges.map((e) => [e.from, e.to, money(e.valueEur)])));
+        return out;
+      }
+
+      case 'timeseries': {
+        const out = [];
+        if (block.label) out.push(new Paragraph({ text: block.label, heading: HeadingLevel.HEADING_3, spacing: { after: 100 } }));
+        if (block.series && block.series.length > 1) {
+          const periodMap = new Map<string, (string | number | null)[]>();
+          block.series.forEach((s, si) => {
+            s.points.forEach(({ period, value }) => {
+              if (!periodMap.has(period)) periodMap.set(period, Array(block.series!.length).fill(null));
+              periodMap.get(period)![si] = money(value);
+            });
+          });
+          out.push(makeTable(['Период', ...block.series.map((s) => s.label)], [...periodMap.entries()].map(([p, vals]) => [p, ...vals])));
+        } else {
+          const pts = block.points ?? block.series?.[0]?.points ?? [];
+          out.push(makeTable(['Период', 'Стойност'], pts.map(({ period, value }) => [period, money(value)])));
+        }
+        return out;
+      }
+    }
+  }
+
+  // ── build document ─────────────────────────────────────────────────────────
+
+  const children = [];
+
+  children.push(new Paragraph({ text: report.title, heading: HeadingLevel.HEADING_1, spacing: { after: 200 } }));
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'AI-генерирано, неофициално', italics: true, color: '888888', size: 18 })],
+    spacing: { after: 160 },
+  }));
+  if (report.lede) children.push(new Paragraph({ children: parseInline(report.lede), spacing: { after: 160 } }));
+  if (report.scope) children.push(new Paragraph({
+    children: [new TextRun({ text: `Обхват: ${report.scope}`, italics: true, size: 18 })],
+    spacing: { after: 240 },
+  }));
+
+  for (const block of report.blocks) {
+    children.push(...blockToDocx(block), spacer());
+  }
+
+  if (report.methodology) {
+    children.push(
+      new Paragraph({ text: 'Как е изчислено', heading: HeadingLevel.HEADING_2, spacing: { after: 120 } }),
+      ...report.methodology.split('\n\n').filter(Boolean).map((p) => mdParagraph(p)),
+      spacer(),
+    );
+  }
+
+  children.push(new Paragraph({
+    children: [new TextRun({
+      text: `Генерирано от СИГМА AI на ${new Date(report.generatedAt).toLocaleDateString('bg')}. Неофициално.`,
+      italics: true,
+      size: 16,
+      color: '888888',
+    })],
+    alignment: AlignmentType.CENTER,
+  }));
+
+  const doc = new Document({
+    sections: [{
+      properties: { page: { margin: {
+        top: convertMillimetersToTwip(20), bottom: convertMillimetersToTwip(20),
+        left: convertMillimetersToTwip(25), right: convertMillimetersToTwip(25),
+      } } },
+      children,
+    }],
+  });
+
+  return Packer.toBlob(doc);
+}
+
+function DocxButton({ report }: { report: StoredReport }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  async function handleDownload() {
+    setState('loading');
+    try {
+      const blob = await reportToDocx(report);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${report.id}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setState('idle');
+    } catch {
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="report-pdf-btn"
+      onClick={handleDownload}
+      disabled={state === 'loading'}
+      aria-label="Изтегли като Word документ"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" width="16" height="16">
+        <path d="M4 2h8l4 4v12H4V2zm8 0v4h4" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M7 10l1.5 4 1.5-4 1.5 4 1.5-4" fill="none" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+      {state === 'loading' ? 'Генериране…' : state === 'error' ? 'Грешка' : 'Word'}
+    </button>
+  );
+}
+
 // ── Block renderers ───────────────────────────────────────────────────────────
 
 function BlockRenderer({ block }: { block: ReportBlockType }) {
@@ -309,15 +551,15 @@ function BlockRenderer({ block }: { block: ReportBlockType }) {
       return (
         <div
           className="report-text"
-          dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(block.content) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(block.md) }}
         />
       );
 
     case 'callout':
       return (
-        <div className={`callout${block.variant === 'warning' ? ' warning' : ''}`}>
-          {block.title && <strong>{block.title}</strong>}
-          <div dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(block.content) }} />
+        <div className="callout warning">
+          <strong>{block.title}</strong>
+          <div dangerouslySetInnerHTML={{ __html: sanitizeMarkdown(block.md) }} />
         </div>
       );
 
@@ -336,7 +578,7 @@ function BlockRenderer({ block }: { block: ReportBlockType }) {
       return (
         <FactsList
           label={block.label}
-          rows={block.rows.map((r) => ({ term: r.term, value: r.value, sub: r.sub }))}
+          rows={block.items.map((r) => ({ term: r.term, value: r.value, sub: r.sub }))}
         />
       );
 
@@ -361,18 +603,18 @@ function BlockRenderer({ block }: { block: ReportBlockType }) {
             <tbody>
               {block.rows.map((row, ri) => (
                 <tr key={ri}>
-                  {block.columns.map((col) => {
-                    const raw = row[col.key];
-                    const display = formatValue(raw as string | number | null, col.format);
-                    const linked = col.link && raw != null;
+                  {block.columns.map((col, ci) => {
+                    const raw = row.cells[ci] ?? null;
+                    const display = formatValue(raw, col.format);
+                    const linkId = col.link ? (row.links?.[ci] ?? null) : null;
                     return (
                       <td
                         key={col.key}
                         className={col.align === 'money' || col.align === 'num' ? 'num' : col.align ?? undefined}
                         data-label={col.header}
                       >
-                        {linked ? (
-                          <a href={entityHref(col.link!.kind, String(row[col.link!.field] ?? raw))}>
+                        {linkId != null ? (
+                          <a href={entityHref(col.link!.kind, linkId)}>
                             {display}
                           </a>
                         ) : (
@@ -390,19 +632,19 @@ function BlockRenderer({ block }: { block: ReportBlockType }) {
     }
 
     case 'bar': {
-      const max = Math.max(1, ...block.items.map((i) => i.value));
+      const max = Math.max(1, ...block.points.map((p) => p.value));
       return (
         <ul className="ranked-bars" aria-label={block.label}>
-          {block.items.map((item, i) => (
+          {block.points.map((pt, i) => (
             <li key={i} className="rb-row">
               <span
                 className="rb-fill"
-                style={{ width: `${Math.max(3, (item.value / max) * 100).toFixed(1)}%` }}
+                style={{ width: `${Math.max(3, (pt.value / max) * 100).toFixed(1)}%` }}
                 aria-hidden="true"
               />
-              <span className="rb-name">{item.label}</span>
+              <span className="rb-name">{pt.label}</span>
               <span className="rb-val num">
-                {block.unit ? `${block.unit}${item.value.toLocaleString('bg')}` : money(item.value)}
+                {block.unit ? `${block.unit}${pt.value.toLocaleString('bg')}` : money(pt.value)}
               </span>
             </li>
           ))}
@@ -452,73 +694,213 @@ function MethodologyCallout({ report }: { report: StoredReport }) {
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── PDF export (client-side, pdfmake + Roboto for Cyrillic) ──────────────────
 
-function CfPdfButton({ reportId }: { reportId: string }) {
-  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+const INK = '#1f1a14';
+const INK_SOFT = '#888880';
+const RULE = '#d6d4ce';
+const ACCENT = '#9b2a1a';
+const ACCENT_BG = '#fdf4f2';
 
-  async function handleDownload() {
-    setState('loading');
-    try {
-      const res = await fetch(`/reports/${encodeURIComponent(reportId)}.pdf`);
-      if (!res.ok) throw new Error(await res.text());
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${reportId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setState('idle');
-    } catch {
-      setState('error');
-      setTimeout(() => setState('idle'), 3000);
+async function reportToPdf(report: StoredReport): Promise<void> {
+  const [{ default: pdfMake }, robotoModule] = await Promise.all([
+    import('pdfmake/build/pdfmake'),
+    import('pdfmake/build/fonts/Roboto'),
+  ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (pdfMake as any).addFontContainer((robotoModule as any).default ?? robotoModule);
+
+  // ── inline markdown parser ────────────────────────────────────────────────
+  function parseInline(text: string) {
+    const runs: object[] = [];
+    const re = /(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`)/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) runs.push({ text: text.slice(last, m.index) });
+      const tok = m[0];
+      if (tok.startsWith('**')) runs.push({ text: tok.slice(2, -2), bold: true });
+      else if (tok.startsWith('_')) runs.push({ text: tok.slice(1, -1), italics: true });
+      else runs.push({ text: tok.slice(1, -1), fontSize: 9, color: ACCENT });
+      last = m.index + tok.length;
+    }
+    if (last < text.length) runs.push({ text: text.slice(last) });
+    return runs.length === 1 && 'text' in runs[0] ? (runs[0] as { text: string }).text : runs;
+  }
+
+  function para(text: string, opts?: object) {
+    return { text: parseInline(text), margin: [0, 0, 0, 6] as [number,number,number,number], ...opts };
+  }
+
+  function tableBlock(headers: string[], rows: (string | number | null)[][]) {
+    return {
+      margin: [0, 4, 0, 10] as [number,number,number,number],
+      table: {
+        headerRows: 1,
+        widths: headers.map(() => '*'),
+        body: [
+          headers.map((h) => ({ text: h, bold: true, fontSize: 9, color: INK_SOFT, fillColor: '#f5f4f1' })),
+          ...rows.map((row) =>
+            row.map((cell) => ({ text: cell == null ? '—' : String(cell), fontSize: 10 }))
+          ),
+        ],
+      },
+      layout: {
+        hLineWidth: (i: number, node: { table: { body: unknown[] } }) =>
+          i === 0 || i === node.table.body.length ? 1 : 0.5,
+        vLineWidth: () => 0,
+        hLineColor: () => RULE,
+        paddingLeft: () => 6,
+        paddingRight: () => 6,
+        paddingTop: () => 5,
+        paddingBottom: () => 5,
+      },
+    };
+  }
+
+  function blockToPdf(block: ReportBlockType): object[] {
+    switch (block.type) {
+      case 'text':
+        return block.md.split('\n\n').filter(Boolean).map((p) => para(p));
+
+      case 'callout':
+        return [{
+          margin: [0, 4, 0, 10] as [number,number,number,number],
+          table: {
+            widths: [4, '*'],
+            body: [[
+              { text: '', fillColor: ACCENT, border: [false,false,false,false] },
+              {
+                stack: [
+                  { text: block.title, bold: true, fontSize: 11, margin: [0,0,0,4] },
+                  ...block.md.split('\n\n').filter(Boolean).map((p) => para(p)),
+                ],
+                fillColor: ACCENT_BG,
+                border: [false,false,false,false],
+                margin: [10, 8, 8, 8] as [number,number,number,number],
+              },
+            ]],
+          },
+          layout: { defaultBorder: false },
+        }];
+
+      case 'totals': {
+        const out: object[] = [];
+        if (block.label) out.push({ text: block.label, style: 'h3' });
+        out.push(tableBlock(['Показател', 'Стойност'], block.items.map((i) => [i.label, formatValue(i.value, i.format)])));
+        return out;
+      }
+
+      case 'facts': {
+        const out: object[] = [];
+        if (block.label) out.push({ text: block.label, style: 'h3' });
+        out.push(tableBlock(['Поле', 'Стойност'], block.items.map((r) => [r.term, r.sub ? `${r.value} (${r.sub})` : r.value])));
+        return out;
+      }
+
+      case 'table': {
+        const out: object[] = [];
+        if (block.caption) out.push({ text: block.caption, style: 'h3' });
+        out.push(tableBlock(
+          block.columns.map((c) => c.header),
+          block.rows.map((row) => block.columns.map((c, ci) => formatValue(row.cells[ci] ?? null, c.format))),
+        ));
+        return out;
+      }
+
+      case 'bar': {
+        const out: object[] = [];
+        if (block.label) out.push({ text: block.label, style: 'h3' });
+        out.push(tableBlock(
+          ['#', 'Наименование', 'Стойност'],
+          block.points.map((pt, i) => [i + 1, pt.label, block.unit ? `${block.unit}${Number(pt.value).toLocaleString('bg')}` : money(pt.value)]),
+        ));
+        return out;
+      }
+
+      case 'flows': {
+        const out: object[] = [];
+        if (block.label) out.push({ text: block.label, style: 'h3' });
+        out.push(tableBlock(['Възложител', 'Изпълнител', 'Стойност (EUR)'], block.edges.map((e) => [e.from, e.to, money(e.valueEur)])));
+        return out;
+      }
+
+      case 'timeseries': {
+        const out: object[] = [];
+        if (block.label) out.push({ text: block.label, style: 'h3' });
+        if (block.series && block.series.length > 1) {
+          const periodMap = new Map<string, (string | number | null)[]>();
+          block.series.forEach((s, si) => {
+            s.points.forEach(({ period, value }) => {
+              if (!periodMap.has(period)) periodMap.set(period, Array(block.series!.length).fill(null));
+              periodMap.get(period)![si] = money(value);
+            });
+          });
+          out.push(tableBlock(['Период', ...block.series.map((s) => s.label)], [...periodMap.entries()].map(([p, vals]) => [p, ...vals])));
+        } else {
+          const pts = block.points ?? block.series?.[0]?.points ?? [];
+          out.push(tableBlock(['Период', 'Стойност'], pts.map(({ period, value }) => [period, money(value)])));
+        }
+        return out;
+      }
     }
   }
 
-  return (
-    <button
-      type="button"
-      className="report-pdf-btn"
-      onClick={handleDownload}
-      disabled={state === 'loading'}
-      aria-label="Изтегли като PDF (Cloudflare Browser Rendering)"
-    >
-      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" width="16" height="16">
-        <path d="M10 13L6 9h3V3h2v6h3l-4 4z" fill="currentColor"/>
-        <path d="M3 15h14v2H3v-2z" fill="currentColor"/>
-      </svg>
-      {state === 'loading' ? 'Генериране…' : state === 'error' ? 'Грешка' : 'CF PDF'}
-    </button>
-  );
+  // ── assemble document ─────────────────────────────────────────────────────
+  const content: object[] = [];
+
+  content.push({ text: 'AI-генерирано, неофициално', fontSize: 8, color: INK_SOFT, margin: [0,0,0,16] as [number,number,number,number] });
+  content.push({ text: report.title, style: 'h1' });
+  if (report.lede) content.push({ text: report.lede, fontSize: 12, color: INK_SOFT, margin: [0,0,0,12] as [number,number,number,number] });
+  if (report.scope) content.push({ text: `Обхват: ${report.scope}`, fontSize: 10, italics: true, color: INK_SOFT, margin: [0,0,0,20] as [number,number,number,number] });
+
+  for (const block of report.blocks) {
+    content.push(...blockToPdf(block), { text: '', margin: [0,0,0,6] as [number,number,number,number] });
+  }
+
+  if (report.methodology) {
+    content.push({ text: 'Как е изчислено', style: 'h2' });
+    content.push(...report.methodology.split('\n\n').filter(Boolean).map((p) => para(p)));
+  }
+
+  content.push({
+    text: `Генерирано от СИГМА AI на ${new Date(report.generatedAt).toLocaleDateString('bg')}. Неофициално.`,
+    fontSize: 8,
+    color: INK_SOFT,
+    italics: true,
+    alignment: 'center',
+    margin: [0, 20, 0, 0] as [number,number,number,number],
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (pdfMake as any).createPdf({
+    content,
+    styles: {
+      h1: { fontSize: 22, bold: false, font: 'Roboto', color: INK, margin: [0, 0, 0, 12] },
+      h2: { fontSize: 15, bold: true, color: INK, margin: [0, 16, 0, 8] },
+      h3: { fontSize: 11, bold: true, color: INK_SOFT, margin: [0, 12, 0, 4] },
+    },
+    defaultStyle: { font: 'Roboto', fontSize: 11, color: INK, lineHeight: 1.4 },
+    pageMargins: [40, 40, 40, 40] as [number,number,number,number],
+    pageSize: 'A4',
+  }).download(`${report.id}.pdf`);
 }
 
-const PDF_SERVER = import.meta.env.VITE_PDF_SERVER_URL ?? '';
+// ── Page ──────────────────────────────────────────────────────────────────────
 
-function PdfButton({ reportId }: { reportId: string }) {
+function PdfButton({ report }: { report: StoredReport }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
 
   async function handleDownload() {
-    if (!PDF_SERVER) return;
     setState('loading');
     try {
-      const res = await fetch(`${PDF_SERVER}/pdf/${encodeURIComponent(reportId)}`);
-      if (!res.ok) throw new Error(await res.text());
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${reportId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await reportToPdf(report);
       setState('idle');
     } catch {
       setState('error');
       setTimeout(() => setState('idle'), 3000);
     }
   }
-
-  if (!PDF_SERVER) return null;
 
   return (
     <button
@@ -539,7 +921,6 @@ function PdfButton({ reportId }: { reportId: string }) {
 
 export default function ReportPage({ loaderData }: Route.ComponentProps) {
   const { report } = loaderData;
-  const id = report.id;
 
   return (
     <main id="main" className="report-page">
@@ -549,6 +930,8 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
         </div>
         <div className="report-top-bar__actions">
           <MarkdownButton report={report} />
+          <DocxButton report={report} />
+          <PdfButton report={report} />
           <button
             type="button"
             className="report-pdf-btn"
@@ -561,8 +944,6 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
             </svg>
             Принтирай
           </button>
-          <PdfButton reportId={id} />
-          <CfPdfButton reportId={id} />
         </div>
       </div>
 

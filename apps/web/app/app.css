@@ -833,21 +833,31 @@ main.narrow {
 }
 
 /* Totals strip — full ink rules + internal dividers, serif numerics */
+.totals-wrap {
+  margin: var(--s-7) 0;
+}
+.totals-section-label {
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 var(--s-3) 0;
+}
 .totals {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0;
   border-top: 1px solid var(--ink);
   border-bottom: 1px solid var(--ink);
-  margin: var(--s-7) 0;
+  margin: 0;
 }
 .totals .cell {
-  padding: var(--s-6) var(--s-6) var(--s-6) 0;
+  padding: var(--s-5) var(--s-5) var(--s-5) 0;
   border-right: 1px solid var(--rule);
   min-width: 0;
 }
 .totals .cell + .cell {
-  padding-left: var(--s-6);
+  padding-left: var(--s-5);
 }
 .totals .cell:last-child {
   border-right: 0;
@@ -855,14 +865,14 @@ main.narrow {
 }
 .totals .num {
   display: block;
-  font: 400 36px/1 var(--font-serif);
+  font: 400 30px/1 var(--font-serif);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   color: var(--ink);
+  margin-top: var(--s-2);
 }
 .totals .label {
   display: block;
-  margin-top: var(--s-3);
   font: 10px/1.2 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -882,6 +892,29 @@ main.narrow {
   .totals .cell:nth-child(2) {
     border-bottom: 1px solid var(--rule);
   }
+  /* Report blocks keep the auto-fit minmax — don't collapse to 2 cols */
+  .report-block .totals {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+  .report-block .totals .cell:nth-child(odd),
+  .report-block .totals .cell:nth-child(even) {
+    border-right: 1px solid var(--rule);
+  }
+  .report-block .totals .cell:last-child {
+    border-right: 0;
+  }
+}
+
+/* Report blocks: 3-column max so money values never overflow their cells.
+   Each cell gets a bottom rule so wrapped rows look intentional. */
+.report-block .totals {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.report-block .totals .cell {
+  border-bottom: 1px solid var(--rule);
+}
+.report-block .totals .num {
+  font-size: 24px;
 }
 
 /* Tables — fin treatment */
@@ -2282,7 +2315,8 @@ details.row .body .signal .why {
 .ranked-bars li {
   border-bottom: 1px solid var(--rule-soft);
 }
-.ranked-bars a {
+.ranked-bars a,
+.ranked-bars .rb-row {
   position: relative;
   display: flex;
   align-items: baseline;
@@ -3126,6 +3160,119 @@ tbody td,
 }
 
 
+/* ── Report page (D1–D6) ────────────────────────────────────────────────────── */
+
+.report-page {
+  padding-block: var(--s-6);
+}
+
+.report-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--s-5);
+}
+
+.report-top-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.report-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: none;
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  padding: 6px var(--s-3);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.report-pdf-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.report-watermark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: 600 11px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  padding: 3px var(--s-2);
+  margin-bottom: var(--s-5);
+}
+
+.report-scope {
+  font: 13px/1.4 var(--font-mono);
+  margin-bottom: var(--s-5);
+}
+
+.report-methodology {
+  margin-bottom: var(--s-6);
+}
+
+.report-freshness {
+  margin-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+}
+
+.report-freshness .row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.report-freshness dt {
+  font: 600 11px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-mid);
+}
+
+.report-freshness dd {
+  font: 13px/1 var(--font-mono);
+  color: var(--ink);
+  margin: 0;
+}
+
+.report-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+.report-block {
+  display: contents;
+}
+
+.report-text {
+  font: 15px/1.65 var(--font-sans);
+  color: var(--ink);
+}
+
+.report-text p {
+  margin: 0 0 var(--s-4);
+}
+
+.report-text p:last-child {
+  margin-bottom: 0;
+}
+
 /* ── AI assistant dock (app/lib/assistant-dock) ────────────────────────────────────────────────────
    Always-on chat dock: a docked right panel on desktop, a full-screen <dialog> sheet on mobile, and a
    launcher tab when collapsed. House tokens only — no chart lib, no webfonts. */
@@ -3438,39 +3585,11 @@ html.a11y-textonly .assistant-dock {
   .assistant-launcher,
   .assistant-dock,
   .route-progress,
-  .report-pdf-btn,
-  .accessibility-widget {
+  .report-top-bar__actions,
+  .accessibility-controls,
+  .a11y-tools,
+  .a11y-tools__button {
     display: none !important;
-  }
-
-  body {
-    background: #fff;
-    color: #000;
-  }
-
-  main {
-    max-width: 100%;
-    padding: 0;
-    margin: 0;
-  }
-
-  .report-top-bar {
-    margin-bottom: 1cm;
-  }
-
-  .report-watermark {
-    font-size: 8pt;
-    opacity: 0.5;
-  }
-
-  .callout {
-    border-left: 3px solid #ccc;
-    background: #f9f9f9 !important;
-  }
-
-  a {
-    color: inherit;
-    text-decoration: none;
   }
 
   .report-block {
