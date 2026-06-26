@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  EOP_EARLIEST_DAY,
-  fetchEopDay,
-  isValidUnp,
-  validateEopDate,
-  type FetchImpl,
-} from './eop-fetch';
+import { EOP_EARLIEST_DAY, fetchEopDay, validateEopDate, type FetchImpl } from './eop-fetch';
 
 describe('validateEopDate', () => {
   const today = '2026-06-19';
@@ -16,18 +10,20 @@ describe('validateEopDate', () => {
     expect(validateEopDate('2023/05/01', today).ok).toBe(false);
     expect(validateEopDate('hier; DROP', today).ok).toBe(false);
   });
+  it('rejects a structurally-valid but non-existent calendar date (review #80)', () => {
+    // matches DAY_RE but is not a real day — would otherwise build a URL that just 404s
+    expect(validateEopDate('2023-13-45', today).ok).toBe(false);
+    expect(validateEopDate('2023-02-30', today).ok).toBe(false);
+    expect(validateEopDate('2023-00-10', today).ok).toBe(false);
+  });
+  it('rejects trailing input after a valid date prefix (no slice smuggling, review #80)', () => {
+    expect(validateEopDate('2023-05-01; DROP TABLE', today).ok).toBe(false);
+    expect(validateEopDate('2023-05-01T00:00:00', today).ok).toBe(false);
+  });
   it('rejects dates before coverage and in the future', () => {
     expect(validateEopDate('2019-12-31', today).ok).toBe(false);
     expect(validateEopDate('2027-01-01', today).ok).toBe(false);
     expect(validateEopDate(EOP_EARLIEST_DAY, today).ok).toBe(true);
-  });
-});
-
-describe('isValidUnp', () => {
-  it('accepts a УНП shape and rejects junk', () => {
-    expect(isValidUnp('00044-2023-0018')).toBe(true);
-    expect(isValidUnp('not-a-unp')).toBe(false);
-    expect(isValidUnp('0; DROP TABLE')).toBe(false);
   });
 });
 
@@ -50,13 +46,34 @@ describe('fetchEopDay', () => {
   it('surfaces a missing day (403) as a per-file error, not a throw', async () => {
     const fetchImpl: FetchImpl = async () => ({ ok: false, status: 403, text: async () => '' });
     const files = await fetchEopDay('2023-05-01', fetchImpl);
-    expect(files.every((f) => f.error === 'HTTP 403')).toBe(true);
+    // A failed fetch must surface an error AND no rows — not an empty-but-"successful" result.
+    expect(files.every((f) => f.error === 'HTTP 403' && f.rows === undefined)).toBe(true);
   });
 
-  it('caps an oversized response instead of letting it reach the model', async () => {
+  it('withholds an oversized response instead of parsing it to the model', async () => {
     const huge = JSON.stringify(Array.from({ length: 5000 }, (_, i) => ({ i })));
     const fetchImpl: FetchImpl = async () => ({ ok: true, status: 200, text: async () => huge });
     const files = await fetchEopDay('2023-05-01', fetchImpl, 256);
-    expect(files.every((f) => f.truncated)).toBe(true);
+    // The cap must WITHHOLD the rows, not merely flag truncation — the old code parsed the full body
+    // (valid JSON) and returned every row despite the cap.
+    expect(files.every((f) => f.truncated && f.rows === undefined && !!f.error)).toBe(true);
+  });
+
+  it('withholds an over-cap response by Content-Length WITHOUT reading the body (review #80)', async () => {
+    let read = false;
+    const fetchImpl: FetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (n) => (n.toLowerCase() === 'content-length' ? String(10 * 1024 * 1024) : null),
+      },
+      text: async () => {
+        read = true;
+        return '[]';
+      },
+    });
+    const files = await fetchEopDay('2023-05-01', fetchImpl, 256 * 1024);
+    expect(files.every((f) => f.truncated && f.rows === undefined && !!f.error)).toBe(true);
+    expect(read).toBe(false); // body was never buffered into Worker memory
   });
 });

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { count, money, pct, periodRange, plural } from '@sigma/shared';
+import { count, money, moneyBare, pct, periodRange, plural } from '@sigma/shared';
 import { authorityIdFromSlug, getAuthority } from '@sigma/db';
 import type { Route } from './+types/authority';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -10,14 +10,18 @@ import { ContractMiniTable } from '../components/ContractMiniTable';
 import { ShareBar, Chip, Section } from '../components/ui';
 import { publicCache } from '../lib/cache';
 import { coverageRange, getCoverageMeta } from '../lib/coverage';
+import { withDbRetry } from '../lib/retry';
+import { seoMeta } from '../lib/meta';
 
-export function meta({ data }: Route.MetaArgs) {
+export function meta({ data, params, matches }: Route.MetaArgs) {
   const name = data?.authority.name ?? 'Институция';
   const range = coverageRange(data?.coverage.coverageEndYear);
-  return [
-    { title: `${name} — СИГМА` },
-    { name: 'description', content: `Обществени поръчки на ${name}, ${range}.` },
-  ];
+  return seoMeta({
+    matches,
+    path: `/authorities/${params.eik}`,
+    title: `${name} — СИГМА`,
+    description: `Обществени поръчки на ${name}, ${range}.`,
+  });
 }
 
 export function headers() {
@@ -25,14 +29,17 @@ export function headers() {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  if (!params.eik?.trim()) throw new Response('Not Found', { status: 404 });
+  const eik = params.eik;
+  if (!eik?.trim()) throw new Response('Not Found', { status: 404 });
   const db = context.cloudflare.env.DB;
-  const [authority, coverage] = await Promise.all([
-    getAuthority(db, authorityIdFromSlug(params.eik)),
-    getCoverageMeta(db),
-  ]);
-  if (!authority) throw new Response('Not Found', { status: 404 });
-  return { authority, coverage };
+  return withDbRetry(async () => {
+    const [authority, coverage] = await Promise.all([
+      getAuthority(db, authorityIdFromSlug(eik)),
+      getCoverageMeta(db),
+    ]);
+    if (!authority) throw new Response('Not Found', { status: 404 });
+    return { authority, coverage };
+  });
 }
 
 export default function Authority({ loaderData }: Route.ComponentProps) {
@@ -108,7 +115,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
                   <th scope="col">#</th>
                   <th scope="col">Компания</th>
                   <th scope="col" className="num">
-                    Спечелено
+                    Спечелено (€)
                   </th>
                   <th scope="col" className="num">
                     Договори
@@ -131,8 +138,8 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
                         </>
                       )}
                     </td>
-                    <td className="money" data-label="Спечелено">
-                      {money(co.wonEur)}
+                    <td className="money" data-label="Спечелено (€)">
+                      {moneyBare(co.wonEur)}
                     </td>
                     <td className="money" data-label="Договори">
                       {count(co.contracts)}
@@ -146,7 +153,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
             </table>
           </div>
           {a.moreContractors > 0 && (
-            <p className="small muted" style={{ marginTop: 'var(--s-3)' }}>
+            <p className="small muted mt-s3">
               <Link to={`/contracts?authority=${a.eik}`}>
                 … още {count(a.moreContractors)} изпълнители — виж всички договори →
               </Link>
@@ -157,6 +164,13 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
         <div className="two-col">
           <Section id="what" title="Какво купува" hint="CPV категориите, подредени по обем.">
             <table>
+              <caption className="sr-only">Какво купува {a.name} — по CPV категория</caption>
+              <thead className="sr-only">
+                <tr>
+                  <th scope="col">Сектор (CPV)</th>
+                  <th scope="col">Стойност и дял</th>
+                </tr>
+              </thead>
               <tbody>
                 {a.sectors.map((s) => (
                   <tr key={s.code}>
@@ -199,7 +213,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
             </span>
           }
         >
-          <div className="tabset">
+          <div className="tabset" role="radiogroup" aria-label="Подреждане на договорите">
             <input
               type="radio"
               name="authority-contracts"
@@ -214,17 +228,31 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
               className="tab-input"
             />
             <div className="tab-labels">
-              <label htmlFor="authority-recent">Най-нови</label>
-              <label htmlFor="authority-top">Най-големи по стойност</label>
+              <label id="tab-authority-recent" htmlFor="authority-recent">
+                Най-нови
+              </label>
+              <label id="tab-authority-top" htmlFor="authority-top">
+                Най-големи по стойност
+              </label>
             </div>
-            <div className="tab-panel" data-tab="recent">
+            <div
+              className="tab-panel"
+              data-tab="recent"
+              role="group"
+              aria-labelledby="tab-authority-recent"
+            >
               <ContractMiniTable items={a.recentContracts} counterparty="bidder" />
             </div>
-            <div className="tab-panel" data-tab="top">
+            <div
+              className="tab-panel"
+              data-tab="top"
+              role="group"
+              aria-labelledby="tab-authority-top"
+            >
               <ContractMiniTable items={a.topContracts} counterparty="bidder" />
             </div>
           </div>
-          <p className="small muted" style={{ marginTop: 8 }}>
+          <p className="small muted mt-8">
             <Link to={`/contracts?authority=${a.eik}`}>
               Виж всички / филтрирай / свали като CSV →
             </Link>

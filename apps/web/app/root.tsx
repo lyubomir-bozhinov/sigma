@@ -21,11 +21,16 @@ import { SiteFooter } from './components/SiteFooter';
 import { AccessibilityWidget } from './components/AccessibilityWidget';
 import { PageHeader } from './components/PageHeader';
 import { getCoverageMeta } from './lib/coverage';
-import './app.css';
+import { withDbRetry } from './lib/retry';
+import stylesheet from './app.css?url';
 
 // The editorial design uses a system serif/mono/sans stack (see app.css @theme) — no webfont request.
 // Brand favicons (white „С“ on the deep-red tile) live in /public; declare them so the head is explicit.
 export const links: Route.LinksFunction = () => [
+  // Link the global stylesheet explicitly (instead of a side-effect import) so it is a real
+  // <link> in the document head in dev too, not injected by JS after first paint - which avoids
+  // a flash of unstyled content on a full reload. In production both paths emit the same <link>.
+  { rel: 'stylesheet', href: stylesheet },
   { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
   { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' },
   { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16.png' },
@@ -41,14 +46,56 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
     throw redirect(url.pathname.replace(/\/+$/, '') + url.search, 301);
   }
-  const coverage = await getCoverageMeta(context.cloudflare.env.DB);
+  // Wrapped like the leaf loaders: this chrome read runs on every route, so a transient D1 fault
+  // here would 500 the whole page (incl. the entity pages this PR targets) without the retry.
+  const coverage = await withDbRetry(() => getCoverageMeta(context.cloudflare.env.DB));
   return { ...coverage, origin: url.origin };
+}
+
+// Scroll-restoration key for list pages. Filters and sort live in the query string under a stable
+// pathname, so keying on pathname alone preserves the visitor's scroll position when they change a
+// filter or sort instead of jumping to the top (issue #13). Pagination is the deliberate exception:
+// Prev/Next carry a keyset `cursor` (which a filter or sort change resets), so a URL with a cursor
+// gets its own key and lands at the top — the conventional paging behaviour.
+function scrollKey(location: { pathname: string; search: string }): string {
+  const cursor = new URLSearchParams(location.search).get('cursor');
+  return cursor ? `${location.pathname}?cursor=${cursor}` : location.pathname;
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const nonce = useNonce();
   const rootData = useRouteLoaderData('root') as { origin?: string } | undefined;
-  const imageUrl = rootData?.origin ? `${rootData.origin}/og.png` : undefined;
+  const origin = rootData?.origin;
+  const imageUrl = origin ? `${origin}/og.png` : undefined;
+  const schemaOrg = origin
+    ? JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'Organization',
+            '@id': `${origin}/#organization`,
+            name: 'СИГМА',
+            alternateName: 'Система за Интегриран Граждански Мониторинг и Анализ',
+            url: origin,
+            logo: { '@type': 'ImageObject', url: `${origin}/logo.svg` },
+          },
+          {
+            '@type': 'WebSite',
+            '@id': `${origin}/#website`,
+            url: origin,
+            name: 'СИГМА',
+            description: 'Платформа за прозрачност на обществените поръчки в България',
+            inLanguage: 'bg',
+            publisher: { '@id': `${origin}/#organization` },
+            potentialAction: {
+              '@type': 'SearchAction',
+              target: { '@type': 'EntryPoint', urlTemplate: `${origin}/search?q={search_term_string}` },
+              'query-input': 'required name=search_term_string',
+            },
+          },
+        ],
+      })
+    : null;
   return (
     <html lang="bg">
       <head>
@@ -57,23 +104,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="СИГМА" />
         <meta property="og:locale" content="bg_BG" />
-        {imageUrl && <meta property="og:image" content={imageUrl} />}
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta
-          property="og:image:alt"
-          content="СИГМА — платформа за прозрачност на обществените поръчки"
-        />
-        <meta property="og:image:type" content="image/png" />
+        {imageUrl && (
+          <>
+            <meta property="og:image" content={imageUrl} />
+            <meta property="og:image:width" content="1200" />
+            <meta property="og:image:height" content="630" />
+            <meta
+              property="og:image:alt"
+              content="СИГМА — платформа за прозрачност на обществените поръчки"
+            />
+            <meta property="og:image:type" content="image/png" />
+          </>
+        )}
         <meta name="twitter:card" content="summary_large_image" />
         {imageUrl && <meta name="twitter:image" content={imageUrl} />}
         <Meta />
         <Links />
+        {schemaOrg && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: schemaOrg }}
+          />
+        )}
         <script src="/assets/accessibility/accessibility.js" defer />
       </head>
       <body>
         {children}
-        <ScrollRestoration nonce={nonce} />
+        <ScrollRestoration nonce={nonce} getKey={scrollKey} />
         <Scripts nonce={nonce} />
       </body>
     </html>
@@ -85,40 +142,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
 // initial markup matches SSR — the bar only appears once a client-side transition starts.
 function RouteProgress() {
   const busy = useNavigation().state !== 'idle';
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'fixed',
-        insetInline: 0,
-        top: 0,
-        height: '2px',
-        background: 'var(--accent, #b00020)',
-        transformOrigin: 'left',
-        transform: busy ? 'scaleX(1)' : 'scaleX(0)',
-        opacity: busy ? 1 : 0,
-        transition: busy
-          ? 'transform 1.2s ease-out, opacity 0.1s ease'
-          : 'transform 0.1s ease, opacity 0.25s ease 0.15s',
-        zIndex: 1000,
-        pointerEvents: 'none',
-      }}
-    />
-  );
+  // States live in CSS (.route-progress[data-busy]), so no inline style is needed — that is the
+  // point of the style-src CSP tightening. Reduced motion is honoured by the global
+  // `@media (prefers-reduced-motion: reduce)` rule in app.css, which now reaches this element.
+  return <div className="route-progress" aria-hidden="true" data-busy={busy} />;
 }
 
 export default function App({ loaderData }: Route.ComponentProps) {
   // After a client-side navigation, move focus to the main region so keyboard and
   // screen-reader users aren't stranded on <body> mid-page (and the skip link stays
   // reachable). Skip the first run so SSR/hydration and the initial load are untouched.
+  // Also skip when only search params changed (filter or sort update within the same
+  // page) — clicking a filter checkbox should not yank the user back to the top.
   const location = useLocation();
   const navigationType = useNavigationType();
   const firstRender = useRef(true);
+  const prevPathname = useRef(location.pathname);
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    const isFirst = firstRender.current;
+    firstRender.current = false;
+    const prevPath = prevPathname.current;
+    prevPathname.current = location.pathname;
+    if (isFirst) return;
+    if (location.pathname === prevPath) return;
     const frame = window.requestAnimationFrame(() => {
       const el = document.querySelector<HTMLElement>('main h1') ?? document.getElementById('main');
       if (el) {
@@ -172,7 +218,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
           <Link to="/authorities">Институции</Link> · <Link to="/contracts">Договори</Link>
         </p>
         {stack && (
-          <pre className="mono small" style={{ overflowX: 'auto', marginTop: 'var(--s-5)' }}>
+          <pre className="mono small error-stack">
             <code>{stack}</code>
           </pre>
         )}

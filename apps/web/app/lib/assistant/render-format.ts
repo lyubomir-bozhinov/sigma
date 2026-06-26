@@ -7,14 +7,10 @@
 
 import { count, date, money, pct } from '@sigma/shared';
 import { hrefForEntity } from '@sigma/db';
-import type { CellFormat, EntityKind } from './report-schema';
-
-function num(v: string | number | null): number | null {
-  if (v == null) return null;
-  if (typeof v === 'number') return v;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+// `asNumber` is the SHARED decimal-only coercion (defined in report-schema.ts and used by the binder). A
+// previous local copy here had to be kept byte-identical by hand to preserve the §9.1 "rendered value
+// equals cited cell" rule; importing the one definition removes that drift risk (review #80, follow-up).
+import { asNumber, type CellFormat, type EntityKind } from './report-schema';
 
 /**
  * Format a resolved cell by its hint, delegating to the site's shared formatters so units/magnitude
@@ -24,11 +20,11 @@ function num(v: string | number | null): number | null {
 export function formatCell(value: string | number | null, format: CellFormat): string {
   switch (format) {
     case 'money':
-      return money(num(value));
+      return money(asNumber(value));
     case 'number':
-      return count(num(value));
+      return count(asNumber(value));
     case 'percent':
-      return pct(num(value));
+      return pct(asNumber(value));
     case 'date':
       return date(value == null ? null : String(value));
     case 'text':
@@ -43,5 +39,17 @@ export function formatCell(value: string | number | null, format: CellFormat): s
  * the rest of the site.
  */
 export function entityHref(kind: EntityKind, id: string): string {
-  return hrefForEntity(kind, id);
+  // hrefForEntity yields `/<collection>/<slug>`. The old `encodeURI` kept `/` and `.` intact, so a
+  // malicious result-cell id used as a link target (`../../authorities/000695089` — a bidder can register
+  // a crafted name, and link ids are NOT sanitized in bindReport) produced a relative-traversal href that
+  // the browser resolves to a DIFFERENT entity's page: a mis-citation on a transparency report, where a
+  // wrong "official" link is worse than none (review #80, follow-up). Encode the SLUG SEGMENT with
+  // encodeURIComponent so any `/` or `..` is confined to one inert path segment; well-formed slugs
+  // (digits, base64url) are unchanged, and the `/<collection>/` prefix we build here is trusted.
+  const collection =
+    kind === 'authority' ? 'authorities' : kind === 'company' ? 'companies' : 'contracts';
+  const path = hrefForEntity(kind, id);
+  const prefix = `/${collection}/`;
+  const slug = path.startsWith(prefix) ? path.slice(prefix.length) : path;
+  return `${prefix}${encodeURIComponent(slug)}`;
 }

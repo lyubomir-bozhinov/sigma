@@ -11,29 +11,39 @@
 import { eopSourceFiles } from '../eopSource';
 
 export const EOP_EARLIEST_DAY = '2020-01-01'; // corpus coverage start (README/etl.md)
-export const EOP_MAX_BYTES = 256 * 1024; // per-file cap on what enters the model context
+export const EOP_MAX_BYTES = 256 * 1024; // per-file byte cap on the untrusted response before it is parsed
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UNP_RE = /^\d{4,5}-\d{4}-\d{4}$/; // e.g. 00044-2023-0018
 
 export type DateValidation = { ok: true; day: string } | { ok: false; reason: string };
 
+// EOP open-data buckets are keyed by the Europe/Sofia publication day (the file names embed the local
+// date), so "today" must be the Sofia calendar day — UTC would reject a legitimately-current-day query
+// in the post-midnight window before UTC rolls over (review #80). en-CA renders as YYYY-MM-DD.
+function sofiaToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Sofia' }).format(new Date());
+}
+
+// DAY_RE only checks SHAPE — `2023-13-45` / `2023-02-30` match it but are not real days. Verify the
+// parts round-trip through a UTC Date so a nonsense day is rejected up front rather than building a
+// URL that just 404s against the open-data store (review #80).
+function isRealCalendarDay(day: string): boolean {
+  const [y, m, d] = day.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /** Strictly validate a model-supplied day. ISO dates compare lexically, so string bounds are safe. */
-export function validateEopDate(
-  raw: string,
-  today = new Date().toISOString().slice(0, 10),
-): DateValidation {
-  const day = (raw ?? '').slice(0, 10);
+export function validateEopDate(raw: string, today = sofiaToday()): DateValidation {
+  // Match the WHOLE (trimmed) string, not a slice(0,10) prefix — otherwise `2023-05-01; DROP TABLE`
+  // would validate as `2023-05-01`, smuggling a tail through for any caller that mishandles it (#80).
+  const day = (raw ?? '').trim();
   if (!DAY_RE.test(day)) return { ok: false, reason: 'датата трябва да е във формат YYYY-MM-DD' };
+  if (!isRealCalendarDay(day)) return { ok: false, reason: 'несъществуваща дата' };
   if (day < EOP_EARLIEST_DAY)
     return { ok: false, reason: `преди началото на обхвата (${EOP_EARLIEST_DAY})` };
   if (day > today) return { ok: false, reason: 'бъдеща дата' };
   return { ok: true, day };
-}
-
-/** Sanity-bound a УНП token before it is used as a filter (never as part of a URL). */
-export function isValidUnp(raw: string): boolean {
-  return UNP_RE.test((raw ?? '').trim());
 }
 
 export interface EopFile {
@@ -43,9 +53,12 @@ export interface EopFile {
   truncated?: boolean;
 }
 
-export type FetchImpl = (
-  url: string,
-) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type FetchImpl = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  headers?: { get(name: string): string | null };
+  text(): Promise<string>;
+}>;
 
 /**
  * Fetch the day's open-data files with a hard per-file byte cap. The base/URLs come from the verified
@@ -63,19 +76,30 @@ export async function fetchEopDay(
       try {
         const res = await fetchImpl(url);
         if (!res.ok) return { label, error: `HTTP ${res.status}` };
+        // Bound BEFORE buffering: if the server DECLARES an oversized body via Content-Length, withhold
+        // it without reading — res.text() below would otherwise pull the whole untrusted payload into
+        // Worker memory first. This is the real peak-memory bound; the post-read byte check is the
+        // fallback for a missing / under-stated header (review #80).
+        const declared = Number(res.headers?.get('content-length'));
+        if (Number.isFinite(declared) && declared > maxBytes) {
+          return { label, error: 'отговорът е твърде голям (отрязан)', truncated: true };
+        }
         const body = await res.text();
-        const truncated = body.length > maxBytes;
-        const slice = truncated ? body.slice(0, maxBytes) : body;
+        // UTF-8 byte count — body.length is UTF-16 code units, which undercount Cyrillic chars by ~2×
+        // (each Cyrillic char is 2 UTF-8 bytes, 1 UTF-16 unit), so the cap would fire at ~2× the intended
+        // limit when using body.length directly (review #80, Bozhidar).
+        const bodyBytes = new TextEncoder().encode(body).length;
+        if (bodyBytes > maxBytes) {
+          // Fallback when Content-Length was absent/inaccurate: the body is already buffered here, so
+          // this bounds what reaches the MODEL/parse, not peak memory. Do NOT parse it — surface a soft
+          // error so the oversized untrusted file never reaches the model (review #80).
+          return { label, error: 'отговорът е твърде голям (отрязан)', truncated: true };
+        }
         try {
-          const parsed = JSON.parse(truncated ? body : slice) as unknown;
-          return { label, rows: Array.isArray(parsed) ? parsed : [parsed], truncated };
+          const parsed = JSON.parse(body) as unknown;
+          return { label, rows: Array.isArray(parsed) ? parsed : [parsed], truncated: false };
         } catch {
-          // Truncation can break JSON; surface as a soft error rather than poisoning the report.
-          return {
-            label,
-            error: truncated ? 'отговорът е твърде голям (отрязан)' : 'невалиден JSON',
-            truncated,
-          };
+          return { label, error: 'невалиден JSON' };
         }
       } catch (e) {
         return { label, error: e instanceof Error ? e.message : 'fetch error' };

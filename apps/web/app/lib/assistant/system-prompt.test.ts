@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSystemPrompt,
   DATA_TRUST_RULE,
+  EDITORIAL_SKELETON,
   EMIT_REPORT_POLICY,
   VALUES_BY_REFERENCE_RULE,
 } from './system-prompt';
@@ -41,6 +42,13 @@ describe('buildSystemPrompt', () => {
 
   it('includes a per-source freshness line when supplied', () => {
     const p = buildSystemPrompt({ freshness: 'D1: 2026-06-18; EOP: на живо' });
-    expect(p).toContain('СВЕЖЕСT НА ДАННИТЕ: D1: 2026-06-18; EOP: на живо');
+    expect(p).toContain('СВЕЖЕСТ НА ДАННИТЕ: D1: 2026-06-18; EOP: на живо');
+  });
+
+  it('does not demand a freshness citation when none is supplied (review #80, ultra #7)', () => {
+    // The skeleton no longer hard-demands freshness (the route does not wire it yet), so the model is
+    // not told to cite a value it lacks — which previously invited a fabricated date.
+    expect(EDITORIAL_SKELETON).not.toContain('свежест');
+    expect(buildSystemPrompt()).not.toContain('цитирай я в callout');
   });
 });

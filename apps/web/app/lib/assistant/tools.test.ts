@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { ASSISTANT_TOOLS, finalizeReport, runTool, type ToolContext } from './tools';
+import {
+  ASSISTANT_TOOLS,
+  DEFAULT_ROWS_READ_BUDGET,
+  finalizeReport,
+  resolveRowsReadBudget,
+  runTool,
+  type ToolContext,
+} from './tools';
 
-function ctx(rows: Record<string, string | number | null>[] = []): ToolContext {
+function ctx(
+  rows: Record<string, string | number | null>[] = [],
+  opts: { rowsRead?: number; rowsReadBudget?: number; totalAttempts?: number } = {},
+): ToolContext {
   const db = {
     prepare(_sql: string) {
       return {
@@ -9,7 +19,10 @@ function ctx(rows: Record<string, string | number | null>[] = []): ToolContext {
           return this;
         },
         async all<T>() {
-          return { results: rows as T[] };
+          return {
+            results: rows as T[],
+            meta: { rows_read: opts.rowsRead ?? 0, total_attempts: opts.totalAttempts ?? 1 },
+          };
         },
         async first<T>() {
           return null as T;
@@ -17,7 +30,7 @@ function ctx(rows: Record<string, string | number | null>[] = []): ToolContext {
       };
     },
   } as unknown as D1Database;
-  return { db, results: [] };
+  return { db, results: [], rowsRead: 0, rowsReadBudget: opts.rowsReadBudget };
 }
 
 describe('the tool registry', () => {
@@ -59,6 +72,31 @@ describe('run_sql', () => {
     expect(out).toMatch(/отхвърлена/);
     expect(c.results).toHaveLength(0);
   });
+
+  it('accumulates D1 rows_read across the turn (issue #122)', async () => {
+    const c = ctx([{ n: 1 }], { rowsRead: 250 });
+    await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    expect(c.rowsRead).toBe(500);
+  });
+
+  it('multiplies rows_read by total_attempts so a D1-retried full scan is not under-billed (review #80)', async () => {
+    // meta.rows_read is the LAST attempt only; a query D1 auto-retried scanned the table on each attempt.
+    // Without the ×total_attempts factor a retried full scan under-bills the Denial-of-Wallet budget.
+    const c = ctx([{ n: 1 }], { rowsRead: 100, totalAttempts: 3 });
+    await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    expect(c.rowsRead).toBe(300); // 100 × 3, not 100
+  });
+
+  it('refuses further run_sql once the per-turn rows-read budget is exceeded (issue #122)', async () => {
+    // Budget 500, each query reports 1000 rows read. The first runs (accumulated 0 < 500) and pushes
+    // the turn total to 1000, so the second is refused before it reaches the DB.
+    const c = ctx([{ n: 1 }], { rowsRead: 1000, rowsReadBudget: 500 });
+    expect(await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c)).toContain('R1');
+    const refused = await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    expect(refused).toMatch(/прочетени редове/);
+    expect(c.results).toHaveLength(1);
+  });
 });
 
 describe('semantic_search', () => {
@@ -66,6 +104,20 @@ describe('semantic_search', () => {
     expect(await runTool('semantic_search', { query: 'детски градини' }, ctx())).toMatch(
       /не е налично/,
     );
+  });
+
+  it('degrades gracefully when embedding throws instead of surfacing the raw error (review #80)', async () => {
+    const c = ctx();
+    c.ai = {
+      run: async () => {
+        throw new Error('AI down');
+      },
+    } as unknown as NonNullable<ToolContext['ai']>;
+    c.vectorize = {
+      upsert: async () => ({}),
+      query: async () => ({ matches: [] }),
+    } as unknown as NonNullable<ToolContext['vectorize']>;
+    expect(await runTool('semantic_search', { query: 'x' }, c)).toMatch(/не е налично/);
   });
 });
 
@@ -96,6 +148,18 @@ describe('finalizeReport', () => {
     expect(out.ok).toBe(false);
   });
 
+  it('uses the server-provided user question over the model echo (review #80)', () => {
+    const c = ctx();
+    c.userQuestion = 'кои са топ 5?';
+    c.results.push({ handle: 'R1', columns: ['total_eur'], rows: [[1]] });
+    const out = finalizeReport(
+      { title: 't', question: 'усвоени 12 млрд', blocks: [{ type: 'text', md: 'ок' }] },
+      c,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.report.question).toBe('кои са топ 5?');
+  });
+
   it('rejects a report referencing a handle that was never produced this turn', () => {
     const out = finalizeReport(
       {
@@ -111,5 +175,15 @@ describe('finalizeReport', () => {
       ctx(),
     );
     expect(out.ok).toBe(false);
+  });
+});
+
+describe('resolveRowsReadBudget', () => {
+  it('defaults on missing/invalid input and clamps to the ceiling', () => {
+    expect(resolveRowsReadBudget(undefined)).toBe(DEFAULT_ROWS_READ_BUDGET);
+    expect(resolveRowsReadBudget('0')).toBe(DEFAULT_ROWS_READ_BUDGET);
+    expect(resolveRowsReadBudget('not-a-number')).toBe(DEFAULT_ROWS_READ_BUDGET);
+    expect(resolveRowsReadBudget('1000000')).toBe(1_000_000);
+    expect(resolveRowsReadBudget('999999999')).toBe(50_000_000);
   });
 });

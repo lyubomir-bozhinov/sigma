@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { count, isNaturalPersonProfileName, money, pct, periodRange, plural } from '@sigma/shared';
+import { count, isNaturalPersonProfileName, money, moneyBare, pct, periodRange, plural } from '@sigma/shared';
 import { bidderIdFromSlug, getCompany } from '@sigma/db';
 import type { Route } from './+types/company';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -7,9 +7,11 @@ import { PageHeader } from '../components/PageHeader';
 import { FactsList } from '../components/FactsList';
 import { StackedBar } from '../components/StackedBar';
 import { ContractMiniTable } from '../components/ContractMiniTable';
-import { ShareBar, Chip, OwnershipChip, Section } from '../components/ui';
+import { ShareBar, Chip, OwnershipChip, Section, ExternalEikLink } from '../components/ui';
 import { publicCache } from '../lib/cache';
 import { coverageRange, getCoverageMeta } from '../lib/coverage';
+import { withDbRetry } from '../lib/retry';
+import { seoMeta } from '../lib/meta';
 
 function isSingleNaturalPersonProfile(kind: string, legalForm: string | null): boolean {
   if (kind === 'consortium' || !legalForm) return false;
@@ -23,22 +25,24 @@ function isSingleNaturalPersonProfile(kind: string, legalForm: string | null): b
   );
 }
 
-export function meta({ data }: Route.MetaArgs) {
+export function meta({ data, params, matches }: Route.MetaArgs) {
   const name = data?.company.displayName ?? 'Компания';
   const range = coverageRange(data?.coverage.coverageEndYear);
-  const meta = [
-    { title: `${name} — СИГМА` },
-    { name: 'description', content: `Профил на ${name} в обществените поръчки ${range}.` },
-  ];
+  const metaTags = seoMeta({
+    matches,
+    path: `/companies/${params.eik}`,
+    title: `${name} — СИГМА`,
+    description: `Профил на ${name} в обществените поръчки ${range}.`,
+  });
   if (
     data?.company &&
     (isSingleNaturalPersonProfile(data.company.kind, data.company.legalForm) ||
       isNaturalPersonProfileName(data.company.displayName) ||
       (data.company.kind === 'consortium' && Boolean(data.company.membershipNote)))
   ) {
-    meta.push({ name: 'robots', content: 'noindex' });
+    metaTags.push({ name: 'robots', content: 'noindex' });
   }
-  return meta;
+  return metaTags;
 }
 
 export function headers() {
@@ -50,9 +54,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const id = bidderIdFromSlug(params.eik);
   if (!id) throw new Response('Not Found', { status: 404 });
   const db = context.cloudflare.env.DB;
-  const [company, coverage] = await Promise.all([getCompany(db, id), getCoverageMeta(db)]);
-  if (!company) throw new Response('Not Found', { status: 404 });
-  return { company, coverage };
+  return withDbRetry(async () => {
+    const [company, coverage] = await Promise.all([getCompany(db, id), getCoverageMeta(db)]);
+    if (!company) throw new Response('Not Found', { status: 404 });
+    return { company, coverage };
+  });
 }
 
 export default function Company({ loaderData }: Route.ComponentProps) {
@@ -93,7 +99,12 @@ export default function Company({ loaderData }: Route.ComponentProps) {
                   · <Chip>{c.sector.short}</Chip>
                 </>
               )}
-              {c.hasEik && c.eik && <> · ЕИК&nbsp;{c.eik}</>}
+              {c.hasEik && c.eik && (
+                <>
+                  {' · '}ЕИК&nbsp;{c.eik}
+                  <ExternalEikLink eik={c.eik} />
+                </>
+              )}
             </>
           }
           title={c.displayName}
@@ -171,17 +182,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
                 ))}
               </ol>
             ) : (
-              <blockquote
-                style={{
-                  margin: 0,
-                  padding: 'var(--s-3) var(--s-4)',
-                  borderLeft: '3px solid var(--rule, #ccc)',
-                  color: 'var(--ink-soft, #555)',
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {c.membershipNote}
-              </blockquote>
+              <blockquote className="empty-quote">{c.membershipNote}</blockquote>
             )}
           </Section>
         )}
@@ -193,12 +194,15 @@ export default function Company({ loaderData }: Route.ComponentProps) {
         >
           <div className="table-wrap tbl-cards">
             <table>
+              <caption className="sr-only">
+                Институции платци, подредени по сумата, платена на компанията
+              </caption>
               <thead>
                 <tr>
                   <th scope="col">#</th>
                   <th scope="col">Институция</th>
                   <th scope="col" className="num">
-                    Платено на компанията
+                    Платено на компанията (€)
                   </th>
                   <th scope="col" className="num">
                     Договори
@@ -215,8 +219,8 @@ export default function Company({ loaderData }: Route.ComponentProps) {
                     <td className="cell-title" data-label="Институция">
                       <Link to={`/authorities/${a.slug}`}>{a.name}</Link>
                     </td>
-                    <td className="money" data-label="Платено">
-                      {money(a.paidEur)}
+                    <td className="money" data-label="Платено (€)">
+                      {moneyBare(a.paidEur)}
                     </td>
                     <td className="money" data-label="Договори">
                       {count(a.contracts)}
@@ -230,7 +234,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             </table>
           </div>
           {c.moreAuthorities > 0 && (
-            <p className="small muted" style={{ marginTop: 'var(--s-3)' }}>
+            <p className="small muted mt-s3">
               <Link to={`/contracts?bidder=${c.slug}`}>
                 … още {count(c.moreAuthorities)} институции — виж всички договори →
               </Link>
@@ -253,6 +257,13 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             hint="Колко оферти е имало на спечелените от компанията търгове (там, където данните го показват)."
           >
             <table>
+              <caption className="sr-only">Брой оферти на спечелените търгове</caption>
+              <thead className="sr-only">
+                <tr>
+                  <th scope="col">Брой оферти</th>
+                  <th scope="col">Брой търгове</th>
+                </tr>
+              </thead>
               <tbody>
                 <tr>
                   <td>1 оферта</td>
@@ -292,7 +303,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             </span>
           }
         >
-          <div className="tabset">
+          <div className="tabset" role="radiogroup" aria-label="Подреждане на договорите">
             <input
               type="radio"
               name="company-contracts"
@@ -300,24 +311,33 @@ export default function Company({ loaderData }: Route.ComponentProps) {
               className="tab-input"
               defaultChecked
             />
-            <input
-              type="radio"
-              name="company-contracts"
-              id="company-top"
-              className="tab-input"
-            />
+            <input type="radio" name="company-contracts" id="company-top" className="tab-input" />
             <div className="tab-labels">
-              <label htmlFor="company-recent">Най-нови</label>
-              <label htmlFor="company-top">Най-големи по стойност</label>
+              <label id="tab-company-recent" htmlFor="company-recent">
+                Най-нови
+              </label>
+              <label id="tab-company-top" htmlFor="company-top">
+                Най-големи по стойност
+              </label>
             </div>
-            <div className="tab-panel" data-tab="recent">
+            <div
+              className="tab-panel"
+              data-tab="recent"
+              role="group"
+              aria-labelledby="tab-company-recent"
+            >
               <ContractMiniTable items={c.recentContracts} counterparty="authority" />
             </div>
-            <div className="tab-panel" data-tab="top">
+            <div
+              className="tab-panel"
+              data-tab="top"
+              role="group"
+              aria-labelledby="tab-company-top"
+            >
               <ContractMiniTable items={c.topContracts} counterparty="authority" />
             </div>
           </div>
-          <p className="small muted" style={{ marginTop: 8 }}>
+          <p className="small muted mt-8">
             <Link to={`/contracts?bidder=${c.slug}`}>
               Виж всички / филтрирай / свали като CSV →
             </Link>
