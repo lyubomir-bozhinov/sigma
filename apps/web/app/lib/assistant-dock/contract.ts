@@ -1,11 +1,11 @@
-// The emit_report tool contract — the frozen interface from PR 80.
+// Local mirror of the report contract the dock consumes. The canonical schema is the server foundation's
+// `~/lib/assistant/report-schema` (not yet on this branch); the v1 block model it encodes is documented
+// in docs/spec/ai-assistant.md ("Block речник (v1)").
 //
-// ResolvedReport is the server-resolved artifact the dock and report page both consume.
-// Block values are always scalars here (refs resolved by the server before this is returned).
-// Canonical block vocabulary: text/callout use `md`, facts use `items`, bar uses `points`.
-//
-// On foundation merge, ~/lib/assistant/report-schema.ts will align to these names and this file
-// will be replaced by `import type { ... } from '~/lib/assistant/report-schema'`.
+// The dock is built against this mirror so the branch compiles and tests without that foundation present.
+// On foundation merge to `main`, delete this file and import the same types from the schema module above
+// (the source of truth).
+// TODO(foundation-merge): replace this module with `import type { ... } from '~/lib/assistant/report-schema'`.
 
 export type CellFormat = 'money' | 'number' | 'percent' | 'date' | 'text';
 export type EntityKind = 'company' | 'authority' | 'contract';
@@ -20,7 +20,7 @@ export interface ResolvedColumn {
 
 export interface ResolvedRow {
   cells: (string | number | null)[];
-  // Resolved entity id per column for columns that declare a `link` (else null), aligned to `columns`.
+  // Raw entity id per column for columns that declare a `link` (else null), aligned to `columns`.
   links?: (string | null)[];
 }
 
@@ -34,9 +34,16 @@ export type ResolvedBlock =
     }
   | { type: 'facts'; items: { term: string; value: string | number | null; sub?: string }[] }
   | { type: 'table'; columns: ResolvedColumn[]; rows: ResolvedRow[] }
-  | { type: 'bar'; points: { label: string | number | null; value: number }[] }
+  // `bar` carries an optional `key` per spec §4 (Block речник: `[{label, value, key?}]`) — the renderer
+  // uses it for palette determinism across stacked segments.
+  | { type: 'bar'; points: { label: string | number | null; value: number; key?: string }[] }
   | { type: 'flows'; edges: { from: string; to: string; valueEur: number }[] }
-  | { type: 'timeseries'; points: { period: string | number | null; value: number }[] };
+  // `timeseries` is single- OR multi-series per spec §4 (`[{period, value}]` (+ optional multi-series)).
+  | {
+      type: 'timeseries';
+      points?: { period: string | number | null; value: number }[];
+      series?: { label: string; points: { period: string | number | null; value: number }[] }[];
+    };
 
 export interface ResolvedReport {
   title: string;
@@ -45,9 +52,7 @@ export interface ResolvedReport {
   watermark: 'ai-generated';
 }
 
-// The `emit_report` tool part `output` shape (contract §3).
-// On success the server returns the full resolved report plus the R2 persistence metadata (id/url).
-// On failure (validation errors or storage error) it returns the error list.
+// The `emit_report` tool part `output` shape (contract §3): a finished report or validation errors.
 export type EmitReportOutput =
-  | { ok: true; id: string; url: string; report: ResolvedReport }
+  | { ok: true; report: ResolvedReport }
   | { ok: false; errors: string[] };

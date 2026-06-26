@@ -91,6 +91,20 @@ export const AssistantDock = () => {
     return () => document.removeEventListener('keydown', onKey);
   }, [collapsed, isMobile]);
 
+  // The desktop panel pushes the page aside in CSS so it never obscures focused page content
+  // (WCAG 2.2 §2.4.11 Focus Not Obscured). This effect only arms that push's transition one frame after
+  // the panel mounts, so the default-open push is instant on load and only user toggles animate.
+  useEffect(() => {
+    if (!mounted) return;
+    const root = document.documentElement;
+    const raf = requestAnimationFrame(() => root.classList.add('assistant-ready'));
+
+    return () => {
+      cancelAnimationFrame(raf);
+      root.classList.remove('assistant-ready');
+    };
+  }, [mounted]);
+
   if (!mounted) return null;
 
   if (collapsed) {

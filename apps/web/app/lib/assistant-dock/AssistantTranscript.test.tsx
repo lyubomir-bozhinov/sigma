@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
 import type { UIMessage } from 'ai';
 import { AssistantTranscript } from './AssistantTranscript';
 
@@ -23,8 +22,6 @@ const reportMessage = (id: string) =>
       state: 'output-available',
       output: {
         ok: true,
-        id: 'rep1',
-        url: '/reports/rep1',
         report: {
           title: 'Заглавие на справка',
           question: 'q',
@@ -51,7 +48,7 @@ describe('AssistantTranscript', () => {
   });
 
   it('renders a report chip for a finished report', () => {
-    render(<MemoryRouter><AssistantTranscript messages={[reportMessage('2')]} /></MemoryRouter>);
+    render(<AssistantTranscript messages={[reportMessage('2')]} />);
 
     expect(screen.getByText('Заглавие на справка')).toBeInTheDocument();
   });

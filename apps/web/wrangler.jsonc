@@ -4,7 +4,6 @@
   // mock with the SSR explorer. The ETL refresh is a separate worker (sigma-etl).
   "name": "sigma",
   "compatibility_date": "2025-04-04",
-  "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
   // The explorer reads D1 directly via @sigma/db (no hop through apps/api). Same `sigma` database +
   // database_id as apps/api so local dev shares one miniflare D1 file (see vite.config.ts persistState).
@@ -19,15 +18,34 @@
       "migrations_dir": "../../packages/db/migrations",
     },
   ],
-  "browser": { "binding": "BROWSER" },
   "r2_buckets": [
     { "binding": "CSV_CACHE", "bucket_name": "sigma-csv-cache" },
-    { "binding": "REPORT_STORE", "bucket_name": "sigma-reports" },
+    // AI assistant: immutable report snapshots (see docs/spec/ai-assistant.md §5).
+    { "binding": "REPORTS", "bucket_name": "sigma-reports" },
   ],
-  // AI assistant config — overridden per-environment in wrangler.deploy.jsonc.
-  // BGGPT_API_KEY must be set via `wrangler secret put BGGPT_API_KEY` in production.
+  // AI assistant (docs/spec/ai-assistant.md): Workers AI for RAG embeddings + a Vectorize index for
+  // schema-grounding and semantic search. The BgGPT API key is a SECRET — set with
+  // `wrangler secret put BGGPT_API_KEY`, never committed.
+  //
+  // ⚠️ DEPLOY GATE (review #80): these bindings reference resources that must EXIST before
+  // `wrangler deploy` — the Vectorize index `sigma-assistant`, the R2 bucket `sigma-reports`, and the
+  // BGGPT_API_KEY secret. Deploying before provisioning them fails the deploy and blocks the team's
+  // CD. Provision first (see app/lib/assistant/README.md → „Provisioning gate"); until then the
+  // assistant route degrades to a 503 rather than crashing.
+  "ai": { "binding": "AI" },
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "sigma-assistant" }],
+  // Public config for the assistant. AI_GATEWAY_BASE_URL routes BgGPT through the Cloudflare AI
+  // Gateway (spec §9.5); empty string falls back to api.bggpt.ai.
   "vars": {
-    "ASSISTANT_MAX_STEPS": "6",
+    "AI_GATEWAY_BASE_URL": "",
+    "BGGPT_MODEL": "bggpt-gemma-3-27b-fp8",
+    "MAX_STEPS": "6",
+    // Reserved for the launch-gate global circuit-breaker — declared but NOT yet read by any code.
+    "BGGPT_RATE_LIMIT_RPM": "120",
+    // Per-turn D1 rows-read budget — Denial-of-Wallet guard (issue #122). D1 bills on rows READ, not
+    // returned, and LIMIT caps only returned rows; once a chat turn's cumulative rows_read crosses
+    // this, further run_sql calls are refused. Tune to a few × the largest scannable table.
+    "D1_ROWS_READ_BUDGET": "5000000",
   },
   "unsafe": {
     "bindings": [
@@ -54,9 +72,12 @@
         "simple": { "limit": 20, "period": 60 },
       },
       {
-        "name": "CHAT_RATE_LIMITER",
+        // Per-IP throttle for POST /assistant/chat — each call runs embeddings + the BgGPT agent loop
+        // (review #80). Tight, since it is far costlier than a page view. A global (account-wide) budget
+        // / circuit-breaker is a launch-gate TODO: BGGPT_RATE_LIMIT_RPM (below) is declared for it but
+        // not yet read — only this per-IP limiter is active today.
+        "name": "ASSISTANT_RATE_LIMITER",
         "type": "ratelimit",
-        // Per-IP limit on /assistant/chat — each step can be multiple BgGPT calls.
         "namespace_id": "1004",
         "simple": { "limit": 10, "period": 60 },
       },

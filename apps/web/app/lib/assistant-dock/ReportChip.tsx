@@ -8,8 +8,9 @@ interface ReportChipProps {
 }
 
 /**
- * Compact card for a finished report in the chat transcript: title + an „Отвори" link to the full
- * report. Use `projectChip` (report-projection) to build the props from the emit_report tool output.
+ * Compact card for a finished report in the chat transcript: title + one lead statistic + an „Отвори"
+ * link to the full report. Project a `ResolvedReport` with `projectChip` (report-projection) and pass
+ * the result plus the report URL.
  */
 export const ReportChip = ({ title, leadStat, href }: ReportChipProps) => (
   <article className="report-chip">

@@ -1,257 +1,117 @@
-// Resource route — no default export (no UI).
-// POST /assistant/chat — streaming AI chat endpoint.
-//
-// Uses Vercel AI SDK (ai + @ai-sdk/openai) pointed at BgGPT's OpenAI-compatible API.
-// Tools: describe_schema, run_sql, search_entities, get_company, get_authority,
-//        get_contract, emit_report.
-// Security: SQL guard (sql-guard.ts), per-IP rate limit, read-only D1 access,
-//           Zod-validated emit_report (invalid output → model retries).
+// Resource route: the assistant chat endpoint. The dock POSTs the UIMessage history; we run one
+// agent turn (BgGPT via the AI Gateway + the read-only tool loop) and stream the result back. The
+// server is stateless (spec §5) — nothing per-user is persisted here.
 
-import { createOpenAI } from '@ai-sdk/openai';
-import { convertToModelMessages, streamText, tool } from 'ai';
-import { z } from 'zod';
+import type { UIMessage } from 'ai';
 import type { Route } from './+types/assistant.chat';
-import { guardSql, truncateResult } from '../lib/assistant/sql-guard';
-import { SCHEMA_DICT } from '../lib/assistant/schema-dict';
-import { SYSTEM_PROMPT } from '../lib/assistant/system-prompt';
-import { ReportArtifactSchema } from '../lib/assistant/report-schema';
-import type { StoredReport } from '../lib/assistant/report-schema';
+import { runAssistant, type AgentEnv } from '../lib/assistant/agent';
+import {
+  retrieveSchemaContext,
+  type EmbeddingRunner,
+  type VectorIndex,
+} from '../lib/assistant/rag';
+import { resolveRowsReadBudget, type ToolContext } from '../lib/assistant/tools';
+import { selectClientMessages } from '../lib/assistant/chat-input';
 
-const BGGPT_BASE_URL = 'https://api.bggpt.ai/v1';
-const MODEL_ID = 'bggpt-gemma-3-27b-fp8';
+function latestUserText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m?.role !== 'user') continue;
+    return m.parts
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join(' ')
+      .trim();
+  }
+  return '';
+}
 
+const MAX_BODY_BYTES = 256 * 1024; // ~256 KB of posted history — bounds memory + token blow-up (review #80)
+const MAX_MESSAGES = 24; // keep only the most recent turns (the model has a big window; still bound it)
+const MAX_MESSAGE_CHARS = 64 * 1024; // per-message text cap — one giant message must not dominate the prompt
+
+/** Total length of a message's text parts (the only parts that become BgGPT prompt tokens). */
+function messageTextChars(m: UIMessage): number {
+  return m.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .reduce((n, p) => n + p.text.length, 0);
+}
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { env } = context.cloudflare;
+  const raw = await request.text();
+  // Measure UTF-8 bytes, not raw.length (UTF-16 code units): a Cyrillic-heavy body is ~2 UTF-8 bytes per
+  // char, so raw.length would pass at ~2× the intended cap (same pitfall fixed in eop-fetch.ts, review #80).
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
+    return Response.json({ error: 'историята е твърде голяма' }, { status: 413 });
+  }
+  let parsed: { messages?: UIMessage[] };
+  try {
+    parsed = JSON.parse(raw) as { messages?: UIMessage[] };
+  } catch {
+    return Response.json({ error: 'невалиден JSON' }, { status: 400 });
+  }
+  // Keep only the user/assistant turns the dock sends, most-recent first — drops any client-supplied
+  // `system`/`tool` message that would otherwise reach BgGPT as a second system instruction (review #80,
+  // red-team R1). See selectClientMessages for why filtering precedes the recency slice.
+  const messages = selectClientMessages(parsed.messages, MAX_MESSAGES);
+  if (messages.length === 0) return Response.json({ error: 'няма съобщения' }, { status: 400 });
+  // The total body cap leaves room for ONE message to dominate (re-billed as prompt tokens every step);
+  // reject an oversized individual message too (review #80).
+  if (messages.some((m) => messageTextChars(m) > MAX_MESSAGE_CHARS)) {
+    return Response.json({ error: 'съобщението е твърде дълго' }, { status: 413 });
+  }
 
-  // ── Per-IP rate limit ────────────────────────────────────────────────────
-  if (env.CHAT_RATE_LIMITER) {
-    const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-    const { success } = await env.CHAT_RATE_LIMITER.limit({ key: ip });
-    if (!success) {
-      return new Response(JSON.stringify({ error: 'Твърде много заявки. Опитайте след малко.' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json' },
-      });
+  const env = context.cloudflare.env;
+  // Fail fast and CLEARLY if the model key is unprovisioned, rather than starting a turn that surfaces a
+  // generic mid-stream BgGPT 401 indistinguishable from a real outage (review #80).
+  if (!(env as unknown as AgentEnv).BGGPT_API_KEY) {
+    console.error('[assistant] BGGPT_API_KEY is not set — endpoint not provisioned');
+    return Response.json({ error: 'Асистентът все още не е конфигуриран.' }, { status: 503 });
+  }
+  const ai = env.AI as unknown as EmbeddingRunner | undefined;
+  const vectorize = env.VECTORIZE as unknown as VectorIndex | undefined;
+  // The latest user message text — used both to RAG-ground the prompt and as the server-authoritative
+  // report question, so the model's echo can never smuggle an unbound number into the question slot
+  // (review #80).
+  const question = latestUserText(messages);
+  const ctx: ToolContext = {
+    db: env.DB,
+    ai,
+    vectorize,
+    results: [],
+    userQuestion: question,
+    // Per-turn Denial-of-Wallet guard (issue #122): bound the D1 rows-read cost of this turn's run_sql
+    // calls. `LIMIT` caps only returned rows; D1 bills on rows scanned.
+    rowsRead: 0,
+    rowsReadBudget: resolveRowsReadBudget(env.D1_ROWS_READ_BUDGET),
+  };
+
+  // RAG grounding (best-effort): the most relevant schema chunks for the latest question; on any
+  // failure the system prompt falls back to the full static dictionary.
+  let schemaContext: string[] | undefined;
+  if (ai && vectorize && question) {
+    try {
+      schemaContext = await retrieveSchemaContext(ai, vectorize, question);
+    } catch {
+      schemaContext = undefined;
     }
   }
 
-  // ── Parse request body ───────────────────────────────────────────────────
-  let body: { messages?: unknown };
   try {
-    body = await request.json();
-  } catch {
-    return new Response('Bad request', { status: 400 });
-  }
-
-  if (!Array.isArray(body?.messages)) {
-    return new Response('messages array required', { status: 400 });
-  }
-
-  const MAX_MESSAGES = 40;
-  const MAX_CONTENT_BYTES = 8_000;
-  const messages = (body.messages as unknown[])
-    .slice(-MAX_MESSAGES)
-    .map((m) => {
-      if (typeof m !== 'object' || m === null) return m;
-      const msg = m as Record<string, unknown>;
-      if (typeof msg.content === 'string' && msg.content.length > MAX_CONTENT_BYTES) {
-        return { ...msg, content: msg.content.slice(0, MAX_CONTENT_BYTES) };
-      }
-      return m;
+    return await runAssistant({
+      env: env as unknown as AgentEnv,
+      ctx,
+      messages,
+      schemaContext,
+      abortSignal: request.signal,
     });
-
-  const apiKey = env.BGGPT_API_KEY;
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: 'AI асистентът не е конфигуриран на тази среда.' }),
-      { status: 503, headers: { 'Content-Type': 'application/json' } },
+  } catch (error) {
+    // Setup-time failure (missing key, bad config, malformed history) — degrade to a readable 503
+    // rather than an unhandled 500. Mid-stream BgGPT errors are handled by the stream's onError.
+    console.error('[assistant] turn failed to start', error);
+    return Response.json(
+      { error: 'Асистентът временно не е достъпен. Опитай отново след малко.' },
+      { status: 503 },
     );
   }
-
-  const maxSteps = Math.min(12, parseInt(env.ASSISTANT_MAX_STEPS ?? '6', 10));
-
-  // ── BgGPT provider ───────────────────────────────────────────────────────
-  const bggpt = createOpenAI({
-    baseURL: BGGPT_BASE_URL,
-    apiKey,
-  });
-
-  // ── Tools ────────────────────────────────────────────────────────────────
-
-  const tools = {
-    describe_schema: tool({
-      description:
-        'Returns the SIGMA database schema dictionary — tables, columns, ID conventions, key enum values, rollup tables, and example SQL. Call this before writing SQL.',
-      parameters: z.object({}),
-      execute: async () => SCHEMA_DICT,
-    }),
-
-    run_sql: tool({
-      description:
-        'Execute a read-only SELECT query on the D1 database. Use describe_schema first. Only SELECT / WITH…SELECT is allowed. LIMIT is enforced automatically.',
-      parameters: z.object({
-        sql: z.string().describe('A single SELECT or WITH…SELECT statement.'),
-      }),
-      execute: async ({ sql }) => {
-        const guard = guardSql(sql);
-        if (!guard.ok) return { error: guard.reason };
-
-        try {
-          const { results } = await env.DB.prepare(guard.sql).all();
-          const { rows, truncated } = truncateResult(results ?? []);
-          return {
-            rows,
-            rowCount: rows.length,
-            truncated,
-            sql: guard.sql,
-          };
-        } catch (err) {
-          return { error: String(err instanceof Error ? err.message : err) };
-        }
-      },
-    }),
-
-    search_entities: tool({
-      description:
-        'Full-text search (FTS5) over authority names, company names, ЕИК, contract subjects, and УНП. Returns up to 20 matching entities.',
-      parameters: z.object({
-        q: z.string().describe('Search term (Cyrillic or Latin)'),
-        kind: z
-          .enum(['authority', 'company', 'contract'])
-          .optional()
-          .describe('Filter by entity kind'),
-      }),
-      execute: async ({ q, kind }) => {
-        const where = kind ? `kind = '${kind}' AND search_index MATCH ?` : 'search_index MATCH ?';
-        try {
-          const { results } = await env.DB.prepare(
-            `SELECT kind, ref, title, ident, subtitle, amount FROM search_index WHERE ${where} ORDER BY rank LIMIT 20`,
-          )
-            .bind(q)
-            .all<{ kind: string; ref: string; title: string; ident: string; subtitle: string; amount: string }>();
-          return { results: results ?? [] };
-        } catch (err) {
-          return { error: String(err instanceof Error ? err.message : err) };
-        }
-      },
-    }),
-
-    get_company: tool({
-      description: 'Fetch headline data for a company by ЕИК or bidder slug (eik_normalized).',
-      parameters: z.object({ eik: z.string().describe('9 or 13-digit ЕИК') }),
-      execute: async ({ eik }) => {
-        const row = await env.DB.prepare(
-          `SELECT b.id, b.name, b.kind, b.ownership_kind, b.settlement,
-                  ct.won_eur, ct.contracts, ct.authorities, ct.primary_sector, ct.eu_eur,
-                  ct.first_date, ct.last_date
-           FROM bidders b
-           LEFT JOIN company_totals ct ON ct.bidder_id = b.id
-           WHERE b.eik_normalized = ? OR b.bulstat = ?
-           LIMIT 1`,
-        )
-          .bind(eik, eik)
-          .first();
-        return row ?? { error: 'Not found' };
-      },
-    }),
-
-    get_authority: tool({
-      description: 'Fetch headline data for an authority by ЕИК / bulstat.',
-      parameters: z.object({ eik: z.string().describe('Authority ЕИК') }),
-      execute: async ({ eik }) => {
-        const row = await env.DB.prepare(
-          `SELECT a.id, a.name, a.type_group, a.region, a.settlement,
-                  at2.spent_eur, at2.contracts, at2.suppliers, at2.primary_sector, at2.eu_eur,
-                  at2.first_date, at2.last_date
-           FROM authorities a
-           LEFT JOIN authority_totals at2 ON at2.authority_id = a.id
-           WHERE a.bulstat = ?
-           LIMIT 1`,
-        )
-          .bind(eik)
-          .first();
-        return row ?? { error: 'Not found' };
-      },
-    }),
-
-    get_contract: tool({
-      description: 'Fetch detail for a contract by УНП or contract id.',
-      parameters: z.object({ id: z.string().describe('УНП (e.g. 00156714-2022-0001) or contract id (c:...)') }),
-      execute: async ({ id }) => {
-        const row = await env.DB.prepare(
-          `SELECT c.id, t.title, t.source_id AS unp, a.name AS authority, b.name AS bidder,
-                  c.amount_eur, c.currency, c.signed_at, c.bids_received, c.eu_funded,
-                  c.value_flag, c.annex_count, c.current_value_eur
-           FROM contracts c
-           JOIN tenders t ON t.id = c.tender_id
-           JOIN authorities a ON a.id = t.authority_id
-           JOIN bidders b ON b.id = c.bidder_id
-           WHERE c.id = ? OR t.source_id = ?
-           LIMIT 1`,
-        )
-          .bind(id, id)
-          .first();
-        return row ?? { error: 'Not found' };
-      },
-    }),
-
-    emit_report: tool({
-      description:
-        'Finalise and persist a report artifact. Call this once you have gathered all data. Returns the resolved report for the chat chip plus the /reports/:id URL.',
-      parameters: ReportArtifactSchema,
-      execute: async (artifact, { messages }) => {
-        const id = crypto.randomUUID().replace(/-/g, '');
-        const url = `/reports/${id}`;
-        const lastUser = messages.filter((m) => m.role === 'user').slice(-1)[0];
-        const rawContent = lastUser?.content;
-        const promptSummary: string | undefined =
-          typeof rawContent === 'string' ? rawContent.slice(0, 200) : undefined;
-
-        const stored: StoredReport = {
-          ...artifact,
-          id,
-          generatedAt: new Date().toISOString(),
-          promptSummary,
-        };
-
-        if (env.REPORT_STORE) {
-          const body = JSON.stringify(stored);
-          if (body.length > 500_000) {
-            return { ok: false, errors: ['Справката е твърде голяма (>500 KB). Намалете броя на редовете.'] };
-          }
-          await env.REPORT_STORE.put(`${id}.json`, body, {
-            httpMetadata: { contentType: 'application/json' },
-          });
-        }
-
-        return {
-          ok: true,
-          id,
-          url,
-          report: {
-            title: artifact.title,
-            question: promptSummary ?? '',
-            blocks: artifact.blocks,
-            watermark: 'ai-generated' as const,
-          },
-        };
-      },
-    }),
-  };
-
-  // ── Stream ───────────────────────────────────────────────────────────────
-  const modelMessages = await convertToModelMessages(
-    messages as Parameters<typeof convertToModelMessages>[0],
-  );
-  const result = streamText({
-    model: bggpt.chat(MODEL_ID),
-    system: SYSTEM_PROMPT,
-    messages: modelMessages,
-    tools,
-    maxSteps,
-    temperature: 0.2,
-  });
-
-  return result.toUIMessageStreamResponse();
 }
