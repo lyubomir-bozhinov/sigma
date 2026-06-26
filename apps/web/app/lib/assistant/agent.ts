@@ -105,6 +105,12 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // a per-step output backstop (the model emits block structure + refs, not the bound data values).
     abortSignal: opts.abortSignal,
     maxRetries: 1,
+    // Low temperature materially improves tool-calling reliability with bggpt-gemma-3-27b: under the
+    // streamed tool loop the model otherwise drifts into NARRATING the call (writing `run_sql(...)` /
+    // ```sql as prose) instead of emitting a real function call. Local probes: ~75% tool-call rate at
+    // the model default vs ~88% at 0.1 (streamed). Determinism here is desirable — we want the SQL, not
+    // creative variation.
+    temperature: 0.1,
     // Per-step output backstop. The model emits block structure + refs (not the bound data values),
     // but a longer multi-block справка plus reasoning can exceed 4k and get truncated mid-report; 8k
     // leaves headroom while still capping worst-case tokens per step.
