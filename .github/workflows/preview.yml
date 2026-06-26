@@ -1,0 +1,204 @@
+name: PR preview (ephemeral sigma worker)
+
+# Ephemeral per-PR preview of the SSR explorer. Each open PR gets its own Worker named `sigma-pr-<num>`
+# at https://sigma-pr-<num>.<account-subdomain>.workers.dev, deleted when the PR closes.
+#
+# Design (see docs/dev-environments.md):
+#   - Web worker ONLY. The ETL worker is cron-only and WRITES D1 — we never spin a per-PR copy of it.
+#   - Previews SHARE the long-lived dev D1 + dev R2 bucket (read-only from the preview worker). No
+#     per-PR data provisioning, no per-PR seed — the preview shows the same data the dev env has.
+#   - All credentials come from a `preview` GitHub Environment whose SIGMA_D1_ID points at the dev D1.
+#     Keep that environment WITHOUT required reviewers, or every preview deploy will block.
+#
+# Security: fork PRs cannot read repo secrets, so the deploy/teardown jobs are gated to same-repo
+# branches. Fork PRs still get normal CI from ci.yml; they just don't get a live preview.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Shared dev data: SIGMA_D1_ID is the dev database's id (set on the `preview` Environment).
+      SIGMA_D1_ID: ${{ secrets.SIGMA_D1_ID }}
+      SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
+      SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
+      # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
+      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Guard — require preview credentials
+        run: |
+          missing=()
+          [ -z "${CLOUDFLARE_API_TOKEN}" ] && missing+=("CLOUDFLARE_API_TOKEN")
+          [ -z "${CLOUDFLARE_ACCOUNT_ID}" ] && missing+=("CLOUDFLARE_ACCOUNT_ID")
+          [ -z "${SIGMA_D1_ID}" ]          && missing+=("SIGMA_D1_ID")
+          [ -z "${SIGMA_D1_NAME}" ]        && missing+=("SIGMA_D1_NAME (var)")
+          [ -z "${SIGMA_CSV_CACHE_NAME}" ] && missing+=("SIGMA_CSV_CACHE_NAME (var)")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::preview Environment is missing: ${missing[*]} — see docs/dev-environments.md."
+            exit 1
+          fi
+
+      # Defense in depth: SIGMA_WEB_NAME is computed (sigma-pr-<n>), but the shared-data names come from
+      # the `preview` Environment. Refuse the production D1/R2 names so a misconfigured environment can't
+      # point previews at the live `sigma` data. Previews are meant to read the dev D1/R2 only.
+      - name: Guard — preview must not point at production data
+        run: |
+          fail=0
+          check() {  # $1=value  $2=prod default  $3=var name
+            if [ "$1" = "$2" ]; then
+              echo "::error::$3 must not be the production value '$2' for a preview — set it to the dev resource on the 'preview' Environment (see docs/dev-environments.md)."
+              fail=1
+            fi
+          }
+          check "$SIGMA_D1_NAME"        sigma           SIGMA_D1_NAME
+          check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
+          [ "$fail" = 0 ] || exit 1
+
+      - name: Deploy preview worker
+        id: deploy
+        run: |
+          set -o pipefail
+          # `run deploy` builds, renders wrangler.deploy.json with SIGMA_WEB_NAME/SIGMA_D1_*, and deploys.
+          pnpm --filter @sigma/web run deploy 2>&1 | tee deploy.log
+          # The live URL includes the account subdomain (sigma-pr-<n>.<account-subdomain>.workers.dev),
+          # which can't be reconstructed from SIGMA_WEB_NAME alone — so parse it from wrangler's output.
+          # If parsing fails, leave it empty; the comment step says so rather than posting a dead link.
+          url="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -n1)"
+          if [ -z "$url" ]; then
+            echo "::warning::Could not parse the preview URL from wrangler output; see the deploy log above."
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const url = process.env.PREVIEW_URL;
+            const worker = process.env.SIGMA_WEB_NAME;
+            const marker = '<!-- sigma-preview -->';
+            const headline = url
+              ? `🌐 **Preview deployed** → ${url}`
+              : `🌐 **Preview deployed**, but the URL couldn't be auto-detected — see the "Deploy preview worker" step in the [workflow run](${process.env.RUN_URL}).`;
+            const body = `${marker}\n${headline}\n\n` +
+              `Worker \`${worker}\` · shares the **dev** D1 (read-only). Updates on each push; removed when this PR closes.`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body,
+              });
+            }
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+          SIGMA_WEB_NAME: ${{ env.SIGMA_WEB_NAME }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # Render the live preview location into the run's Job Summary (the box on the Actions run page),
+      # so the URL is discoverable straight from the workflow run — not only the PR comment.
+      - name: Preview environment summary
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          {
+            echo "## 🌐 Preview environment"
+            echo
+            if [ -n "$PREVIEW_URL" ]; then
+              echo "✅ **Deployed** → [$PREVIEW_URL]($PREVIEW_URL)"
+            else
+              echo "⚠️ Deployed, but the URL couldn't be auto-detected — see the **Deploy preview worker** step log."
+            fi
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Worker | \`$SIGMA_WEB_NAME\` (web/SSR only — no per-PR ETL) |"
+            echo "| Data | shares the **dev** D1 \`$SIGMA_D1_NAME\` + R2 \`$SIGMA_CSV_CACHE_NAME\` (read-only) |"
+            echo "| Lifecycle | redeployed on each push · torn down when this PR closes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  teardown:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    # Teardown must run to completion — never let a racing deploy (same PR, shared workflow-level group)
+    # cancel it and orphan the sigma-pr-<n> worker. Own group, no cancellation; the deletion is idempotent.
+    concurrency:
+      group: preview-teardown-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Deletes only the per-PR worker. The shared dev D1/R2 are never touched (teardown-remote.mjs
+      # refuses protected long-lived names). Uses the web package's pinned wrangler.
+      - name: Delete preview worker
+        run: pnpm --filter @sigma/web exec node ../../scripts/teardown-remote.mjs --name "$SIGMA_WEB_NAME"
+
+      - name: Teardown summary
+        run: |
+          {
+            echo "## 🧹 Preview environment"
+            echo
+            echo "Worker \`$SIGMA_WEB_NAME\` was torn down (PR closed). The shared dev D1/R2 are untouched."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note teardown on PR
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- sigma-preview -->';
+            const body = `${marker}\n🧹 Preview \`${process.env.SIGMA_WEB_NAME}\` torn down (PR closed).`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            }
+        env:
+          SIGMA_WEB_NAME: ${{ env.SIGMA_WEB_NAME }}
