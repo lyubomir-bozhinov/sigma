@@ -30,6 +30,9 @@ concurrency:
 jobs:
   reap:
     runs-on: ubuntu-latest
+    # Listing + deleting a handful of stale workers is quick; cap well under the 360-min default so a
+    # wedged wrangler delete can't pin a runner for hours on the daily schedule.
+    timeout-minutes: 10
     environment: preview
     permissions:
       contents: read
