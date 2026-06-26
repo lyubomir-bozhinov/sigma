@@ -19,7 +19,7 @@ import { useNonce } from './nonce';
 import { SiteHeader } from './components/SiteHeader';
 import { SiteFooter } from './components/SiteFooter';
 import { AccessibilityWidget } from './components/AccessibilityWidget';
-import { ChatDock } from './components/ChatDock';
+import { AssistantDock } from './lib/assistant-dock/AssistantDock';
 import { PageHeader } from './components/PageHeader';
 import { getCoverageMeta } from './lib/coverage';
 import { withDbRetry } from './lib/retry';
@@ -190,7 +190,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
         endYear={loaderData.coverageEndYear}
       />
       <AccessibilityWidget />
-      <ChatDock />
+      <AssistantDock />
     </>
   );
 }

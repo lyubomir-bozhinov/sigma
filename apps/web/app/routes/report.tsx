@@ -454,6 +454,45 @@ function MethodologyCallout({ report }: { report: StoredReport }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+function CfPdfButton({ reportId }: { reportId: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  async function handleDownload() {
+    setState('loading');
+    try {
+      const res = await fetch(`/reports/${encodeURIComponent(reportId)}.pdf`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${reportId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setState('idle');
+    } catch {
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="report-pdf-btn"
+      onClick={handleDownload}
+      disabled={state === 'loading'}
+      aria-label="Изтегли като PDF (Cloudflare Browser Rendering)"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" width="16" height="16">
+        <path d="M10 13L6 9h3V3h2v6h3l-4 4z" fill="currentColor"/>
+        <path d="M3 15h14v2H3v-2z" fill="currentColor"/>
+      </svg>
+      {state === 'loading' ? 'Генериране…' : state === 'error' ? 'Грешка' : 'CF PDF'}
+    </button>
+  );
+}
+
 const PDF_SERVER = import.meta.env.VITE_PDF_SERVER_URL ?? '';
 
 function PdfButton({ reportId }: { reportId: string }) {
@@ -499,7 +538,8 @@ function PdfButton({ reportId }: { reportId: string }) {
 }
 
 export default function ReportPage({ loaderData }: Route.ComponentProps) {
-  const { id, report } = loaderData;
+  const { report } = loaderData;
+  const id = report.id;
 
   return (
     <main id="main" className="report-page">
@@ -522,6 +562,7 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
             Принтирай
           </button>
           <PdfButton reportId={id} />
+          <CfPdfButton reportId={id} />
         </div>
       </div>
 
