@@ -88,9 +88,12 @@ JSON
 echo "  ✅ required reviewers set (prevent_self_review=true)"
 
 # 2. Add the v* TAG policy (type=tag — a tag rule, never matched by a branch named v…).
-#    Skip silently if an identical policy already exists (idempotent re-runs).
-existing="$(gh api "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" --jq '.branch_policies[]?.name' 2>/dev/null || true)"
-if echo "$existing" | grep -qx 'v\*'; then
+#    Skip silently if an identical policy already exists (idempotent re-runs). Match on BOTH
+#    name and type=="tag" so a same-named *branch* policy (type=branch) can't mask a missing
+#    tag policy and make the script falsely report success.
+existing="$(gh api "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" \
+  --jq '.branch_policies[]? | select(.type == "tag" and .name == "v*") | .name' 2>/dev/null || true)"
+if [ -n "$existing" ]; then
   echo "  ✅ tag policy 'v*' already present"
 else
   gh api -X POST "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" \
