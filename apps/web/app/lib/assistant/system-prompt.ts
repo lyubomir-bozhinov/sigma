@@ -44,6 +44,35 @@ export const EDITORIAL_SKELETON =
   'ФОРМА НА СПРАВКАТА: заглавие → едноредов отговор (`text`) → водещи `totals` → поддържащи ' +
   '`table`/`bar`/`flows`/`timeseries` → `callout`, който цитира източниците.';
 
+// Explicit per-block field shapes + a worked example. Without this the model guesses field names
+// (`content`/`text` instead of `md`, `fact` instead of `facts`, inline `{ref:…}` strings instead of
+// structured refs) and every emit_report fails server validation. (fix: emit_report schema adherence)
+export const BLOCK_SCHEMA_GUIDE =
+  'СХЕМА НА БЛОКОВЕТЕ — използвай ТОЧНО тези имена на полета, иначе справката се отхвърля:\n' +
+  '- text: {"type":"text","md":"<markdown, БЕЗ числа>"}\n' +
+  '- callout: {"type":"callout","title":"<заглавие>","md":"<текст>"}\n' +
+  '- totals: {"type":"totals","items":[{"label":"<етикет>","ref":{"resultId":"R1","row":0,"col":"<колона>"},"format":"money|number|percent|date|text"}]}\n' +
+  '- facts: {"type":"facts","items":[{"term":"<етикет>","ref":{"resultId":"R1","row":0,"col":"<колона>"}}]}\n' +
+  '- table: {"type":"table","resultId":"R1","columns":[{"key":"<колона>","header":"<заглавие>","format":"money|number|percent|date|text"}]}\n' +
+  '- bar: {"type":"bar","resultId":"R1","labelCol":"<колона>","valueCol":"<колона>"}\n' +
+  '- flows: {"type":"flows","resultId":"R1","fromCol":"<колона>","toCol":"<колона>","valueCol":"<колона>"}\n' +
+  '- timeseries: {"type":"timeseries","resultId":"R1","periodCol":"<колона>","valueCol":"<колона>"}\n' +
+  'Числата НИКОГА не се пишат в "md" — показват се само чрез `ref` към резултатен хендъл (R1, R2…). ' +
+  'Давай псевдоними на агрегатите в SQL (напр. `SELECT COUNT(*) AS total`), за да има чисти имена за `ref.col`.\n' +
+  'ПРИМЕР — въпрос „Колко договора има общо?":\n' +
+  '  1) run_sql → SELECT COUNT(*) AS total FROM contracts   (резултат: хендъл R1, колона "total")\n' +
+  '  2) emit_report → {"title":"Общо договори","question":"Колко договора има общо?","blocks":[' +
+  '{"type":"text","md":"Общият брой договори в базата:"},' +
+  '{"type":"totals","items":[{"label":"Общо договори","ref":{"resultId":"R1","row":0,"col":"total"},"format":"number"}]}]}';
+
+// Placed LAST in the prompt (recency): a weak model attends most to the final tokens, and the big
+// schema dictionary otherwise buries the emit_report rules. Concise on purpose — extra prose hurts
+// this model. (fix: emit_report schema adherence)
+export const FINAL_REMINDER =
+  'НАКРАЯ, ЗАДЪЛЖИТЕЛНО: за въпрос с число, класация, сравнение или разбивка отговаряй САМО чрез ' +
+  '`emit_report` (по схемата на блоковете и примера по-горе) — НИКОГА с обикновен текст. ' +
+  'Първо извикай инструмент за данните (напр. `run_sql`), после `emit_report`, който реферира хендъла.';
+
 const ROLE =
   'Ти си аналитичният асистент на СИГМА — платформа за прозрачност на обществените поръчки. ' +
   'Отговаряш на български. Базата са публични данни от АОП / ЦАИС ЕОП. Имаш read-only инструменти: ' +
@@ -66,6 +95,9 @@ export function buildSystemPrompt(input: SystemPromptInput = {}): string {
     EDITORIAL_SKELETON,
     input.freshness ? `СВЕЖЕСТ НА ДАННИТЕ: ${input.freshness} — цитирай я в callout.` : '',
     schema,
+    // emit_report guidance LAST, after the schema dictionary, for recency (see FINAL_REMINDER).
+    BLOCK_SCHEMA_GUIDE,
+    FINAL_REMINDER,
   ];
   return parts.filter(Boolean).join('\n\n');
 }

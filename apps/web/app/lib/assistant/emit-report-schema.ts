@@ -43,8 +43,35 @@ function isCellRef(v: unknown): v is CellRef {
 
 export type ShapeResult = { ok: true; value: EmitReportInput } | { ok: false; errors: string[] };
 
+// Tolerant normalization (defense-in-depth): weak models emit near-miss field names. Canonicalize the
+// common misses BEFORE strict validation so a structurally-correct report isn't rejected on a synonym.
+// Pairs with BLOCK_SCHEMA_GUIDE in system-prompt.ts. (fix: emit_report schema adherence)
+const BLOCK_TYPE_ALIASES: Record<string, string> = {
+  fact: 'facts',
+  total: 'totals',
+  flow: 'flows',
+  timeserie: 'timeseries',
+};
+
+function normalizeEmitInput(input: unknown): unknown {
+  if (!isObj(input) || !Array.isArray(input.blocks)) return input;
+  const blocks = input.blocks.map((b) => {
+    if (!isObj(b)) return b;
+    const nb: Record<string, unknown> = { ...b };
+    if (isStr(nb.type)) nb.type = BLOCK_TYPE_ALIASES[nb.type] ?? nb.type;
+    // text/callout body: accept `content`/`text` as aliases for `md`
+    if ((nb.type === 'text' || nb.type === 'callout') && !isStr(nb.md)) {
+      if (isStr(nb.content)) nb.md = nb.content;
+      else if (isStr(nb.text)) nb.md = nb.text;
+    }
+    return nb;
+  });
+  return { ...input, blocks };
+}
+
 /** Structurally validate a model-emitted report. On success the value is a typed EmitReportInput. */
-export function validateEmitShape(input: unknown): ShapeResult {
+export function validateEmitShape(rawInput: unknown): ShapeResult {
+  const input = normalizeEmitInput(rawInput);
   const errors: string[] = [];
   if (!isObj(input)) return { ok: false, errors: ['report must be an object'] };
   if (!isNonEmptyStr(input.title)) errors.push('title must be a non-empty string');
@@ -151,10 +178,45 @@ export const EMIT_REPORT_JSON_SCHEMA = {
       items: {
         type: 'object',
         required: ['type'],
+        // Per-type field shapes (the server enforces these strictly in validateEmitShape). Listed here
+        // so the model emits the right field NAMES, not synonyms. (fix: emit_report schema adherence)
+        description:
+          'Блок. Полета по тип: ' +
+          'text→{type,md}; callout→{type,title,md}; ' +
+          'totals→{type,items:[{label,ref:{resultId,row,col},format}]}; ' +
+          'facts→{type,items:[{term,ref:{resultId,row,col}}]}; ' +
+          'table→{type,resultId,columns:[{key,header,format,link?}]}; ' +
+          'bar→{type,resultId,labelCol,valueCol}; ' +
+          'flows→{type,resultId,fromCol,toCol,valueCol}; ' +
+          'timeseries→{type,resultId,periodCol,valueCol}. ' +
+          'Текстът е в "md" (НЕ "content"/"text"); числата само чрез "ref".',
         properties: {
           type: {
             enum: ['text', 'callout', 'totals', 'facts', 'table', 'bar', 'flows', 'timeseries'],
           },
+          md: { type: 'string', description: 'Markdown тяло за text/callout (БЕЗ числа)' },
+          title: { type: 'string', description: 'Заглавие за callout' },
+          items: {
+            type: 'array',
+            description: 'За totals: {label,ref,format}. За facts: {term,ref}. ref={resultId,row,col}.',
+          },
+          ref: {
+            type: 'object',
+            description: 'Препратка към резултатен хендъл',
+            properties: {
+              resultId: { type: 'string' },
+              row: { type: 'integer' },
+              col: { type: 'string' },
+            },
+          },
+          resultId: { type: 'string', description: 'Хендъл за table/bar/flows/timeseries (напр. R1)' },
+          columns: { type: 'array', description: 'За table: [{key,header,format,link?}]' },
+          labelCol: { type: 'string' },
+          valueCol: { type: 'string' },
+          fromCol: { type: 'string' },
+          toCol: { type: 'string' },
+          periodCol: { type: 'string' },
+          format: { enum: ['money', 'number', 'percent', 'date', 'text'] },
         },
       },
     },

@@ -100,12 +100,19 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     messages,
     tools: buildToolSet(opts.ctx),
     stopWhen: stepCountIs(maxSteps),
+    // Low temperature: this is a structured tool-calling task (run_sql → emit_report by schema), not
+    // creative writing. The model default (~0.7+) made it skip emit_report or mis-shape blocks; a low
+    // value sharply improves instruction/schema adherence. (fix: emit_report schema adherence)
+    temperature: 0.1,
     // Bound worst-case resource use (review #80): cancel on client disconnect; one explicit retry
     // (the SDK default of 2 silently multiplies the per-step call count beyond the visible step cap);
     // a per-step output backstop (the model emits block structure + refs, not the bound data values).
     abortSignal: opts.abortSignal,
     maxRetries: 1,
-    maxOutputTokens: 4096,
+    // 4096 truncated some emit_report tool inputs mid-stream (the model occasionally bloats the call
+    // with an extra hallucinated field), which leaves the report unfinalized. 8192 gives headroom.
+    // (fix: emit_report schema adherence)
+    maxOutputTokens: 8192,
   });
   return result.toUIMessageStreamResponse({
     // Graceful degradation (§7): a BgGPT outage / rate-limit / timeout surfaces mid-stream as a
