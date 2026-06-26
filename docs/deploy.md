@@ -247,7 +247,7 @@ REVIEWER_TEAMS="midt-bg/maintainers" ./scripts/provision-environments.sh
 > ```
 > Стартиране от branch ref (напр. `main`) се отказва автоматично от GitHub на ниво protection rule — не
 > достига до runner-а. Администратори могат да заобиколят това при спешни случаи чрез настройката
-> `can_admins_bypass` (Settings → Environments → production).
+> `admins_can_bypass` (Settings → Environments → production).
 
 ## 4. Деплой
 
