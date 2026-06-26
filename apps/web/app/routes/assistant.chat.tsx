@@ -8,7 +8,7 @@
 //           Zod-validated emit_report (invalid output → model retries).
 
 import { createOpenAI } from '@ai-sdk/openai';
-import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, streamText, tool } from 'ai';
+import { convertToModelMessages, streamText, tool } from 'ai';
 import { z } from 'zod';
 import type { Route } from './+types/assistant.chat';
 import { guardSql, truncateResult } from '../lib/assistant/sql-guard';
@@ -20,44 +20,6 @@ import type { StoredReport } from '../lib/assistant/report-schema';
 const BGGPT_BASE_URL = 'https://api.bggpt.ai/v1';
 const MODEL_ID = 'bggpt-gemma-3-27b-fp8';
 
-// ── Local dev mock ────────────────────────────────────────────────────────────
-// When BGGPT_API_KEY is absent (local dev / miniflare without secrets), return
-// a synthetic emit_report stream pointing at the seeded mock medisistem report.
-function devMockResponse(messages: Array<{ role: string; content?: unknown }>): Response {
-  const lastUser = messages.filter((m) => m.role === 'user').at(-1);
-  const question =
-    typeof lastUser?.content === 'string' ? lastUser.content.slice(0, 200) : 'примерна заявка';
-
-  const mockId = 'mock-medisistem-2024';
-  const toolCallId = 'dev-tc-1';
-  const output = {
-    ok: true as const,
-    id: mockId,
-    url: `/reports/${mockId}`,
-    report: {
-      title: 'Медисистем ЕООД — профил на компанията с най-много договора',
-      question,
-      blocks: [],
-      watermark: 'ai-generated' as const,
-    },
-  };
-
-  const stream = createUIMessageStream({
-    execute({ writer }) {
-      writer.write({ type: 'start-step' });
-      writer.write({ type: 'text-start', id: 'txt1' });
-      writer.write({ type: 'text-delta', id: 'txt1', delta: 'Ето примерна справка (dev режим — без API ключ):' });
-      writer.write({ type: 'text-end', id: 'txt1' });
-      writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
-      writer.write({ type: 'tool-input-available', toolCallId, toolName: 'emit_report', input: { title: output.report.title, blocks: [] } });
-      writer.write({ type: 'tool-output-available', toolCallId, output });
-      writer.write({ type: 'finish-step' });
-      writer.write({ type: 'finish', finishReason: 'stop' });
-    },
-  });
-
-  return createUIMessageStreamResponse({ stream });
-}
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.cloudflare;
@@ -101,7 +63,10 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const apiKey = env.BGGPT_API_KEY;
   if (!apiKey) {
-    return devMockResponse(messages as Array<{ role: string; content?: unknown }>);
+    return new Response(
+      JSON.stringify({ error: 'AI асистентът не е конфигуриран на тази среда.' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } },
+    );
   }
 
   const maxSteps = Math.min(12, parseInt(env.ASSISTANT_MAX_STEPS ?? '6', 10));

@@ -34,38 +34,3 @@ if (!apply) {
       '\nFor local deploy, put it in .env.local; for CI, set it as a repo secret. See docs/deploy.md.',
   );
 }
-
-// ── Local dev: seed miniflare R2 with mock report data ───────────────────────
-// wrangler r2 --local resolves .wrangler/state relative to cwd, so we run
-// from apps/web and adjust the --file path accordingly.
-const mockReports = [
-  {
-    key: 'mock-medisistem-2024.json',
-    file: '../../scripts/mock-report-medisistem.json',
-  },
-];
-
-const bucket = 'sigma-reports';
-const webDir = 'apps/web';
-
-console.log('\n==> Seeding local R2 mock reports');
-for (const { key, file } of mockReports) {
-  const cmd = [
-    'r2', 'object', 'put',
-    `${bucket}/${key}`,
-    '--file', file,
-    '--content-type', 'application/json',
-    '--local',
-  ];
-  const line = `(cd ${webDir}) wrangler ${cmd.join(' ')}`;
-  if (apply) {
-    console.log(`==> ${line}`);
-    try {
-      execFileSync('wrangler', cmd, { stdio: 'inherit', cwd: webDir });
-    } catch {
-      console.error(`!! Seeding ${key} failed — continuing`);
-    }
-  } else {
-    console.log(`  ${line}`);
-  }
-}
