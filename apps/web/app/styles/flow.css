@@ -33,6 +33,9 @@
   .flow-scroll-hint {
     display: block;
   }
+  .flow-scroll .network-svg {
+    min-width: 700px;
+  }
 }
 @media (max-width: 600px) {
   /* The Sankey is unusable at phone widths even with horizontal scroll — hide
@@ -76,6 +79,16 @@
 .flow-svg .node-label.small {
   fill: var(--ink-soft);
   font-size: 11px;
+}
+.flow-svg .node-label.is-name {
+  font-weight: 700;
+}
+.flow-svg .cap {
+  font-size: 11px;
+  font-weight: 700;
+}
+.flow-svg .node-link {
+  cursor: pointer;
 }
 .flow-svg .link {
   fill: var(--ink-mid);

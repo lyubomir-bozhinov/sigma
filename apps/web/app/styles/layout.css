@@ -289,6 +289,10 @@
    corner on narrow screens so it clears the content; the fly-out menu still
    anchors to the same container. `!important` beats the async widget stylesheet
    regardless of load order. */
+html .a11y-tools__button {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
 @media (max-width: 760px) {
   .a11y-tools__button {
     top: auto !important;
