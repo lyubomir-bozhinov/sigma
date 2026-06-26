@@ -3518,6 +3518,53 @@ html.assistant-ready .assistant-dock--panel {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Rendered markdown for assistant prose. Scope tightly so global prose styles don't bleed in. */
+.assistant-message__md {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.assistant-message__md > :first-child { margin-top: 0; }
+.assistant-message__md > :last-child  { margin-bottom: 0; }
+.assistant-message__md p   { margin: 0 0 var(--s-2); line-height: 1.5; }
+.assistant-message__md ul,
+.assistant-message__md ol  { margin: 0 0 var(--s-2); padding-left: 1.4em; }
+.assistant-message__md li  { margin-bottom: var(--s-1); }
+.assistant-message__md code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--paper-deep);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.assistant-message__md pre {
+  margin: 0 0 var(--s-2);
+  padding: var(--s-3);
+  background: var(--paper-deep);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.assistant-message__md pre code { background: none; padding: 0; }
+/* Tables: scrollable horizontally so they never overflow the 400px dock */
+.assistant-message__md .md-table-wrap {
+  overflow-x: auto;
+  margin-bottom: var(--s-2);
+}
+.assistant-message__md table {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  min-width: 100%;
+}
+.assistant-message__md th,
+.assistant-message__md td {
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--rule);
+  text-align: left;
+  white-space: nowrap;
+}
+.assistant-message__md th { background: var(--paper-deep); font-weight: 600; }
+.assistant-message__md tr:nth-child(even) td { background: var(--paper-warm, var(--paper-deep)); }
+
 .assistant-message--user {
   align-self: flex-end;
   max-width: 85%;
@@ -3528,6 +3575,7 @@ html.assistant-ready .assistant-dock--panel {
 .assistant-message--assistant {
   align-self: flex-start;
   max-width: 100%;
+  min-width: 0;
 }
 
 .report-chip {
@@ -3671,6 +3719,117 @@ html.assistant-ready .assistant-dock--panel {
 html.a11y-textonly .assistant-launcher,
 html.a11y-textonly .assistant-dock {
   display: none !important;
+}
+
+/* ── /reports index ─────────────────────────────────────────────── */
+.reports-index .cell-rank {
+  width: 2.5rem;
+  color: var(--ink-mid);
+}
+.reports-index .cell-title a {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ── /reports/:id ───────────────────────────────────────────────── */
+.report-page {
+  max-width: var(--content-max, 900px);
+  margin-inline: auto;
+  padding: var(--s-6) var(--s-4) var(--s-8);
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+
+.report-watermark {
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  color: var(--ink-mid);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.report-toolbar__actions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.report-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.3em 0.75em;
+  border: 1px solid var(--rule);
+  background: transparent;
+  font-size: 0.82rem;
+  font-family: var(--mono);
+  cursor: pointer;
+  color: var(--ink);
+}
+.report-action-btn:hover {
+  background: var(--paper-warm);
+}
+
+.report-question {
+  margin: 0 0 var(--s-5);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.report-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+.report-block {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s-4);
+}
+.report-block:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.report-text {
+  max-width: 70ch;
+}
+.report-text p { margin: 0 0 0.75em; }
+.report-text ul,
+.report-text ol { padding-left: 1.5em; margin: 0 0 0.75em; }
+.report-text li { margin-bottom: 0.25em; }
+.report-text code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: var(--paper-warm);
+  padding: 0.1em 0.35em;
+}
+
+.report-not-found {
+  padding: var(--s-6) 0;
+}
+.report-not-found .muted {
+  margin-bottom: var(--s-3);
+}
+
+@media print {
+  .report-toolbar__actions,
+  .assistant-dock,
+  .assistant-launcher,
+  nav,
+  header .nav-actions {
+    display: none !important;
+  }
+  .report-page {
+    max-width: 100%;
+    padding: 0;
+  }
 }
 
 @media (max-width: 760px) {

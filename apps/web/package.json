@@ -15,6 +15,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.73",
     "@ai-sdk/react": "^3.0.210",
+    "@cloudflare/puppeteer": "^1.1.0",
     "@sigma/api-contract": "workspace:*",
     "@sigma/config": "workspace:*",
     "@sigma/db": "workspace:*",
@@ -24,7 +25,9 @@
     "node-sql-parser": "^5.4.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router": "7.15.1"
+    "react-markdown": "^10.1.0",
+    "react-router": "7.15.1",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.29.1",

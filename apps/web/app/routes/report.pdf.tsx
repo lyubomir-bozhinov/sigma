@@ -1,7 +1,6 @@
 // Resource route: renders /reports/:id.pdf via Cloudflare Browser Rendering.
 // No React component — returns a binary PDF response directly.
 
-import puppeteer from '@cloudflare/puppeteer';
 import type { Route } from './+types/report.pdf';
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
@@ -12,6 +11,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     return new Response('Browser Rendering не е конфигуриран на тази среда.', { status: 503 });
   }
 
+  const { default: puppeteer } = await import('@cloudflare/puppeteer');
   const origin = new URL(request.url).origin;
   const browser = await puppeteer.launch(env.BROWSER);
   try {

@@ -22,7 +22,6 @@ export default [
   route('contracts.csv', 'routes/contracts.csv.tsx'),
   route('contracts/:id.json', 'routes/contract.json.tsx'),
   route('contracts/:id', 'routes/contract.tsx'),
-  route('assistant/chat', 'routes/assistant.chat.tsx'),
   route('reports', 'routes/reports.tsx'),
   route('reports/:id', 'routes/report.tsx'),
   route('reports/:id.pdf', 'routes/report.pdf.tsx'),

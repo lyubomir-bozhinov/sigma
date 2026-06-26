@@ -32,8 +32,9 @@
   // BGGPT_API_KEY secret. Deploying before provisioning them fails the deploy and blocks the team's
   // CD. Provision first (see app/lib/assistant/README.md → „Provisioning gate"); until then the
   // assistant route degrades to a 503 rather than crashing.
-  "ai": { "binding": "AI" },
-  "vectorize": [{ "binding": "VECTORIZE", "index_name": "sigma-assistant" }],
+  // AI and Vectorize are not supported in local miniflare without auth; uncomment before deploying.
+  // "ai": { "binding": "AI" },
+  // "vectorize": [{ "binding": "VECTORIZE", "index_name": "sigma-assistant" }],
   // Public config for the assistant. AI_GATEWAY_BASE_URL routes BgGPT through the Cloudflare AI
   // Gateway (spec §9.5); empty string falls back to api.bggpt.ai.
   "vars": {

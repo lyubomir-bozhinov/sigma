@@ -356,7 +356,9 @@ export function bindReport(
     }
     const colIdx = r.columns.indexOf(ref.col);
     if (colIdx < 0) {
-      errors.push(`${where}: result "${ref.resultId}" has no column "${ref.col}"`);
+      errors.push(
+        `${where}: result "${ref.resultId}" has no column "${ref.col}" — available columns: ${r.columns.join(', ')}`,
+      );
       return null;
     }
     // Self-defend against a non-integer row (`1.5`): `1.5 >= length` can be false, then `rows[1.5]` is
@@ -384,7 +386,9 @@ export function bindReport(
     let ok = true;
     for (const c of cols) {
       if (!r.columns.includes(c)) {
-        errors.push(`${where}: result "${r.handle}" has no column "${c}"`);
+        errors.push(
+          `${where}: result "${r.handle}" has no column "${c}" — available columns: ${r.columns.join(', ')}`,
+        );
         ok = false;
       }
     }

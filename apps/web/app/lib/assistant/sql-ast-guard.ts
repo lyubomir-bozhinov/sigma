@@ -22,7 +22,7 @@
 // data path (the binding handed to run_sql is read-write today). Imports the SQLite-only build to keep
 // the Worker bundle small.
 
-import { Parser, type AST } from 'node-sql-parser/build/sqlite';
+import { Parser, type AST } from 'node-sql-parser';
 import { enforceLimit, MAX_ROWS, type GuardResult } from './sql-guard';
 import { TABLES } from './describe-schema';
 
@@ -300,7 +300,7 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
 
   let parsed: AST | AST[];
   try {
-    parsed = parser.astify(sql);
+    parsed = parser.astify(sql, { database: 'SQLite' });
   } catch {
     // Fail closed: if we cannot parse it, we cannot prove it is read-only.
     return deny('could not be parsed for read-only verification');

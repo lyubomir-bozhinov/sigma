@@ -52,7 +52,7 @@ export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
         return (
           <div key={message.id} className="assistant-turn">
             <AssistantMessage message={message} />
-            {report?.ok ? <ReportChip {...projectChip(report.report)} /> : null}
+            {report?.ok ? <ReportChip {...projectChip(report.report)} href={`/reports/${message.id}`} /> : null}
             {report && !report.ok ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
             ) : null}
