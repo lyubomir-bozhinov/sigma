@@ -177,29 +177,38 @@ echo "  ✅ required reviewers set (prevent_self_review=true, wait_timer=${wait_
 
 # 2. Enforce the v* TAG policy as the ONLY deployment branch/tag policy.
 #    Strategy: enumerate all existing policies, delete any that are NOT {type=tag, name=v*},
-#    then ensure exactly one v* tag policy exists.
-existing_policies="$(gh api "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" \
-  2>/dev/null || true)"
-
-if [ -n "$existing_policies" ]; then
-  # Delete any policy that is not the intended v* tag policy.
-  while IFS= read -r policy_json; do
-    [ -z "$policy_json" ] && continue
-    pid="$(jq -r '.id' <<<"$policy_json")"
-    pname="$(jq -r '.name' <<<"$policy_json")"
-    ptype="$(jq -r '.type' <<<"$policy_json")"
-    if [ "$ptype" = "tag" ] && [ "$pname" = "v*" ]; then
-      : # this is the one we want — keep it
-    else
-      echo "  🗑  removing stale policy: id=$pid name='$pname' type=$ptype"
-      gh api -X DELETE "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies/$pid" >/dev/null
-    fi
-  done < <(echo "$existing_policies" | jq -c '.branch_policies[]? // empty')
+#    then ensure exactly one v* tag policy exists. A LIST failure is fatal (a non-zero exit
+#    is the only way to distinguish a transient error from a genuinely empty policy set),
+#    and pagination is handled so policies beyond page 1 are not missed.
+if ! existing_policies="$(gh api --paginate \
+  "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" \
+  --jq '.branch_policies[]?')"; then
+  echo "❌ Could not list deployment branch policies — aborting before converging tag policy." >&2
+  exit 1
 fi
 
+# Delete any policy that is not the intended v* tag policy.
+while IFS= read -r policy_json; do
+  [ -z "$policy_json" ] && continue
+  pid="$(jq -r '.id' <<<"$policy_json")"
+  pname="$(jq -r '.name' <<<"$policy_json")"
+  ptype="$(jq -r '.type' <<<"$policy_json")"
+  if [ "$ptype" = "tag" ] && [ "$pname" = "v*" ]; then
+    : # this is the one we want — keep it
+  else
+    echo "  🗑  removing stale policy: id=$pid name='$pname' type=$ptype"
+    gh api -X DELETE "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies/$pid" >/dev/null
+  fi
+done <<<"$existing_policies"
+
 # Now ensure the v* tag policy exists (idempotent: only add if missing).
-remaining="$(gh api "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" \
-  --jq '.branch_policies[]? | select(.type == "tag" and .name == "v*") | .name' 2>/dev/null || true)"
+#    A re-list failure is fatal for the same reason as above.
+if ! remaining="$(gh api --paginate \
+  "repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies" \
+  --jq '.branch_policies[]? | select(.type == "tag" and .name == "v*") | .name')"; then
+  echo "❌ Could not re-list deployment branch policies — aborting before ensuring v* policy." >&2
+  exit 1
+fi
 if [ -n "$remaining" ]; then
   echo "  ✅ tag policy 'v*' already present"
 else
