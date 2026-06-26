@@ -21,13 +21,20 @@
 #       REVIEWER_USERS="alice,bob"      # GitHub logins
 #       REVIEWER_TEAMS="midt-bg/maintainers"   # org/team-slug (optional)
 #
+# ⚠ Four-eyes note: `prevent_self_review` only prevents the *deploy initiator* from approving
+#   their own deployment — it does NOT enforce genuine four-eyes by itself. For true four-eyes
+#   configure at least two individual reviewers (or a team with ≥2 members), so no single person
+#   can both initiate and approve a production deploy.
+#
 # Usage:
 #   REVIEWER_USERS="lyubomir-bozhinov" ./scripts/provision-environments.sh
 #   REVIEWER_TEAMS="midt-bg/maintainers" ./scripts/provision-environments.sh
 #
 set -euo pipefail
 
-REPO="${REPO:-midt-bg/sigma}"
+# Default REPO to the current checkout's origin when unset; fall back to the hardcoded name if
+# `gh repo view` fails (e.g. when running outside a git checkout or without network access).
+REPO="${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo 'midt-bg/sigma')}"
 ENVIRONMENT="production"
 REVIEWER_USERS="${REVIEWER_USERS:-}"
 REVIEWER_TEAMS="${REVIEWER_TEAMS:-}"
@@ -75,6 +82,9 @@ fi
 echo "→ Applying required reviewers + tag policy to '$ENVIRONMENT' on $REPO …"
 
 # 1. Required reviewers, prevent self-review, and enable custom branch/tag policies in one PUT.
+#    Note: PUT /environments replaces the *full* protection-rule set. Re-running this script
+#    re-applies these exact rules and does NOT preserve any `wait_timer` set via the GitHub UI —
+#    that value will be silently reset to 0. Configure a wait_timer here explicitly if needed.
 gh api -X PUT "repos/$REPO/environments/$ENVIRONMENT" --input - >/dev/null <<JSON
 {
   "prevent_self_review": true,
