@@ -200,9 +200,11 @@ domain таблиците и преизчислява rollup-ите + FTS.
 - променливи `SIGMA_WEB_NAME` = `sigma-stage`, `SIGMA_ETL_NAME` = `sigma-etl-stage`,
   `SIGMA_WORKFLOW_NAME` = `sigma-refresh-stage`, `SIGMA_D1_NAME` = `sigma-stage`
 
-> Средата `production` е **неблокираща** за създаване: дори с `environment: production` зададено на
-> job-а, GitHub все още излага repo-ниво секретите, така че production продължава да се деплойва с
-> днешните repo секрети, докато не решите да ги преместите в средата.
+> **Approval gate се прилага** след като `provision-environments.sh` е изпълнен — всеки production
+> деплой изисква ръчно одобрение преди да достигне runner. Средата `production` е **неблокираща само
+> за създаването** на самата среда в Settings: дори с `environment: production` зададено на job-а,
+> GitHub излага repo-ниво секретите, така че production продължава да се деплойва с днешните repo
+> секрети, докато не ги преместите в средата — но одобрението се прилага независимо от това.
 
 ### Approval gate за production (задължително)
 
@@ -226,6 +228,15 @@ REVIEWER_TEAMS="midt-bg/maintainers" ./scripts/provision-environments.sh
 
 > Изчакването за одобрение **не** влиза в `timeout-minutes` — таймерът тръгва чак щом job-ът хване
 > runner, след одобрението.
+
+> **`workflow_dispatch` и tag policy.** След като скриптът е изпълнен, ръчното стартиране на деплой
+> към `production` чрез `workflow_dispatch` успява **само от `v*` таг ref**, например:
+> ```bash
+> gh workflow run deploy.yml --ref v1.0.1 -f environment=production
+> ```
+> Стартиране от branch ref (напр. `main`) се отказва автоматично от GitHub на ниво protection rule — не
+> достига до runner-а. Администратори могат да заобиколят това при спешни случаи чрез настройката
+> `can_admins_bypass` (Settings → Environments → production).
 
 ## 4. Деплой
 
