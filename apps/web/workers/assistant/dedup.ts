@@ -145,7 +145,9 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 
 /**
  * Stable, injective serialisation for hashing: object keys are sorted recursively so key order
- * never affects the hash, and every distinct value maps to a distinct string.
+ * never affects the hash, and every distinct value within its documented domain (below) maps to a
+ * distinct string. Out-of-domain exotics (Map/Set/Symbol/function) are not distinguished — but
+ * cannot reach here (see domain note), so they are a non-goal, not a gap.
  *
  * `JSON.stringify` alone is NOT injective over JS values — it collapses `Date`→`{}`, `NaN`/`±Infinity`
  * →`null`, `undefined`→`null`, `-0`→`0`, and throws on `bigint`. Those six are tagged explicitly below,
