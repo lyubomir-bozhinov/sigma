@@ -71,3 +71,9 @@ describe('resultFingerprint — Date-valued rows stay distinct (L2.5 headline)',
     expect(await resultFingerprint(rows)).toBe(await resultFingerprint(rows));
   });
 });
+
+describe('canonical encoding — signed zero stays injective', () => {
+  it('keeps -0 and +0 in distinct keys (JSON.stringify would erase the sign)', async () => {
+    expect(await dedupKey(l2([-0]), FRESH)).not.toBe(await dedupKey(l2([0]), FRESH));
+  });
+});

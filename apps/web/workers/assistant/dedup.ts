@@ -81,7 +81,9 @@ const KEY_PREFIX = 'dedup';
 
 /**
  * Composite token `d:<data>|c:<code>`. The data half reuses the exact derivation csv-export.ts
- * already applies to `home_totals.refreshed_at` so the two caches invalidate in lockstep.
+ * already applies to `home_totals.refreshed_at` so the two caches invalidate in lockstep. Stripping
+ * to `[a-z0-9]` is injective over the fixed-format inputs it receives (ISO-8601 timestamp, alphanumeric
+ * build id) and keeps the `|` / `d:` / `c:` delimiters uninjectable.
  */
 export function freshnessToken({ refreshedAt, buildId }: FreshnessInput): string {
   const data = refreshedAt.replace(/[^a-z0-9]/gi, '');
@@ -90,6 +92,10 @@ export function freshnessToken({ refreshedAt, buildId }: FreshnessInput): string
 }
 
 // ── Canonical encoding (vendored from Lane E's length-prefix pattern) ─────────
+//
+// Deliberately vendored rather than imported: Lane E (PR #3) is not yet merged into this base, and a
+// cross-PR import would couple this PR to its merge order. Consolidates onto Lane E's helper once #3
+// lands (see docs/spec/ai-assistant-dedup.md §5).
 
 const textEncoder = new TextEncoder();
 
@@ -142,12 +148,13 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * never affects the hash, and every distinct value maps to a distinct string.
  *
  * `JSON.stringify` alone is NOT injective over JS values — it collapses `Date`→`{}`, `NaN`/`±Infinity`
- * →`null`, `undefined`→`null`, and throws on `bigint`. Those five are tagged explicitly below, because
- * a collision here is the one failure this cache must never make: serving one question's numbers for
- * another (#97). Tags are unquoted, so they can never alias a real string value (which `JSON.stringify`
- * always quotes) nor each other.
+ * →`null`, `undefined`→`null`, `-0`→`0`, and throws on `bigint`. Those six are tagged explicitly below,
+ * because a collision here is the one failure this cache must never make: serving one question's numbers
+ * for another (#97). Tags are unquoted, so they can never alias a real string value (which
+ * `JSON.stringify` always quotes) nor each other.
  *
- * Domain: JSON values — from D1 bind params, D1 result rows, and JSON tool-call args — plus `Date`.
+ * Domain: JSON values — from D1 bind params, D1 result rows, and JSON tool-call args — plus `Date`;
+ * acyclic by construction (parsed JSON and D1 rows cannot contain cycles), so the recursion is bounded.
  * Non-JSON exotics (Map/Set/Symbol/function) cannot cross those boundaries, so they are out of scope.
  */
 function canonicalJson(value: unknown): string {
@@ -155,6 +162,7 @@ function canonicalJson(value: unknown): string {
   if (value === undefined) return 'undefined';
   if (value instanceof Date) return `date:${value.getTime()}`;
   if (typeof value === 'number' && !Number.isFinite(value)) return `number:${value}`; // NaN, ±Infinity
+  if (Object.is(value, -0)) return 'number:-0'; // JSON.stringify erases the sign (-0 → "0")
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value) ?? 'null';
   }
@@ -204,8 +212,9 @@ export async function dedupKey(payload: DedupPayload, freshness: string): Promis
  * ordered differently from what was asked.
  */
 export async function resultFingerprint(rows: readonly Record<string, unknown>[]): Promise<string> {
-  const canonical = rows.map(canonicalJson).join(' ');
-  return sha256Hex(textEncoder.encode(canonical));
+  // Length-prefixed via encodeFields (same injective framing as dedupKey) so the row boundary is
+  // self-delimiting by construction — not by trusting a separator to never appear inside a row.
+  return sha256Hex(encodeFields('L2.5-rows', rows.map(canonicalJson)));
 }
 
 // ── Store / read ──────────────────────────────────────────────────────────────
@@ -273,6 +282,9 @@ export async function record(
  * Resolve a report by trying each layer whose signals are present, in escalating strength:
  * L0 (idempotency) → L1 (prompt) → L2 (resolved SQL) → L2.5 (result data). First valid hit wins.
  * Safe to call both before generation (L0/L1/L2) and after the query runs (adds L2.5).
+ *
+ * L3 (tool-memo) is intentionally not resolved here — it is a within-run tool cache the tool layer
+ * consults directly via `lookup`, not a report-level layer.
  */
 export async function resolveReport(
   kv: DedupKv,
