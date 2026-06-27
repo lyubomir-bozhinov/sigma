@@ -144,9 +144,6 @@ export function InlineDockReport({ report, href }: InlineDockReportProps) {
     <article className="dock-report">
       <header className="dock-report__header">
         <h3 className="dock-report__title">{report.title}</h3>
-        <Link className="dock-report__open" to={href}>
-          Отвори пълна страница ↗
-        </Link>
       </header>
 
       <div className="dock-report__blocks">
@@ -157,7 +154,12 @@ export function InlineDockReport({ report, href }: InlineDockReportProps) {
         ))}
       </div>
 
-      <p className="dock-report__watermark">AI-генерирано, неофициално</p>
+      <footer className="dock-report__footer">
+        <Link className="dock-report__page-link" to={href}>
+          Отвори пълна страница ↗
+        </Link>
+        <span className="dock-report__watermark">AI-генерирано, неофициално</span>
+      </footer>
     </article>
   );
 }
