@@ -138,6 +138,16 @@ JOIN bidders b ON b.id = c.bidder_id
 WHERE c.bids_received = 1 AND c.amount_eur IS NOT NULL AND substr(c.signed_at, 1, 4) = '2023'
 ORDER BY c.amount_eur DESC LIMIT 20;
 
+-- Top companies by contracts with authorities in a specific city (e.g. Sofia):
+-- NOTE: contracts has NO authority_id — the path is contracts → tenders → authorities.
+SELECT b.name, b.id AS bidder_id, COUNT(c.id) AS contracts, SUM(c.amount_eur) AS won_eur
+FROM contracts c
+JOIN tenders t ON t.id = c.tender_id
+JOIN authorities a ON a.id = t.authority_id
+JOIN bidders b ON b.id = c.bidder_id
+WHERE a.settlement = 'София' AND c.amount_eur IS NOT NULL
+GROUP BY b.id ORDER BY contracts DESC LIMIT 20;
+
 -- Year-over-year spend trend:
 SELECT substr(signed_at, 1, 4) AS year, SUM(amount_eur) AS value_eur, COUNT(*) AS contracts
 FROM contracts WHERE amount_eur IS NOT NULL GROUP BY year ORDER BY year;
