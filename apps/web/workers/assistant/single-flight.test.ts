@@ -239,7 +239,10 @@ describe('SingleFlight — cross-isolate KV backstop', () => {
     const a = new SingleFlight({ kv, r2Exists: alwaysPresent });
     const b = new SingleFlight({ kv, r2Exists: alwaysPresent });
 
-    const first = await a.run(FRESH, SIGNALS, RECORD_AS, async () => ({ reportId: 'rep_1', createdAt: 't' }));
+    const first = await a.run(FRESH, SIGNALS, RECORD_AS, async () => ({
+      reportId: 'rep_1',
+      createdAt: 't',
+    }));
     expect(first.deduped).toBe(false);
 
     const second = await b.run(FRESH, SIGNALS, RECORD_AS, async () => {

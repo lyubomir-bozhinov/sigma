@@ -76,8 +76,14 @@ describe('dedupKey', () => {
 
   it('L2 key is identical for differently-phrased prompts that resolve to the same SQL+params', async () => {
     // The consistency guarantee: L2 keys only on resolved SQL, never on wording.
-    const a = await dedupKey({ layer: 'L2', sql: 'SELECT * FROM t WHERE y=2026', params: [] }, FRESH);
-    const b = await dedupKey({ layer: 'L2', sql: 'SELECT * FROM t WHERE y=2026', params: [] }, FRESH);
+    const a = await dedupKey(
+      { layer: 'L2', sql: 'SELECT * FROM t WHERE y=2026', params: [] },
+      FRESH,
+    );
+    const b = await dedupKey(
+      { layer: 'L2', sql: 'SELECT * FROM t WHERE y=2026', params: [] },
+      FRESH,
+    );
     expect(a).toBe(b);
   });
 
@@ -113,7 +119,9 @@ describe('resultFingerprint', () => {
   });
 
   it('is insensitive to key order within a row', async () => {
-    expect(await resultFingerprint([{ a: 1, b: 2 }])).toBe(await resultFingerprint([{ b: 2, a: 1 }]));
+    expect(await resultFingerprint([{ a: 1, b: 2 }])).toBe(
+      await resultFingerprint([{ b: 2, a: 1 }]),
+    );
   });
 });
 
