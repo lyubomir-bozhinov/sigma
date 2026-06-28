@@ -16,6 +16,7 @@ import {
 import { buildSystemPrompt } from './system-prompt';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
+import { withGemmaToolParsing } from './gemma-tool-middleware';
 
 export interface AgentEnv {
   BGGPT_API_KEY: string;
@@ -43,12 +44,13 @@ export function resolveMaxSteps(raw: string | undefined): number {
 }
 
 // `.chat()` forces the chat-completions endpoint BgGPT speaks (not the OpenAI Responses API).
+// `withGemmaToolParsing` converts Gemma's text-based tool calls to proper SDK events.
 function buildModel(env: AgentEnv) {
   const provider = createOpenAI({
     baseURL: env.AI_GATEWAY_BASE_URL || DEFAULT_BASE_URL,
     apiKey: env.BGGPT_API_KEY,
   });
-  return provider.chat(env.BGGPT_MODEL || DEFAULT_MODEL);
+  return withGemmaToolParsing(provider.chat(env.BGGPT_MODEL || DEFAULT_MODEL));
 }
 
 function buildToolSet(ctx: ToolContext): ToolSet {

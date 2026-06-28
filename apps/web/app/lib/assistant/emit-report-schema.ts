@@ -131,8 +131,19 @@ export function validateEmitShape(input: unknown): ShapeResult {
   return { ok: true, value: input as unknown as EmitReportInput };
 }
 
-// Model-facing contract for the emit_report tool. Kept pragmatic: it requires `type` and the common
-// shape; validateEmitShape enforces the strict per-type rules server-side.
+// Model-facing contract for the emit_report tool. Uses oneOf per block type so the model has
+// unambiguous per-type field documentation; validateEmitShape enforces the rules server-side.
+const FORMAT_ENUM = ['money', 'number', 'percent', 'date', 'text'] as const;
+const CELL_REF = {
+  type: 'object',
+  required: ['resultId', 'row', 'col'],
+  properties: {
+    resultId: { type: 'string', description: 'е.г. "R1" — хендълът от run_sql' },
+    row: { type: 'integer', minimum: 0, description: '0-базиран индекс на реда' },
+    col: { type: 'string', description: 'точно името на колоната от run_sql' },
+  },
+} as const;
+
 export const EMIT_REPORT_JSON_SCHEMA = {
   type: 'object',
   required: ['title', 'question', 'blocks'],
@@ -146,16 +157,134 @@ export const EMIT_REPORT_JSON_SCHEMA = {
     blocks: {
       type: 'array',
       minItems: 1,
-      description:
-        'Блокове на справката. Числата НЕ се пишат тук — препращат към резултатни хендъли (ref:{resultId,row,col}) или resultId+колони; сървърът свързва стойностите.',
+      description: 'Блокове на справката. Числата НЕ се пишат директно — реферират се от сървъра.',
       items: {
-        type: 'object',
-        required: ['type'],
-        properties: {
-          type: {
-            enum: ['text', 'callout', 'totals', 'facts', 'table', 'bar', 'flows', 'timeseries'],
+        oneOf: [
+          {
+            type: 'object',
+            required: ['type', 'md'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'text' },
+              md: { type: 'string', description: 'Markdown проза — БЕЗ числа, БЕЗ HTML' },
+            },
           },
-        },
+          {
+            type: 'object',
+            required: ['type', 'title', 'md'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'callout' },
+              title: { type: 'string' },
+              md: { type: 'string', description: 'Markdown — БЕЗ числа, БЕЗ HTML' },
+            },
+          },
+          {
+            type: 'object',
+            required: ['type', 'items'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'totals' },
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['label', 'ref', 'format'],
+                  properties: {
+                    label: { type: 'string' },
+                    ref: CELL_REF,
+                    format: { enum: FORMAT_ENUM },
+                  },
+                },
+              },
+            },
+          },
+          {
+            type: 'object',
+            required: ['type', 'items'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'facts' },
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['term', 'ref'],
+                  properties: {
+                    term: { type: 'string' },
+                    ref: CELL_REF,
+                    sub: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          {
+            type: 'object',
+            required: ['type', 'resultId', 'columns'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'table' },
+              resultId: { type: 'string', description: 'е.г. "R1"' },
+              columns: {
+                type: 'array',
+                description: 'Само колоните, които да се покажат — ключовете трябва да съвпадат с run_sql',
+                items: {
+                  type: 'object',
+                  required: ['key', 'header', 'format'],
+                  properties: {
+                    key: { type: 'string', description: 'точно името на колоната от run_sql' },
+                    header: { type: 'string' },
+                    align: { enum: ['left', 'right'] },
+                    format: { enum: FORMAT_ENUM },
+                    link: {
+                      type: 'object',
+                      required: ['kind', 'idCol'],
+                      properties: {
+                        kind: { enum: ['company', 'authority', 'contract'] },
+                        idCol: { type: 'string', description: 'колоната с entity id' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          {
+            type: 'object',
+            required: ['type', 'resultId', 'labelCol', 'valueCol'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'bar' },
+              resultId: { type: 'string' },
+              labelCol: { type: 'string', description: 'колоната с етикета (е.г. "name")' },
+              valueCol: { type: 'string', description: 'числовата колона (е.г. "won_eur")' },
+            },
+          },
+          {
+            type: 'object',
+            required: ['type', 'resultId', 'fromCol', 'toCol', 'valueCol'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'flows' },
+              resultId: { type: 'string' },
+              fromCol: { type: 'string' },
+              toCol: { type: 'string' },
+              valueCol: { type: 'string' },
+            },
+          },
+          {
+            type: 'object',
+            required: ['type', 'resultId', 'periodCol', 'valueCol'],
+            additionalProperties: false,
+            properties: {
+              type: { const: 'timeseries' },
+              resultId: { type: 'string' },
+              periodCol: { type: 'string' },
+              valueCol: { type: 'string' },
+            },
+          },
+        ],
       },
     },
   },
