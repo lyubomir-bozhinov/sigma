@@ -17,7 +17,12 @@ const ALL_PHASES: ProgressPhase[] = ['planning', 'querying', 'composing', 'bindi
 
 describe('dedupPart', () => {
   it('maps a deduped outcome to a data-dedup part with BG label', () => {
-    const outcome: ResolveOutcome = { reportId: 'rep_1', createdAt: '2026-06-26T10:00:00Z', deduped: true, layer: 'L2' };
+    const outcome: ResolveOutcome = {
+      reportId: 'rep_1',
+      createdAt: '2026-06-26T10:00:00Z',
+      deduped: true,
+      layer: 'L2',
+    };
     const part = dedupPart(outcome);
     expect(part).not.toBeNull();
     expect(part!.type).toBe(DEDUP_PART);

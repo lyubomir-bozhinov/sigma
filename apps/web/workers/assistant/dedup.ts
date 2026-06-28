@@ -230,7 +230,11 @@ function parseEntry(raw: string): StoredEntry | null {
       typeof parsed.freshness === 'string' &&
       typeof parsed.createdAt === 'string'
     ) {
-      return { reportId: parsed.reportId, freshness: parsed.freshness, createdAt: parsed.createdAt };
+      return {
+        reportId: parsed.reportId,
+        freshness: parsed.freshness,
+        createdAt: parsed.createdAt,
+      };
     }
     return null;
   } catch {
