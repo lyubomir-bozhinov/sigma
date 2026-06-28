@@ -1,12 +1,15 @@
 import { Link } from 'react-router';
-import { count, date, money, pct } from '@sigma/shared';
+import { count, date, moneyBare } from '@sigma/shared';
 import { getHomeData } from '@sigma/db';
 import type { ContractListItem } from '@sigma/api-contract';
 import type { Route } from './+types/home';
 import { PageHeader } from '../components/PageHeader';
+import { SmartSearch } from '../components/SmartSearch';
 import { TotalsStrip } from '../components/TotalsStrip';
 import { RankedBars } from '../components/RankedBars';
+import { SingleOfferPortion } from '../components/SingleOfferPortion';
 import { OwnershipChip } from '../components/ui';
+import { ANALYTICS_LENSES } from '../lib/analytics-lenses';
 import { publicCache } from '../lib/cache';
 import { coverageEndYear, coveragePartialNote, coverageRange } from '../lib/coverage';
 import { seoMeta } from '../lib/meta';
@@ -43,7 +46,7 @@ function SingleOfferTable({ items, allHref }: { items: ContractListItem[]; allHr
               <th scope="col">Договор</th>
               <th scope="col">Възложител · Изпълнител</th>
               <th scope="col" className="num">
-                Стойност
+                Стойност (€)
               </th>
             </tr>
           </thead>
@@ -61,8 +64,8 @@ function SingleOfferTable({ items, allHref }: { items: ContractListItem[]; allHr
                   {' · '}
                   <Link to={`/companies/${c.bidderSlug}`}>{c.bidderDisplayName}</Link>
                 </td>
-                <td className="money" data-label="Стойност">
-                  {c.valueEur != null ? money(c.valueEur) : '—'}
+                <td className="money" data-label="Стойност (€)">
+                  {c.valueEur != null ? moneyBare(c.valueEur) : '—'}
                 </td>
               </tr>
             ))}
@@ -73,29 +76,6 @@ function SingleOfferTable({ items, allHref }: { items: ContractListItem[]; allHr
         <Link to={allHref}>Виж всички →</Link>
       </p>
     </>
-  );
-}
-
-// Money portion of single-offer contracts vs. the whole corpus. A prominent accent percentage
-// leads, over the platform's composition bar (.hbar): the single-offer share is the accent-red
-// bucket — the established convention for the non-competitive slice — so it reads as a breakdown of
-// the total, not a progress track.
-function SingleOfferPortion({ valueEur, totalEur }: { valueEur: number; totalEur: number }) {
-  const ratio = Math.min(1, Math.max(0, totalEur > 0 ? valueEur / totalEur : 0));
-  return (
-    <div className="so-portion">
-      <p className="so-portion-head">
-        <span className="so-portion-pct">{pct(ratio)}</span> от стойността на всички поръчки са по
-        договори с <em>една оферта</em>.
-      </p>
-      <div className="hbar" aria-hidden="true">
-        <span style={{ width: `${(ratio * 100).toFixed(1)}%`, background: 'var(--accent)' }} />
-        <span style={{ width: `${((1 - ratio) * 100).toFixed(1)}%`, background: 'var(--ink-soft)' }} />
-      </div>
-      <p className="small muted so-portion-cap">
-        {money(valueEur)} от {money(totalEur)}
-      </p>
-    </div>
   );
 }
 
@@ -123,20 +103,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           }
           lede="СИГМА показва как държавните институции и общините харчат парите на данъкоплатците чрез обществени поръчки във всички сектори. Без регистрация, без тълкуване. Зад всяко число стои конкретен договор — можеш да го отвориш."
         >
-          <form
-            className="hero-search"
-            role="search"
-            aria-label="Търсене на началната страница"
-            action="/search"
-          >
-            <input
-              type="search"
-              name="q"
-              placeholder="Институция, компания или договор"
-              aria-label="Търсене"
-            />
-            <button type="submit">Намери</button>
-          </form>
+          <SmartSearch variant="hero" />
         </PageHeader>
         <img
           className="hero-mark"
@@ -152,7 +119,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         label="Накратко"
         totals={[
           { num: count(totals.contracts), label: 'Договори и обособени позиции' },
-          { num: money(totals.valueEur), label: 'Обща стойност на договорите' },
+          { num: moneyBare(totals.valueEur), label: 'Обща стойност на договорите (€)' },
           { num: count(totals.authorities), label: 'Институции възложители' },
           { num: count(totals.bidders), label: 'Компании изпълнители' },
         ]}
@@ -204,7 +171,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 <th scope="col">#</th>
                 <th scope="col">Компания</th>
                 <th scope="col" className="num">
-                  Спечелено
+                  Спечелено (€)
                 </th>
                 <th scope="col" className="num">
                   Договори
@@ -238,7 +205,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                       )}
                     </span>
                   </td>
-                  <td className="money">{money(c.wonEur)}</td>
+                  <td className="money">{moneyBare(c.wonEur)}</td>
                   <td className="money">{count(c.contracts)}</td>
                   <td className="money">{count(c.authorities)}</td>
                 </tr>
@@ -256,7 +223,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           Една оферта означава липса на ценова конкуренция. Ето поръчките с един участник —
           подредени по време или по стойност.
         </p>
-        <SingleOfferPortion valueEur={singleOffer.valueEur} totalEur={totals.valueEur} />
+        <SingleOfferPortion
+          valueEur={singleOffer.valueEur}
+          totalEur={totals.valueEur}
+          scopeLabel="на всички поръчки"
+        />
         <div
           className="tabset"
           role="radiogroup"
@@ -287,6 +258,26 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <div className="tab-panel" data-tab="top" role="group" aria-labelledby="tab-so-top">
             <SingleOfferTable items={topSingleOffer} allHref="/contracts?bids=1&sort=value-desc" />
           </div>
+        </div>
+      </section>
+
+      <section className="section" aria-labelledby="analytics">
+        <h2 id="analytics">
+          <Link to="/analytics">Анализи</Link>
+        </h2>
+        <p className="section-hint">
+          Избери гледна точка към същите договори: движение на пари, място, време или конкуренция.
+        </p>
+        <div className="tiles">
+          {ANALYTICS_LENSES.map((item) => (
+            <article className="tile" key={item.href}>
+              <p className="kicker info">Анализ</p>
+              <h3>
+                <Link to={item.href}>{item.title}</Link>
+              </h3>
+              <p className="desc">{item.desc}</p>
+            </article>
+          ))}
         </div>
       </section>
 
