@@ -1,11 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { UIMessage } from 'ai';
 import { AssistantPanel } from './AssistantPanel';
 
+// The panel fetches dynamic prompts on mount (useStarterPrompts). Stub fetch to a non-2xx so it falls
+// back to the static FALLBACK_PROMPTS — the labels these tests assert on.
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(null, { status: 503 })),
+  );
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 type Props = Parameters<typeof AssistantPanel>[0];

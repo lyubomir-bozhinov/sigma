@@ -32,6 +32,11 @@ beforeEach(() => {
       .fn()
       .mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }),
   );
+  // The empty-state panel fetches dynamic prompts on mount; stub to a miss so it uses the fallbacks.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(null, { status: 503 })),
+  );
 });
 
 afterEach(() => {
