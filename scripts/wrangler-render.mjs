@@ -143,7 +143,8 @@ function renderJson(text, names) {
   if ((names.csvCacheName || names.reportsName) && Array.isArray(obj.r2_buckets)) {
     for (const bucket of obj.r2_buckets) {
       if (!bucket || typeof bucket !== 'object') continue;
-      if (names.csvCacheName && bucket.binding === 'CSV_CACHE') bucket.bucket_name = names.csvCacheName;
+      if (names.csvCacheName && bucket.binding === 'CSV_CACHE')
+        bucket.bucket_name = names.csvCacheName;
       if (names.reportsName && bucket.binding === 'REPORTS') bucket.bucket_name = names.reportsName;
     }
   }

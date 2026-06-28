@@ -4,11 +4,11 @@ Three typed shapes at the three seams between nedda76's backend (#80) and our la
 persist, dock). Publish once → four people build in parallel against the fixtures, then swap fixtures
 for live data when both sides land. Two of the three already (half-)exist in #80, so this is cheap.
 
-| # | Seam | Type | Fixture | Status |
-|---|------|------|---------|--------|
-| 1 | block-spec — backend → renderer | `ResolvedReport` (re-exported from #80 `report-schema.ts`) | `fixtures/resolved-report.sample.json` | exists in #80 (spec §4) |
-| 2 | R2 object — persist → renderer | `StoredReport` (`report.ts`, our lane) | `fixtures/stored-report.sample.json` | new (spec §5) |
-| 3 | chat stream — backend → dock | AI SDK UIMessage stream + `data-report-ready` part (`stream.ts`) | `fixtures/chat-stream.sample.json` | half-exists in #80 |
+| #   | Seam                            | Type                                                             | Fixture                                | Status                  |
+| --- | ------------------------------- | ---------------------------------------------------------------- | -------------------------------------- | ----------------------- |
+| 1   | block-spec — backend → renderer | `ResolvedReport` (re-exported from #80 `report-schema.ts`)       | `fixtures/resolved-report.sample.json` | exists in #80 (spec §4) |
+| 2   | R2 object — persist → renderer  | `StoredReport` (`report.ts`, our lane)                           | `fixtures/stored-report.sample.json`   | new (spec §5)           |
+| 3   | chat stream — backend → dock    | AI SDK UIMessage stream + `data-report-ready` part (`stream.ts`) | `fixtures/chat-stream.sample.json`     | half-exists in #80      |
 
 ## How each lane uses it
 
