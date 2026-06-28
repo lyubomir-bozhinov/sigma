@@ -34,6 +34,13 @@ export function resolveRowsReadBudget(raw: string | undefined): number {
   return Math.min(Math.floor(n), MAX_ROWS_READ_BUDGET);
 }
 
+/** Provenance record for one server-executed result set. Populated by run_sql; used when persisting. */
+export interface ExecutedSource {
+  handle: string;
+  tool: string;
+  sql?: string;
+}
+
 export interface ToolContext {
   db: D1Database;
   ai?: EmbeddingRunner;
@@ -42,6 +49,9 @@ export interface ToolContext {
   // Per-turn accumulator of server-executed result sets, keyed by handle — the only values a report
   // may bind to. The orchestrator creates a fresh array per chat turn.
   results: QueryResult[];
+  // Mirrors `results` with provenance metadata (tool name + SQL) for each handle. Populated by run_sql
+  // so the StoredReport can surface "Как е изчислено" details for every cited result set.
+  sources: ExecutedSource[];
   // Per-turn D1 rows-read accumulator + budget (Denial-of-Wallet guard, issue #122). run_sql adds each
   // query's `meta.rows_read` to `rowsRead` and refuses once it crosses `rowsReadBudget` (defaulting to
   // DEFAULT_ROWS_READ_BUDGET). The orchestrator resets both per chat turn, alongside `results`.
@@ -50,6 +60,9 @@ export interface ToolContext {
   // The actual latest user message text, set by the chat route. bindReport uses it as the
   // server-authoritative report question instead of the model's echo — see BindOptions (review #80).
   userQuestion?: string;
+  // R2 bucket for persisting StoredReports (Lane C4 / D4). When present, emit_report writes the
+  // resolved report before returning so /reports/:id can serve it without re-querying D1.
+  reports?: R2Bucket;
 }
 
 export interface AssistantTool {
@@ -111,6 +124,7 @@ const runSqlTool: AssistantTool = {
         (ctx.rowsRead ?? 0) + (meta?.rows_read ?? 0) * Math.max(1, meta?.total_attempts ?? 1);
       const qr = toQueryResult(resultHandle(ctx.results.length), results ?? []);
       ctx.results.push(qr);
+      ctx.sources.push({ handle: qr.handle, tool: 'run_sql', sql });
       return forModel(qr);
     } catch (e) {
       // Don't echo the raw D1 error to the model/report — it can leak schema/internal detail. Log it
