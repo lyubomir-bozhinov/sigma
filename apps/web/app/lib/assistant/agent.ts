@@ -72,7 +72,49 @@ function buildModel(env: AgentEnv) {
   return provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
 }
 
-function buildToolSet(ctx: ToolContext): ToolSet {
+// System-prompt version string used in StoredReport provenance for regression tracing.
+// Bump this whenever system-prompt.ts changes semantically.
+const PROMPT_VERSION = '2026-06-28';
+
+/** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
+function randomReportId(): string {
+  return `r_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+}
+
+/** Persist a resolved report to R2 and return its ID. Returns null on any write failure. */
+async function persistReport(
+  ctx: ToolContext,
+  report: ReturnType<typeof finalizeReport> & { ok: true },
+  modelId: string,
+): Promise<string | null> {
+  if (!ctx.reports) return null;
+  const id = randomReportId();
+  const stored = {
+    schemaVersion: 1,
+    id,
+    createdAt: new Date().toISOString(),
+    report: report.report,
+    provenance: {
+      question: ctx.userQuestion ?? '',
+      sources: ctx.sources,
+      snapshot: ctx.results,
+      freshness: [] as { source: string; asOf: string }[],
+      model: modelId,
+      promptVersion: PROMPT_VERSION,
+    },
+  };
+  try {
+    await ctx.reports.put(`report/${id}.json`, JSON.stringify(stored), {
+      httpMetadata: { contentType: 'application/json' },
+    });
+    return id;
+  } catch (err) {
+    console.error('[assistant] failed to persist report to R2', err);
+    return null;
+  }
+}
+
+function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
   const set: ToolSet = {};
   for (const t of ASSISTANT_TOOLS) {
     set[t.name] = tool({
@@ -90,9 +132,9 @@ function buildToolSet(ctx: ToolContext): ToolSet {
     inputSchema: jsonSchema(EMIT_REPORT_JSON_SCHEMA as unknown as Parameters<typeof jsonSchema>[0]),
     execute: async (input: unknown) => {
       const r = finalizeReport(input, ctx);
-      return r.ok
-        ? { ok: true as const, report: r.report }
-        : { ok: false as const, errors: r.errors };
+      if (!r.ok) return { ok: false as const, errors: r.errors };
+      const storedId = await persistReport(ctx, r, modelId);
+      return { ok: true as const, report: r.report, ...(storedId ? { storedId } : {}) };
     },
   });
   return set;
@@ -115,11 +157,12 @@ export interface RunAssistantOptions {
 export async function runAssistant(opts: RunAssistantOptions): Promise<Response> {
   const maxSteps = resolveMaxSteps(opts.env.MAX_STEPS);
   const messages = await convertToModelMessages(opts.messages);
+  const modelId = opts.env.BGGPT_MODEL || DEFAULT_MODEL;
   const result = streamText({
     model: buildModel(opts.env),
     system: buildSystemPrompt({ schemaContext: opts.schemaContext, freshness: opts.freshness }),
     messages,
-    tools: buildToolSet(opts.ctx),
+    tools: buildToolSet(opts.ctx, modelId),
     stopWhen: stepCountIs(maxSteps),
     // Force a real tool call on the FIRST step (then let the loop run free). Weaker chat models under the
     // streamed loop otherwise narrate the call as prose (writes ```sql / `[run_sql(...)]` instead of
