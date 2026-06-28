@@ -85,6 +85,11 @@ async function persistReport(
   try {
     await ctx.reports.put(`report/${id}.json`, JSON.stringify(stored), {
       httpMetadata: { contentType: 'application/json' },
+      customMetadata: {
+        title: report.report.title,
+        question: ctx.userQuestion ?? '',
+        createdAt: stored.createdAt,
+      },
     });
     return id;
   } catch (err) {

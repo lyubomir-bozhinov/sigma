@@ -22,6 +22,7 @@ import {
 import { ReportBlockRenderer } from '~/components/ReportBlockRenderer';
 import { ReportAiWatermark } from '~/components/ReportAiWatermark';
 import { ReportMethodologyCallout } from '~/components/ReportMethodologyCallout';
+import { ReportToolbar } from '~/components/ReportToolbar';
 
 // ── R2 fetch ────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,8 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
         <h1 className="report-page__title">{report.title}</h1>
         <p className="report-page__question">{report.question}</p>
       </header>
+
+      <ReportToolbar report={report} />
 
       {/* D1–D3: block rendering (timeseries, markdown, CSP) */}
       <ReportBlockRenderer blocks={report.blocks} />
