@@ -12,10 +12,6 @@ import { PROMPTS_CRON, REFRESH_CRON } from './crons';
 import { computeWorkerCatchupPlan, ingestBucketWindow, type CatchupPlan } from './eop';
 import { generateSuggestedPrompts } from './suggested-prompts';
 
-// Cron strings live in ./crons (dependency-free) so the cron-guard test can import them without the
-// Workflow runtime; re-exported here for callers that reach for them via the worker entrypoint.
-export { PROMPTS_CRON, REFRESH_CRON } from './crons';
-
 export interface Env {
   DB: D1Database;
   REFRESH: Workflow;
