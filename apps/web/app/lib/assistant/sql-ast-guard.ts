@@ -99,10 +99,11 @@ type FromEntry = {
   using?: unknown; // USING(...) join condition — the other bounded form
   expr?: { type?: string; ast?: unknown } | null; // sub-query ({ ast }) or table-valued fn ({ type:'function' })
 } | null;
-type LooseSelect = {
+export type LooseSelect = {
   type?: string;
   columns?: Array<{ as?: string | null; expr?: { column?: string } | null } | null> | null;
   from?: FromEntry[] | null;
+  where?: unknown; // WHERE expression tree (binary_expr/column_ref/…) — read by the default-filters gate
   with?: Array<{ name?: { value?: string } } | null> | null;
   limit?: LimitNode;
   _next?: LooseSelect | null; // compound (UNION/INTERSECT/EXCEPT) continuation
@@ -425,4 +426,23 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
     ? enforceLimit(sql, maxRows)
     : `${sql.replace(/;?\s*$/u, '')} LIMIT ${maxRows}`;
   return { ok: true, sql: limited };
+}
+
+/**
+ * Parse `sql` to a single SELECT AST for downstream structural checks (e.g. the default-filters gate),
+ * or null if it is not exactly one parseable SELECT. Fail-soft by design: this is NOT a security gate —
+ * `assertReadOnlySelect`/`guardSelect` run first in run_sql and already reject anything unparseable or
+ * non-SELECT. Reuses the module parser so callers need not depend on node-sql-parser directly.
+ */
+export function parseSingleSelect(sql: string): LooseSelect | null {
+  let parsed: AST | AST[];
+  try {
+    parsed = parser.astify(sql);
+  } catch {
+    return null;
+  }
+  const statements = Array.isArray(parsed) ? parsed : [parsed];
+  if (statements.length !== 1) return null;
+  const ast = statements[0] as unknown as LooseSelect;
+  return ast.type === 'select' ? ast : null;
 }
