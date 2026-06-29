@@ -18,14 +18,14 @@ import { sanitizeLinkHref } from '~/lib/sanitize-markdown';
 //   m[5]/m[6] → `code` / inner text
 //   m[7]/m[8] → [link text](url) / text / href
 // The `(?!\*)` look-ahead on *italic* prevents matching `**` as two italic markers.
-const INLINE_RE = /(\*\*([^*]+)\*\*)|(\*(?!\*)([^*]+)\*(?!\*))|(`([^`]+)`)|\[([^\]]*)\]\(([^)]*)\)/g;
+// Regex is created inside renderInline (not at module scope) to avoid shared mutable lastIndex state.
 
 function renderInline(text: string): ReactNode[] {
+  const INLINE_RE = /(\*\*([^*]+)\*\*)|(\*(?!\*)([^*]+)\*(?!\*))|(`([^`]+)`)|\[([^\]]*)\]\(([^)]*)\)/g;
   const nodes: ReactNode[] = [];
   let pos = 0;
   let key = 0;
   let m: RegExpExecArray | null;
-  INLINE_RE.lastIndex = 0;
 
   while ((m = INLINE_RE.exec(text)) !== null) {
     if (m.index > pos) nodes.push(text.slice(pos, m.index));

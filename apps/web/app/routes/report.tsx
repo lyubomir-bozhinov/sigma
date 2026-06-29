@@ -28,14 +28,16 @@ import { ReportToolbar } from '~/components/ReportToolbar';
 
 function isStoredReport(value: unknown): value is StoredReport {
   if (typeof value !== 'object' || value === null) return false;
-  if (!('schemaVersion' in value) || value.schemaVersion !== STORED_REPORT_SCHEMA_VERSION) {
+  // Accept schemaVersion >= 1 so future minor bumps render as best-effort rather than 404.
+  if (!('schemaVersion' in value) || typeof value.schemaVersion !== 'number' || (value.schemaVersion as number) < STORED_REPORT_SCHEMA_VERSION) {
     return false;
   }
   if (!('id' in value) || typeof value.id !== 'string') return false;
   if (!('report' in value) || typeof value.report !== 'object' || value.report === null) {
     return false;
   }
-  if (!('provenance' in value) || typeof value.provenance !== 'object') return false;
+  if (!Array.isArray((value.report as { blocks?: unknown }).blocks)) return false;
+  if (!('provenance' in value) || typeof value.provenance !== 'object' || value.provenance === null) return false;
   return true;
 }
 

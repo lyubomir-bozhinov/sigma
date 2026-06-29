@@ -37,6 +37,7 @@ interface ReportToolbarProps {
 
 export function ReportToolbar({ report }: ReportToolbarProps) {
   const [docxLoading, setDocxLoading] = useState(false);
+  const [docxError, setDocxError] = useState<string | null>(null);
 
   function handleMarkdown() {
     const md = reportToMarkdown(report);
@@ -45,10 +46,14 @@ export function ReportToolbar({ report }: ReportToolbarProps) {
   }
 
   async function handleDocx() {
+    if (docxLoading) return;
+    setDocxError(null);
     setDocxLoading(true);
     try {
       const blob = await reportToDocxBlob(report);
       downloadBlob(blob, safeFilename(report.title, 'docx'));
+    } catch {
+      setDocxError('Грешка при генериране на .docx файла. Опитайте отново.');
     } finally {
       setDocxLoading(false);
     }
@@ -69,6 +74,7 @@ export function ReportToolbar({ report }: ReportToolbarProps) {
         className="report-action-btn"
         onClick={handleDocx}
         disabled={docxLoading}
+        aria-busy={docxLoading}
         title="Изтегли като Word документ (.docx)"
       >
         <IconDocx />
@@ -78,6 +84,9 @@ export function ReportToolbar({ report }: ReportToolbarProps) {
         <IconPrint />
         Принтирай / PDF
       </button>
+      {docxError && (
+        <p role="alert" className="report-toolbar__error">{docxError}</p>
+      )}
     </div>
   );
 }

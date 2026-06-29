@@ -10,10 +10,11 @@ function fmt(value: string | number | null, format?: CellFormat): string {
 }
 
 function mdTable(headers: string[], rows: string[][]): string {
+  const esc = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
   return [
-    `| ${headers.join(' | ')} |`,
+    `| ${headers.map(esc).join(' | ')} |`,
     `| ${headers.map(() => '---').join(' | ')} |`,
-    ...rows.map((r) => `| ${r.join(' | ')} |`),
+    ...rows.map((r) => `| ${r.map(esc).join(' | ')} |`),
   ].join('\n');
 }
 
