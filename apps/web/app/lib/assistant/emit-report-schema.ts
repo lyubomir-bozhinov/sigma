@@ -109,6 +109,7 @@ export function validateEmitShape(input: unknown): ShapeResult {
           isNonEmptyStr(b.labelCol) && isNonEmptyStr(b.valueCol),
           'labelCol and valueCol required',
         );
+        if (b.format !== undefined) need(isFormat(b.format), 'format must be a valid CellFormat');
         break;
       case 'flows':
         need(isNonEmptyStr(b.resultId), 'resultId required');
@@ -123,6 +124,7 @@ export function validateEmitShape(input: unknown): ShapeResult {
           isNonEmptyStr(b.periodCol) && isNonEmptyStr(b.valueCol),
           'periodCol and valueCol required',
         );
+        if (b.format !== undefined) need(isFormat(b.format), 'format must be a valid CellFormat');
         break;
     }
   });

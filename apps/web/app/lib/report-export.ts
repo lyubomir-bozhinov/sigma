@@ -83,7 +83,7 @@ export function reportToMarkdown(report: ResolvedReport): string {
         lines.push(
           mdTable(
             ['Период', 'Стойност'],
-            pts.map(({ period, value }) => [String(period ?? ''), money(value)]),
+            pts.map(({ period, value }) => [String(period ?? ''), fmt(value, block.format ?? 'money')]),
           ),
           '',
         );
@@ -287,7 +287,7 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
               ...pts.map(
                 ({ period, value }) =>
                   new TableRow({
-                    children: [String(period ?? ''), money(value)].map(
+                    children: [String(period ?? ''), fmt(value, block.format ?? 'money')].map(
                       (v) => new TableCell({ children: [new Paragraph({ text: v })] }),
                     ),
                   }),
