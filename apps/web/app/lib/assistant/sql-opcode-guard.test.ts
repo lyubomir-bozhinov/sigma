@@ -24,11 +24,13 @@ import {
   type ExplainRow,
 } from './sql-opcode-guard';
 
-// The exact SQLite the harvest ran against. node:sqlite bundles its own SQLite; opcode NAMES are
-// version-stable but the universe CAN grow across releases. Pin the observed version as a drift
-// tripwire — if Node bumps SQLite and this fails, re-run the opcode harvest before trusting the
-// allowlist (a new optimisation could emit an opcode the allowlist has never seen → fail-closed deny).
-const PINNED_SQLITE_VERSION = '3.53.2';
+// The SQLite versions the allowlist was harvested against. node:sqlite bundles its own SQLite, which
+// differs by Node version: 3.53.2 on Node 26 (local dev) and 3.51.3 on Node 22 (CI) — and the two emit
+// slightly different read-opcode universes for the same query. READ_ONLY_OPCODES is the UNION across
+// these. This set is a drift tripwire: if a Node bump introduces an UNKNOWN SQLite version, this test
+// fails and the opcode harvest must be re-run (a new optimisation could emit an opcode the allowlist has
+// never seen → fail-closed deny in production). A query's opcodes are still validated by the SUBSET test.
+const KNOWN_SQLITE_VERSIONS: ReadonlySet<string> = new Set(['3.53.2', '3.51.3']);
 
 let db: DatabaseSync;
 
@@ -96,9 +98,12 @@ const WRITE_STATEMENTS: { sql: string; gateway: string }[] = [
 ];
 
 describe('version pin', () => {
-  it('runs against the SQLite the allowlist was harvested from (drift tripwire)', () => {
+  it('runs against a SQLite the allowlist was harvested from (drift tripwire)', () => {
     const row = db.prepare('select sqlite_version() as v').get() as { v: string };
-    expect(row.v).toBe(PINNED_SQLITE_VERSION);
+    expect(
+      KNOWN_SQLITE_VERSIONS.has(row.v),
+      `unknown SQLite ${row.v}: re-harvest the opcode allowlist and add the version to KNOWN_SQLITE_VERSIONS`,
+    ).toBe(true);
   });
 });
 

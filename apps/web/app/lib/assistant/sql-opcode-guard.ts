@@ -16,8 +16,13 @@
 // `Destroy`, `CreateBtree`, `SetCookie`, `ParseSchema`, `VUpdate`, `VBegin`, … — none of which appear in
 // any read plan. So the allowlist is the harvested read-opcode universe (which INCLUDES the ephemeral
 // writes); the gateways sit outside it and trip the guard. Opcode NAMES are version-stable across SQLite
-// releases; numeric codes are not — so we key on the name. Harvested against SQLite 3.53.2 (node:sqlite,
-// Node 26); the test pins that version as a drift tripwire.
+// releases; numeric codes are not — so we key on the name. The allowlist is a UNION (superset) across the
+// SQLite versions we run against — 3.53.2 (node:sqlite/Node 26, local) and 3.51.3 (Node 22, CI) emit
+// slightly different read-opcode universes for the same query (e.g. 3.51.3 adds Blob/Close/FilterAdd/
+// IdxDelete/NotFound/RowData). Production EXPLAINs against D1's own SQLite (a third version) — keeping the
+// allowlist a name-keyed superset minimises false-denials there while a missing opcode still fails CLOSED.
+// The test asserts the live SQLite is one of the KNOWN versions (drift tripwire) and that the corpus opcode
+// universe is a subset of this allowlist.
 
 import type { GuardResult } from './sql-guard';
 
@@ -44,7 +49,9 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'AggFinal',
   'AggStep',
   'BeginSubrtn',
+  'Blob', // load a blob/text value into a register — read (SQLite 3.51.3 / Node 22)
   'Cast',
+  'Close', // close a cursor — read (SQLite 3.51.3 / Node 22)
   'CollSeq',
   'Column',
   'Compare',
@@ -56,11 +63,13 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'Divide',
   'EndCoroutine',
   'Eq',
+  'FilterAdd', // add a key to a Bloom filter for a join probe — read (SQLite 3.51.3 / Node 22)
   'Found',
   'Function',
   'Gosub',
   'Goto',
   'Halt',
+  'IdxDelete', // ephemeral/auto-index entry removal during DISTINCT/UNION dedup — read-only (gated by OpenWrite)
   'IdxGT',
   'IdxInsert', // ephemeral/auto index build during DISTINCT/UNION/IN — read-only
   'IdxLE',
@@ -85,6 +94,7 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'NewRowid', // rowid for an ephemeral-table row — read-only
   'Next',
   'Noop',
+  'NotFound', // seek that jumps when a key is absent — read (SQLite 3.51.3 / Node 22)
   'NotNull',
   'Null',
   'NullRow',
@@ -100,6 +110,7 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'ResultRow',
   'Return',
   'Rewind',
+  'RowData', // read the full row payload of the current cursor — read (SQLite 3.51.3 / Node 22)
   'Rowid',
   'SCopy',
   'SeekGE',
