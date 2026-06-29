@@ -89,10 +89,37 @@ export function TimeseriesBlock({ points, series, truncated }: TimeseriesBlockPr
 
   return (
     <figure className="timeseries-block">
+      {/* Visually-hidden data table — the AT-accessible source (WCAG 1.1.1).
+          The SVG is aria-hidden; screen readers and text-only mode use this table instead.
+          AccessibilityWidget's SURVIVAL_CSS reveals .ts-data-table when text-only is active. */}
+      <table className="ts-data-table" aria-label="Данни от времевата редица">
+        <thead>
+          <tr>
+            <th scope="col">Период</th>
+            {allSeries.length > 1
+              ? allSeries.map((s, si) => (
+                  <th key={si} scope="col">
+                    {s.label || `Серия ${si + 1}`}
+                  </th>
+                ))
+              : <th scope="col">Стойност</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {longestSeries.pts.map((pt, i) => (
+            <tr key={i}>
+              <td>{String(pt.period ?? '')}</td>
+              {allSeries.map((s, si) => (
+                <td key={si}>{s.pts[i] != null ? fmtTick(s.pts[i].value) : '—'}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        role="img"
-        aria-label="Графика на времева редица"
+        aria-hidden="true"
         className="timeseries-block__svg"
       >
         {/* Gridlines + Y-axis labels */}

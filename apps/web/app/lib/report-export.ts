@@ -67,7 +67,7 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       case 'bar':
-        lines.push(...block.points.map((pt, i) => `${i + 1}. ${pt.label} — ${money(pt.value)}`), '');
+        lines.push(...block.points.map((pt, i) => `${i + 1}. ${pt.label} — ${fmt(pt.value, block.format ?? 'money')}`), '');
         break;
       case 'flows':
         lines.push(
@@ -241,7 +241,7 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
             new Paragraph({
               children: [
                 new TextRun({ text: `${pt.label ?? '—'}`, bold: false }),
-                new TextRun({ text: `  ${money(pt.value)}`, bold: true }),
+                new TextRun({ text: `  ${fmt(pt.value, block.format ?? 'money')}`, bold: true }),
               ],
               spacing: { after: 60 },
             }),

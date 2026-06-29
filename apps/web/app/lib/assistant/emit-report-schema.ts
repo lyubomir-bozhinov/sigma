@@ -281,6 +281,7 @@ export const EMIT_REPORT_JSON_SCHEMA = {
               resultId: { type: 'string' },
               labelCol: { type: 'string', description: 'колона за етикетите' },
               valueCol: { type: 'string', description: 'колона за стойностите' },
+              format: FORMAT_SCHEMA,
             },
           },
           {
@@ -302,6 +303,7 @@ export const EMIT_REPORT_JSON_SCHEMA = {
               resultId: { type: 'string' },
               periodCol: { type: 'string', description: 'колона за периода' },
               valueCol: { type: 'string' },
+              format: FORMAT_SCHEMA,
             },
           },
         ],
