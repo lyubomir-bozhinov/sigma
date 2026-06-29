@@ -69,7 +69,7 @@ WHERE c.amount_eur IS NOT NULL
 `.trim();
 
 const RECONCILE_SQL =
-  "SELECT COALESCE(SUM(amount_eur), 0) AS eur FROM contracts WHERE amount_eur IS NOT NULL";
+  'SELECT COALESCE(SUM(amount_eur), 0) AS eur FROM contracts WHERE amount_eur IS NOT NULL';
 
 interface PromptRow {
   slot: number;

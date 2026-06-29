@@ -10,10 +10,7 @@ import { PROMPTS_CRON, REFRESH_CRON } from './crons';
 // committed `crons` array and asserts it equals exactly [REFRESH_CRON, PROMPTS_CRON] — a mismatch
 // fails CI instead of misfiring in production.
 
-const wranglerPath = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../wrangler.toml',
-);
+const wranglerPath = resolve(dirname(fileURLToPath(import.meta.url)), '../wrangler.toml');
 
 function parseCrons(toml: string): string[] {
   const match = toml.match(/crons\s*=\s*\[([^\]]*)\]/);

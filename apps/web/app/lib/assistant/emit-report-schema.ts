@@ -178,12 +178,19 @@ export const EMIT_REPORT_JSON_SCHEMA = {
           {
             type: 'object',
             required: ['type', 'md'],
-            properties: { type: { const: 'text' }, md: { type: 'string', description: 'markdown проза' } },
+            properties: {
+              type: { const: 'text' },
+              md: { type: 'string', description: 'markdown проза' },
+            },
           },
           {
             type: 'object',
             required: ['type', 'title', 'md'],
-            properties: { type: { const: 'callout' }, title: { type: 'string' }, md: { type: 'string' } },
+            properties: {
+              type: { const: 'callout' },
+              title: { type: 'string' },
+              md: { type: 'string' },
+            },
           },
           {
             type: 'object',

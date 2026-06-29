@@ -169,6 +169,8 @@ export default {
       );
       return;
     }
-    console.log(JSON.stringify({ level: 'warn', event: 'etl_unknown_cron', cron: controller.cron }));
+    console.log(
+      JSON.stringify({ level: 'warn', event: 'etl_unknown_cron', cron: controller.cron }),
+    );
   },
 } satisfies ExportedHandler<Env>;

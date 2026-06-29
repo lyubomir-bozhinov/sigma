@@ -5,7 +5,9 @@ import { loader } from './assistant.prompts';
 // that satisfies that path. Route.LoaderArgs carries more, but the loader reads nothing else, so a
 // typed cast at this test boundary is honest.
 function makeArgs(db: unknown) {
-  return { context: { cloudflare: { env: { DB: db } } } } as unknown as Parameters<typeof loader>[0];
+  return { context: { cloudflare: { env: { DB: db } } } } as unknown as Parameters<
+    typeof loader
+  >[0];
 }
 
 function fakeDb(rows: unknown[]): D1Database {

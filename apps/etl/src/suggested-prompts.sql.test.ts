@@ -74,7 +74,10 @@ function withDb<T>(fn: (dbPath: string) => T): T {
 // the exact exported query text. In production D1 these arrive as typed values via .bind(asOf, days).
 function runSlot(dbPath: string, sql: string, asOf: string, days: number): string {
   const bound = sql.replaceAll('?1', `'${asOf}'`).replaceAll('?2', String(days));
-  return execFileSync('sqlite3', ['-bail', dbPath], { input: `${bound}\n`, encoding: 'utf8' }).trim();
+  return execFileSync('sqlite3', ['-bail', dbPath], {
+    input: `${bound}\n`,
+    encoding: 'utf8',
+  }).trim();
 }
 
 describe('suggested-prompts slot SQL (real SQLite)', () => {

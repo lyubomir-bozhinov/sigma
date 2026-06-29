@@ -91,7 +91,10 @@ describe('useStarterPrompts', () => {
   });
 
   it('rejects a list over the 4-prompt cap', async () => {
-    const prompts = Array.from({ length: 5 }, (_, i) => ({ label: `chip ${i}`, send: `send ${i}` }));
+    const prompts = Array.from({ length: 5 }, (_, i) => ({
+      label: `chip ${i}`,
+      send: `send ${i}`,
+    }));
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse({ prompts })),
