@@ -65,6 +65,13 @@ export interface ReplayOutcome {
   stepReturns: string[];
   /** The result of re-binding the recorded emit against the server-executed results. */
   bind: BindResult;
+  /**
+   * The real `reconcile_rollup` tool's return string, when the fixture declares a reconcile expectation
+   * — `'Съгласувано.'` on success, or the rejection / mismatch message. Undefined when no reconcile is
+   * expected. Driven AFTER finalize so the rollup query does not clobber the contracts default-filter
+   * callout (run_sql overwrites `ctx.appliedFilterCallout` on every call).
+   */
+  reconcileReturn?: string;
 }
 
 /**
@@ -73,8 +80,19 @@ export interface ReplayOutcome {
  * the test to inspect (so a NEGATIVE fixture, whose emit is meant to fail binding, still replays here).
  */
 export async function replayFixture(fixture: GoldenFixture): Promise<ReplayOutcome> {
+  const reconcile = fixture.expect.reconcile;
+  // The reconcile rollup query is a real run_sql executed AFTER finalize, so the fake D1 must be able to
+  // serve its rows too. fakeDb serves recorded rows in CALL order, so appending the rollup step here (and
+  // calling it last) hands it the right rows without disturbing the recorded contracts steps (R1…).
+  const dbSteps: GoldenStep[] = reconcile
+    ? [
+        ...fixture.steps,
+        { tool: 'run_sql', sql: reconcile.rollupQuery, result: reconcile.rollupResult },
+      ]
+    : fixture.steps;
+
   const ctx: ToolContext = {
-    db: fakeDb(fixture.steps),
+    db: fakeDb(dbSteps),
     results: [],
     userQuestion: fixture.prompt,
     rowsRead: 0,
@@ -87,5 +105,23 @@ export async function replayFixture(fixture: GoldenFixture): Promise<ReplayOutco
   }
 
   const bind = finalizeReport(fixture.emit, ctx);
-  return { ctx, stepReturns, bind };
+
+  // Drive the REAL reconcile_rollup tool over actual replayed results: the rollup query runs now (after
+  // finalize) to a fresh handle, then both sides are read from ctx.results via the production tool.
+  let reconcileReturn: string | undefined;
+  if (reconcile) {
+    await runTool('run_sql', { sql: reconcile.rollupQuery }, ctx);
+    reconcileReturn = await runTool(
+      'reconcile_rollup',
+      {
+        target: reconcile.target,
+        grain: reconcile.grain,
+        aggregate: reconcile.aggregate,
+        rollup: reconcile.rollup,
+      },
+      ctx,
+    );
+  }
+
+  return { ctx, stepReturns, bind, reconcileReturn };
 }

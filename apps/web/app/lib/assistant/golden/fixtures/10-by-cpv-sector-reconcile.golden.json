@@ -47,18 +47,31 @@
   },
   "expect": {
     "queriesContracts": true,
-    "rollup": {
+    "reconcile": {
       "target": "sector_totals",
       "grain": {
         "division": "45"
       },
-      "aggregate": {
-        "count": 80,
-        "sumEur": 3000000
+      "rollupQuery": "SELECT contracts, value_eur FROM sector_totals WHERE division = '45'",
+      "rollupResult": {
+        "rows": [
+          {
+            "contracts": 80,
+            "value_eur": 3000000
+          }
+        ]
       },
-      "rollupRow": {
-        "count": 80,
-        "sumEur": 3000000
+      "aggregate": {
+        "resultId": "R1",
+        "row": 0,
+        "countCol": "contracts",
+        "sumCol": "value_eur"
+      },
+      "rollup": {
+        "resultId": "R2",
+        "row": 0,
+        "countCol": "contracts",
+        "sumCol": "value_eur"
       }
     }
   }

@@ -46,18 +46,31 @@
   },
   "expect": {
     "queriesContracts": true,
-    "rollup": {
+    "reconcile": {
       "target": "home_totals",
       "grain": {
         "authority_id": "1"
       },
-      "aggregate": {
-        "count": 42,
-        "sumEur": 1234567
+      "rollupQuery": "SELECT contracts, total_eur FROM home_totals WHERE authority_id = 1",
+      "rollupResult": {
+        "rows": [
+          {
+            "contracts": 42,
+            "total_eur": 1234567
+          }
+        ]
       },
-      "rollupRow": {
-        "count": 42,
-        "sumEur": 1234567
+      "aggregate": {
+        "resultId": "R1",
+        "row": 0,
+        "countCol": "contracts",
+        "sumCol": "total_eur"
+      },
+      "rollup": {
+        "resultId": "R2",
+        "row": 0,
+        "countCol": "contracts",
+        "sumCol": "total_eur"
       }
     }
   },

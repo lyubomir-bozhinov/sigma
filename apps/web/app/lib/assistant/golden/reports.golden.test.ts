@@ -9,13 +9,12 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ReconcileError } from '../../../../workers/assistant/reconcile-rollup';
 import {
   assertAmountEurUsage,
   assertDefaultFiltersApplied,
   assertNoNaNOrEmpty,
   assertNoProseFigures,
-  assertRollupReconciles,
+  assertReconcile,
   assertSchemaValid,
 } from './assertions';
 import { RESULT_HANDLE_RE, REJECTION_RE, replayFixture, type ReplayOutcome } from './replay';
@@ -86,7 +85,7 @@ describe.each(POSITIVE.map((f) => [f.id, f] as const))('golden fixture %s', (_id
   });
 
   it('4. reconciles any presented count/sum against a valid rollup', () => {
-    expect(() => assertRollupReconciles(fixture)).not.toThrow();
+    expect(() => assertReconcile(fixture, outcome.reconcileReturn)).not.toThrow();
   });
 
   it('5. carries no material number in model prose', () => {
@@ -113,11 +112,18 @@ describe('negative fixtures each violate exactly one property', () => {
     expect(() => assertSchemaValid(bind)).toThrow();
   });
 
-  it('home-totals: reconciling against home_totals is rejected outright', () => {
-    expect(() => assertRollupReconciles(byId('91-neg-home-totals-target'))).toThrow(/home_totals/);
+  it('home-totals: the real reconcile_rollup tool rejects a home_totals target', async () => {
+    const { reconcileReturn } = await replayFixture(byId('91-neg-home-totals-target'));
+    expect(reconcileReturn).toMatch(REJECTION_RE);
+    expect(reconcileReturn).toMatch(/home_totals/);
+    // assertion 4 treats a non-reconciled return as a violation.
+    expect(() => assertReconcile(byId('91-neg-home-totals-target'), reconcileReturn)).toThrow();
   });
 
-  it('reconcile-mismatch: a disagreeing aggregate throws ReconcileError', () => {
-    expect(() => assertRollupReconciles(byId('92-neg-reconcile-mismatch'))).toThrow(ReconcileError);
+  it('reconcile-mismatch: a disagreeing aggregate is surfaced, not reconciled', async () => {
+    const { reconcileReturn } = await replayFixture(byId('92-neg-reconcile-mismatch'));
+    expect(reconcileReturn).toMatch(/reconciliation failed/);
+    expect(reconcileReturn).toMatch(/count mismatch/);
+    expect(() => assertReconcile(byId('92-neg-reconcile-mismatch'), reconcileReturn)).toThrow();
   });
 });

@@ -16,13 +16,13 @@ import {
   applyDefaultFilters,
   type DefaultFilterOptions,
 } from '../../../../workers/assistant/default-filters';
-import { assertReconciled, type Aggregate } from '../../../../workers/assistant/reconcile-rollup';
 import type { GoldenFixture } from './types';
 
 /** The title the wired `finalizeReport` gives the prepended default-filters callout block. */
 export const DEFAULT_FILTER_CALLOUT_TITLE = 'Приложени филтри по подразбиране';
 
-const VALID_ROLLUP_TARGETS = new Set(['sector_totals', 'authority_totals', 'company_totals']);
+/** The exact success string the production `reconcile_rollup` tool returns when the two sides agree. */
+export const RECONCILED = 'Съгласувано.';
 
 /** A SUM over a non-canonical amount column (`SUM(amount)` / `SUM(c.amount)`) — never `amount_eur`. */
 const NON_CANONICAL_SUM = /\bsum\s*\(\s*[a-z]*\.?amount(?!_eur)\b/i;
@@ -102,28 +102,24 @@ export function assertDefaultFiltersApplied(fixture: GoldenFixture, report: Reso
 }
 
 // ── 4. Rollup reconciliation ──────────────────────────────────────────────────────────────────────
-// A presented count/sum reconciles against a precomputed rollup AT THE SAME GRAIN. Only the
-// amount_eur-filtered rollups are valid targets — a `home_totals` target is an automatic failure
-// (it counts NULL-amount rows). On a count/sum mismatch `assertReconciled` throws ReconcileError.
-export function assertRollupReconciles(fixture: GoldenFixture): void {
-  const rollup = fixture.expect.rollup;
-  if (!rollup) return;
-  if (!VALID_ROLLUP_TARGETS.has(rollup.target)) {
+// A presented count/sum reconciles against a precomputed rollup AT THE SAME GRAIN — verified by driving
+// the REAL production `reconcile_rollup` tool through replay (replay.ts), NOT by comparing two
+// author-written literals. Both sides are read from actual replayed result handles: the aggregate from
+// the live run_sql result the report binds (`R1…`), the rollup from a second run_sql executed after
+// finalize. `reconcileReturn` is that tool's verbatim output; on success it is exactly `RECONCILED`
+// ('Съгласувано.'). A `home_totals` target is rejected by the tool, and a count/sum mismatch surfaces
+// the discrepancy — both yield a non-RECONCILED string, which this asserts is a violation. So a real
+// pipeline divergence (a wrong bound figure, a drifted filter/join) fails assertion 4.
+export function assertReconcile(fixture: GoldenFixture, reconcileReturn: string | undefined): void {
+  if (!fixture.expect.reconcile) return;
+  if (reconcileReturn === undefined) {
     throw new Error(
-      `invalid rollup reconcile target "${rollup.target}" (never reconcile home_totals)`,
+      'reconcile expectation present but reconcile_rollup was not driven by the replay',
     );
   }
-  const aggregate: Aggregate = {
-    grain: rollup.grain,
-    count: rollup.aggregate.count,
-    sumEur: rollup.aggregate.sumEur,
-  };
-  const rollupAgg: Aggregate = {
-    grain: rollup.grain,
-    count: rollup.rollupRow.count,
-    sumEur: rollup.rollupRow.sumEur,
-  };
-  assertReconciled(aggregate, rollupAgg);
+  if (reconcileReturn !== RECONCILED) {
+    throw new Error(`reconcile_rollup did not reconcile the presented figure: ${reconcileReturn}`);
+  }
 }
 
 // ── 5. No prose figures ───────────────────────────────────────────────────────────────────────────

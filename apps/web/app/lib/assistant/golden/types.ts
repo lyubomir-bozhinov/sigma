@@ -21,16 +21,34 @@ export interface GoldenStep {
   result: { rows: Record<string, string | number | null>[] };
 }
 
+/** A pointer to the (count, sum) cells of one reconcile side in a server-executed result handle. */
+export interface AggRefSpec {
+  resultId: string;
+  row: number;
+  countCol: string;
+  sumCol: string;
+}
+
 /**
- * The reconcile expectation for a fixture: the live aggregate (count, sum) the run produced and the
- * precomputed rollup row it must reconcile against, AT THE SAME `grain`. `target` is widened to string
- * so a NEGATIVE fixture can record an invalid target (`home_totals`) that assertion 4 must reject.
+ * The reconcile expectation for a fixture. Unlike the old shape (two author-written literals compared
+ * against each other), this drives the REAL `reconcile_rollup` tool through replay: the aggregate side
+ * points at the live run_sql result the report binds (`R1…`), and `rollupQuery` is a second run_sql the
+ * replay runs AFTER finalize (so it does not clobber the contracts default-filter callout) to fetch the
+ * precomputed rollup row into its own handle, which the `rollup` ref then reads. Both sides therefore
+ * derive from actual replayed output. `target` is widened to string so a NEGATIVE fixture can record an
+ * invalid target (`home_totals`) the tool must reject. On a count/sum mismatch the tool surfaces the
+ * discrepancy (reconcile-mismatch negative).
  */
-export interface RollupExpectation {
+export interface ReconcileExpectation {
   target: RollupTarget | string;
   grain: Record<string, string>;
-  aggregate: { count: number; sumEur: number };
-  rollupRow: { count: number; sumEur: number };
+  /** Server-executed query fetching the precomputed rollup row; run after finalize to a fresh handle. */
+  rollupQuery: string;
+  /** The rows the rollup query returns (served by the replay's fake D1, like any recorded step). */
+  rollupResult: { rows: Record<string, string | number | null>[] };
+  /** Cell pointers: aggregate into the live result (`R1…`); rollup into `rollupQuery`'s handle. */
+  aggregate: AggRefSpec;
+  rollup: AggRefSpec;
 }
 
 export interface GoldenExpect {
@@ -43,8 +61,8 @@ export interface GoldenExpect {
   optOuts?: ('includeUnsummable' | 'includeSynthetic' | 'publishedAt')[];
   /** A legitimately empty result (0 rows) — assertion 6 then permits empty data blocks. */
   emptyOk?: boolean;
-  /** Present when the run presents a reconciled count/sum (assertion 4). */
-  rollup?: RollupExpectation;
+  /** Present when the run presents a reconciled count/sum (assertion 4, driven via `reconcile_rollup`). */
+  reconcile?: ReconcileExpectation;
 }
 
 /**
