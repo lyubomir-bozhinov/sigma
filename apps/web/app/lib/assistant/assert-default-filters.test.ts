@@ -39,7 +39,9 @@ describe('assertDefaultFilters', () => {
   });
 
   it('bypasses a rollup-only query (no base contracts table) with an empty callout', () => {
-    const r = assertDefaultFilters("SELECT spent_eur FROM authority_totals WHERE authority_id = '1'");
+    const r = assertDefaultFilters(
+      "SELECT spent_eur FROM authority_totals WHERE authority_id = '1'",
+    );
     expect(r).toEqual({ ok: true, callout: [] });
   });
 

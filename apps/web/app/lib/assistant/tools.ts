@@ -332,9 +332,7 @@ const reconcileRollupTool: AssistantTool = {
       );
     }
     const grain =
-      args.grain && typeof args.grain === 'object'
-        ? (args.grain as Record<string, string>)
-        : {};
+      args.grain && typeof args.grain === 'object' ? (args.grain as Record<string, string>) : {};
     const aggRef = toAggRef(args.aggregate);
     const rollupRef = toAggRef(args.rollup);
     if (!aggRef || !rollupRef) {

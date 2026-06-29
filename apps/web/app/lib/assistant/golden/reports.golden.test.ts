@@ -27,7 +27,12 @@ function loadFixtures(): GoldenFixture[] {
   return readdirSync(FIXTURE_DIR)
     .filter((name) => name.endsWith('.golden.json'))
     .sort()
-    .map((name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')) as GoldenFixture);
+    .map(
+      (name) =>
+        JSON.parse(
+          readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'),
+        ) as GoldenFixture,
+    );
 }
 
 const ALL = loadFixtures();
@@ -45,7 +50,7 @@ describe('golden corpus', () => {
     expect(new Set(ALL.map((f) => f.id)).size).toBe(ALL.length);
   });
 
-  it('replays every fixture\'s run_sql steps to a result handle, never a rejection', async () => {
+  it("replays every fixture's run_sql steps to a result handle, never a rejection", async () => {
     for (const fixture of ALL) {
       const { stepReturns } = await replayFixture(fixture);
       expect(stepReturns.length).toBe(fixture.steps.length);

@@ -74,7 +74,9 @@ describe('sql-guard adversarial / parser-differential', () => {
     it('passes hex() — even on contracts (the default amount_eur predicate is irrelevant to the gap)', () => {
       // The predicate is present only to mirror a realistic analytics query; the guards do not reject a
       // bare table scan, so it changes nothing — the point is that hex() itself is unguarded.
-      expect(run('SELECT hex(name) AS n FROM contracts WHERE amount_eur IS NOT NULL').ok).toBe(true); // VULN(read-exfil)
+      expect(run('SELECT hex(name) AS n FROM contracts WHERE amount_eur IS NOT NULL').ok).toBe(
+        true,
+      ); // VULN(read-exfil)
     });
   });
 
@@ -195,7 +197,7 @@ describe('sql-guard adversarial / parser-differential', () => {
       // blocklist exists to stop. Asserted ok:true so closing the gap (name-filter the AST) fails here.
       expect(run('SELECT "printf"(\'%1000000d\', 1) AS n').ok).toBe(true); // VULN(scalar-bomb-evasion)
       expect(run('SELECT "randomblob"(1000000000) AS n').ok).toBe(true); // VULN(scalar-bomb-evasion)
-      expect(run("SELECT \"load_extension\"('evil') AS n").ok).toBe(true); // VULN(scalar-bomb-evasion)
+      expect(run('SELECT "load_extension"(\'evil\') AS n').ok).toBe(true); // VULN(scalar-bomb-evasion)
       // and the plain quoted-identifier function call from the brief (group_concat) likewise passes
       expect(run('SELECT "group_concat"(name) AS n FROM authorities').ok).toBe(true); // VULN(scalar-bomb-evasion)
     });

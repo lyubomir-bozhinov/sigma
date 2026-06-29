@@ -33,10 +33,6 @@
   },
   "expect": {
     "queriesContracts": false,
-    "optOuts": [
-      "includeUnsummable",
-      "includeSynthetic",
-      "publishedAt"
-    ]
+    "optOuts": ["includeUnsummable", "includeSynthetic", "publishedAt"]
   }
 }

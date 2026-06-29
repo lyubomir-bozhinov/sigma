@@ -12,7 +12,10 @@ import {
   type ResolvedBlock,
 } from '../report-schema';
 import { assertDefaultFilters } from '../assert-default-filters';
-import { applyDefaultFilters, type DefaultFilterOptions } from '../../../../workers/assistant/default-filters';
+import {
+  applyDefaultFilters,
+  type DefaultFilterOptions,
+} from '../../../../workers/assistant/default-filters';
 import { assertReconciled, type Aggregate } from '../../../../workers/assistant/reconcile-rollup';
 import type { GoldenFixture } from './types';
 
@@ -85,7 +88,9 @@ export function assertDefaultFiltersApplied(fixture: GoldenFixture, report: Reso
   for (const optOut of fixture.expect.optOuts ?? []) {
     const options = OPTOUT_OPTIONS[optOut];
     if (!options) throw new Error(`unknown opt-out "${optOut}"`);
-    const warning = applyDefaultFilters(options).callout.find((line) => line.startsWith('ВНИМАНИЕ:'));
+    const warning = applyDefaultFilters(options).callout.find((line) =>
+      line.startsWith('ВНИМАНИЕ:'),
+    );
     if (!warning) {
       throw new Error(`opt-out "${optOut}" surfaced no ВНИМАНИЕ warning line`);
     }
@@ -104,7 +109,9 @@ export function assertRollupReconciles(fixture: GoldenFixture): void {
   const rollup = fixture.expect.rollup;
   if (!rollup) return;
   if (!VALID_ROLLUP_TARGETS.has(rollup.target)) {
-    throw new Error(`invalid rollup reconcile target "${rollup.target}" (never reconcile home_totals)`);
+    throw new Error(
+      `invalid rollup reconcile target "${rollup.target}" (never reconcile home_totals)`,
+    );
   }
   const aggregate: Aggregate = {
     grain: rollup.grain,
@@ -151,21 +158,26 @@ export function assertNoNaNOrEmpty(report: ResolvedReport, emptyOk = false): voi
         if (item.format === 'money' || item.format === 'number' || item.format === 'percent') {
           const n = asNumber(item.value);
           if (n === null || !Number.isFinite(n)) {
-            throw new Error(`totals item "${item.label}" has a non-finite numeric value: ${item.value}`);
+            throw new Error(
+              `totals item "${item.label}" has a non-finite numeric value: ${item.value}`,
+            );
           }
         }
       }
     } else if (block.type === 'bar') {
       for (const p of block.points) {
-        if (!Number.isFinite(p.value)) throw new Error(`bar point has a non-finite value: ${p.value}`);
+        if (!Number.isFinite(p.value))
+          throw new Error(`bar point has a non-finite value: ${p.value}`);
       }
     } else if (block.type === 'timeseries') {
       for (const p of block.points) {
-        if (!Number.isFinite(p.value)) throw new Error(`timeseries point has a non-finite value: ${p.value}`);
+        if (!Number.isFinite(p.value))
+          throw new Error(`timeseries point has a non-finite value: ${p.value}`);
       }
     } else if (block.type === 'flows') {
       for (const e of block.edges) {
-        if (!Number.isFinite(e.valueEur)) throw new Error(`flow edge has a non-finite value: ${e.valueEur}`);
+        if (!Number.isFinite(e.valueEur))
+          throw new Error(`flow edge has a non-finite value: ${e.valueEur}`);
       }
     }
 

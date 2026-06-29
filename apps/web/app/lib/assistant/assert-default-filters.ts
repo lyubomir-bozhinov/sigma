@@ -13,9 +13,7 @@
 
 import { applyDefaultFilters } from '../../../workers/assistant/default-filters';
 
-export type DefaultFiltersResult =
-  | { ok: true; callout: string[] }
-  | { ok: false; reason: string };
+export type DefaultFiltersResult = { ok: true; callout: string[] } | { ok: false; reason: string };
 
 // Does the query read the base `contracts` table (not a rollup)? v1 token heuristic: a `FROM`/`JOIN`
 // immediately naming `contracts`. Rollup names (`*_totals`) never match, so they bypass the gate.

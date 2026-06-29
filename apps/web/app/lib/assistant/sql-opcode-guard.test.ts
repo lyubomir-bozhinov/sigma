@@ -88,7 +88,10 @@ const WRITE_STATEMENTS: { sql: string; gateway: string }[] = [
   { sql: "INSERT INTO authorities(id, name) VALUES('x', 'y')", gateway: 'OpenWrite' },
   { sql: 'DROP TABLE contracts', gateway: 'DropTable' },
   { sql: 'CREATE TABLE z(a)', gateway: 'CreateBtree' },
-  { sql: "INSERT INTO search_index(kind, ref, title, ident) VALUES('a', 'b', 'c', 'd')", gateway: 'VUpdate' },
+  {
+    sql: "INSERT INTO search_index(kind, ref, title, ident) VALUES('a', 'b', 'c', 'd')",
+    gateway: 'VUpdate',
+  },
   { sql: "UPDATE search_index SET title = 'x'", gateway: 'VUpdate' },
 ];
 
@@ -137,7 +140,10 @@ describe('guardOpcodes — real plans', () => {
       for (const r of explainOpcodes(sql)) readUniverse.add(r.opcode as string);
     }
     const seen = ephemeralWrites.filter((op) => readUniverse.has(op));
-    expect(seen.length, 'valid reads must emit at least one ephemeral-write opcode').toBeGreaterThan(0);
+    expect(
+      seen.length,
+      'valid reads must emit at least one ephemeral-write opcode',
+    ).toBeGreaterThan(0);
     for (const op of seen) expect(READ_ONLY_OPCODES.has(op), op).toBe(true);
   });
 
@@ -149,10 +155,16 @@ describe('guardOpcodes — real plans', () => {
       if (verdict.ok) continue;
       expect(verdict.reason, sql).toMatch(/non-read-only opcode/);
       // The rejection rests on a genuine persistent-write/DDL/vtab gateway present in the plan…
-      expect(rows.some((r) => r.opcode === gateway), `${sql} → expected gateway ${gateway}`).toBe(true);
+      expect(
+        rows.some((r) => r.opcode === gateway),
+        `${sql} → expected gateway ${gateway}`,
+      ).toBe(true);
       expect(KNOWN_WRITE_OPCODES.has(gateway), gateway).toBe(true);
       // …and the plan carries ≥1 opcode outside the allowlist (what actually fired the deny).
-      expect(rows.some((r) => !READ_ONLY_OPCODES.has(r.opcode as string)), sql).toBe(true);
+      expect(
+        rows.some((r) => !READ_ONLY_OPCODES.has(r.opcode as string)),
+        sql,
+      ).toBe(true);
     }
   });
 
@@ -184,7 +196,10 @@ describe('allowlist invariants', () => {
       for (const row of explainOpcodes(sql)) universe.add(row.opcode as string);
     }
     const extra = [...universe].filter((op) => !READ_ONLY_OPCODES.has(op)).sort();
-    expect(extra, `opcodes emitted by reads but missing from the allowlist: ${extra.join(', ')}`).toEqual([]);
+    expect(
+      extra,
+      `opcodes emitted by reads but missing from the allowlist: ${extra.join(', ')}`,
+    ).toEqual([]);
   });
 
   it('READ_ONLY_OPCODES is disjoint from KNOWN_WRITE_OPCODES', () => {

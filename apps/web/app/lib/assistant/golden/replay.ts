@@ -6,12 +6,7 @@
 // result handles. Nothing here re-implements pipeline logic: the harness only feeds recorded inputs and
 // inspects the real outputs.
 
-import {
-  DEFAULT_ROWS_READ_BUDGET,
-  finalizeReport,
-  runTool,
-  type ToolContext,
-} from '../tools';
+import { DEFAULT_ROWS_READ_BUDGET, finalizeReport, runTool, type ToolContext } from '../tools';
 import type { BindResult } from '../report-schema';
 import type { GoldenFixture, GoldenStep } from './types';
 

@@ -11,7 +11,7 @@ import {
 // A base-`contracts` query that carries BOTH default filters, so it clears the E3 default-filter gate
 // (assert-default-filters.ts). Reused wherever a test needs a valid base-contracts run.
 const CONTRACTS_WITH_DEFAULTS =
-  "SELECT SUM(amount_eur) AS total_eur FROM contracts " +
+  'SELECT SUM(amount_eur) AS total_eur FROM contracts ' +
   "WHERE amount_eur IS NOT NULL AND procedure_type != 'неизвестна'";
 
 // A rollup-only query — it never reads base `contracts`, so it BYPASSES the default-filter gate.
