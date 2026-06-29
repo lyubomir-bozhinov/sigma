@@ -81,12 +81,19 @@ function randomReportId(): string {
   return `r_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
+// Whitelist of source values the UI knows how to label (ReportMethodologyCallout SOURCE_LABELS).
+// Rows with any other source value (e.g. 'other', future additions) are silently dropped rather
+// than leaking an internal bucket name to the public methodology callout.
+const KNOWN_FRESHNESS_SOURCES = new Set(['admin', 'ocds', 'eop'] as const);
+
 async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: string }[]> {
   try {
     const { results } = await db
       .prepare('SELECT source, as_of FROM data_freshness WHERE as_of IS NOT NULL')
       .all<{ source: string; as_of: string }>();
-    return (results ?? []).map((r) => ({ source: r.source, asOf: r.as_of }));
+    return (results ?? [])
+      .filter((r) => KNOWN_FRESHNESS_SOURCES.has(r.source as 'admin' | 'ocds' | 'eop'))
+      .map((r) => ({ source: r.source, asOf: r.as_of }));
   } catch {
     return [];
   }

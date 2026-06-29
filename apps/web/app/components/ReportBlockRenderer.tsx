@@ -196,7 +196,7 @@ function Block({ block }: { block: ResolvedBlock }) {
     case 'timeseries':
       return (
         <div className="report-block report-block--timeseries">
-          <TimeseriesBlock points={block.points} truncated={block.truncated} />
+          <TimeseriesBlock points={block.points} truncated={block.truncated} format={block.format} />
         </div>
       );
 

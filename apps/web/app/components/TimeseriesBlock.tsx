@@ -4,6 +4,9 @@
 // (`points: [{period, value}]`) and the multi-series variant (`series: [{label, points}]`).
 // The SVG scales responsively via a fixed viewBox and CSS `width: 100%`.
 
+import type { CellFormat } from '~/lib/assistant-contract/report';
+import { formatCell } from '~/lib/assistant/render-format';
+
 // Chart geometry in SVG user-space.
 const W = 540;
 const H = 200;
@@ -17,7 +20,10 @@ const Y_TICK_COUNT = 4;
 const MAX_X_LABELS = 8;
 
 // CSS class cycle for multi-series stroke colours (defined in app.css under .ts-s0–.ts-s3).
+// Capped at 4 entries — a 5th series would silently reuse ts-s0 (indistinguishable).
+// Multi-series is a future extension; the public block contract only emits single-series today.
 const SERIES_CLASSES = ['ts-s0', 'ts-s1', 'ts-s2', 'ts-s3'] as const;
+const MAX_SERIES = SERIES_CLASSES.length;
 
 type TimeseriesPoint = { period: string | number | null; value: number };
 
@@ -27,6 +33,8 @@ export interface TimeseriesBlockProps {
   /** Multi-series variant (the dock contract's extended form). */
   series?: { label: string; points: TimeseriesPoint[] }[];
   truncated?: boolean;
+  /** Value display format — applied to the data table and exports (mirrors bar's format prop). */
+  format?: CellFormat;
 }
 
 /** Compact number formatter for Y-axis tick labels (avoids importing @sigma/shared for pure UI). */
@@ -52,8 +60,8 @@ function toSeries(props: TimeseriesBlockProps): { label: string; pts: Timeseries
  * SVG timeseries line chart for report blocks (spec §D1).
  * No chart library — pure SVG path + circle elements, CSS-styled.
  */
-export function TimeseriesBlock({ points, series, truncated }: TimeseriesBlockProps) {
-  const allSeries = toSeries({ points, series });
+export function TimeseriesBlock({ points, series, truncated, format }: TimeseriesBlockProps) {
+  const allSeries = toSeries({ points, series }).slice(0, MAX_SERIES);
 
   if (allSeries.length === 0 || allSeries.every((s) => s.pts.length === 0)) {
     return <p className="chart-empty">Няма данни</p>;
@@ -110,7 +118,7 @@ export function TimeseriesBlock({ points, series, truncated }: TimeseriesBlockPr
             <tr key={i}>
               <td>{String(pt.period ?? '')}</td>
               {allSeries.map((s, si) => (
-                <td key={si}>{s.pts[i] != null ? fmtTick(s.pts[i].value) : '—'}</td>
+                <td key={si}>{s.pts[i] != null ? formatCell(s.pts[i].value, format ?? 'money') : '—'}</td>
               ))}
             </tr>
           ))}
@@ -195,7 +203,13 @@ export function TimeseriesBlock({ points, series, truncated }: TimeseriesBlockPr
         })}
       </svg>
 
-      {/* Multi-series colour legend */}
+      {truncated && (
+        <p className="report-block__truncated-note">
+          Показани са само първите резултати — данните са отрязани.
+        </p>
+      )}
+
+      {/* Multi-series colour legend — must be last child of <figure> (HTML spec). */}
       {allSeries.length > 1 && (
         <figcaption className="timeseries-block__legend">
           {allSeries.map((s, si) => (
@@ -204,12 +218,6 @@ export function TimeseriesBlock({ points, series, truncated }: TimeseriesBlockPr
             </span>
           ))}
         </figcaption>
-      )}
-
-      {truncated && (
-        <p className="report-block__truncated-note">
-          Показани са само първите резултати — данните са отрязани.
-        </p>
       )}
     </figure>
   );
