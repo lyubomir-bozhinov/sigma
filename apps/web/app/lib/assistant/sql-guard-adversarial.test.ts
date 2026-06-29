@@ -13,15 +13,15 @@
 // security-relevant fact (`ok === false`) is asserted AND the observed layer is pinned, so a parser
 // bump that relocates the rejection fails this test rather than silently weakening coverage.
 //
-// SECURITY SUMMARY (see the "documented read-only GAPs" describe block):
+// SECURITY SUMMARY:
 //   - No WRITE / non-SELECT statement reaches `ok:true` here — the two layers fail closed on every
 //     write/DDL/stacked/TVF/recursion/cross-join vector exercised below.
-//   - GAP (read-only, NOT a write breach): unguarded scalar exfiltration (group_concat/quote/hex) and
-//     — more seriously — DANGEROUS scalar functions re-reached by DOUBLE-QUOTING the function name
-//     (`"randomblob"(…)`, `"load_extension"(…)`, `"printf"('%1000000d',…)`), which slips past the
-//     Layer-1 `\bfn\s*\(` blocklist (the `"` breaks the boundary) and is not name-filtered by Layer 2.
-//     These are read-path DoW / (where SQLite enables it) RCE vectors, not UPDATE/DELETE — so not a
-//     write P0, but flagged prominently.
+//   - CLOSED (was a read-only gap): scalar exfiltration (group_concat/quote/hex) and dangerous scalar
+//     functions re-reached by DOUBLE-QUOTING the name (`"randomblob"(…)`, `"load_extension"(…)`,
+//     `"printf"('%1000000d',…)`) — these slip Layer-1's `\bfn\s*\(` blocklist (the `"` breaks the
+//     boundary) but are now rejected by Layer 2's AST name blocklist (`denyDangerousFunction` in
+//     sql-ast-guard.ts), which normalises `fn` and `"fn"` to the same name. Sections B and G assert the
+//     rejection (at Layer 2) rather than the former pass.
 
 import { describe, expect, it } from 'vitest';
 import { assertReadOnlySelect } from './sql-guard';
@@ -61,22 +61,24 @@ describe('sql-guard adversarial / parser-differential', () => {
     });
   });
 
-  describe('B. unguarded scalar exfiltration (KNOWN read-only GAP)', () => {
-    // The Layer-1 scalar blocklist covers load_extension/randomblob/zeroblob/printf/format but NOT
-    // group_concat/quote/hex, and Layer 2 does not filter scalar functions by name — so these pass.
-    // Read-only (no write), but they let the model concatenate/encode whole columns into one cell.
-    it('passes group_concat — column concatenation is not blocked', () => {
-      expect(run('SELECT group_concat(name) AS n FROM authorities').ok).toBe(true); // VULN(read-exfil)
+  describe('B. scalar exfiltration is blocked at Layer 2 (closed read-only gap)', () => {
+    // The Layer-1 scalar blocklist never covered group_concat/quote/hex (column concat/encoding into one
+    // cell). Layer 2's AST name blocklist (denyDangerousFunction) now rejects them — closing the gap.
+    it('rejects group_concat at Layer 2 — column concatenation', () => {
+      const r = run('SELECT group_concat(name) AS n FROM authorities');
+      expect(r.ok).toBe(false);
+      expect(r.layer).toBe(2);
+      if (!r.ok) expect(r.reason).toMatch(/function not allowed/i);
     });
-    it('passes quote() — SQL-literal encoding of a column is not blocked', () => {
-      expect(run('SELECT quote(name) AS n FROM authorities').ok).toBe(true); // VULN(read-exfil)
+    it('rejects quote() at Layer 2 — SQL-literal encoding of a column', () => {
+      const r = run('SELECT quote(name) AS n FROM authorities');
+      expect(r.ok).toBe(false);
+      expect(r.layer).toBe(2);
     });
-    it('passes hex() — even on contracts (the default amount_eur predicate is irrelevant to the gap)', () => {
-      // The predicate is present only to mirror a realistic analytics query; the guards do not reject a
-      // bare table scan, so it changes nothing — the point is that hex() itself is unguarded.
-      expect(run('SELECT hex(name) AS n FROM contracts WHERE amount_eur IS NOT NULL').ok).toBe(
-        true,
-      ); // VULN(read-exfil)
+    it('rejects hex() at Layer 2 — even on a realistic contracts query', () => {
+      const r = run('SELECT hex(name) AS n FROM contracts WHERE amount_eur IS NOT NULL');
+      expect(r.ok).toBe(false);
+      expect(r.layer).toBe(2);
     });
   });
 
@@ -188,18 +190,23 @@ describe('sql-guard adversarial / parser-differential', () => {
     it('rejects `printf (...)` with a space before the paren at Layer 1 (the \\s* in the blocklist)', () => {
       expectReject("SELECT printf ('%9d', 1)", 1, /function not allowed/);
     });
-    it('GAP: double-quoting a dangerous function name slips past the Layer-1 blocklist AND Layer 2', () => {
-      // VULN(scalar-bomb-evasion): the Layer-1 regex is `\b(load_extension|randomblob|zeroblob|printf|
-      // format)\s*\(` — the `"` between the name and `(` breaks the match, and Layer 2 does not filter
-      // scalar functions by name. SQLite DOES resolve a double-quoted identifier as the function, so
-      // these execute. Read-only (no write), but a memory-amplification DoW (`randomblob`/`printf`
-      // width-bomb) and, where SQLite enables it, `load_extension` RCE — the exact class the Layer-1
-      // blocklist exists to stop. Asserted ok:true so closing the gap (name-filter the AST) fails here.
-      expect(run('SELECT "printf"(\'%1000000d\', 1) AS n').ok).toBe(true); // VULN(scalar-bomb-evasion)
-      expect(run('SELECT "randomblob"(1000000000) AS n').ok).toBe(true); // VULN(scalar-bomb-evasion)
-      expect(run('SELECT "load_extension"(\'evil\') AS n').ok).toBe(true); // VULN(scalar-bomb-evasion)
-      // and the plain quoted-identifier function call from the brief (group_concat) likewise passes
-      expect(run('SELECT "group_concat"(name) AS n FROM authorities').ok).toBe(true); // VULN(scalar-bomb-evasion)
+    it('rejects double-quoted dangerous function names at Layer 2 (closed scalar-bomb-evasion gap)', () => {
+      // The Layer-1 regex is `\b(load_extension|randomblob|zeroblob|printf|format)\s*\(` — the `"` between
+      // the name and `(` breaks the `\b`, so the L1 text blocklist misses `"randomblob"(…)`. SQLite still
+      // resolves the double-quoted identifier as the function (memory-amplification DoW, or load_extension
+      // RCE where enabled). Layer 2's AST name blocklist normalises `fn` and `"fn"` to the same name and
+      // rejects both — so the quoting bypass is now closed at L2.
+      for (const sql of [
+        'SELECT "printf"(\'%1000000d\', 1) AS n',
+        'SELECT "randomblob"(1000000000) AS n',
+        'SELECT "load_extension"(\'evil\') AS n',
+        'SELECT "group_concat"(name) AS n FROM authorities',
+      ]) {
+        const r = run(sql);
+        expect(r.ok, sql).toBe(false);
+        expect(r.layer, sql).toBe(2);
+        if (!r.ok) expect(r.reason, sql).toMatch(/function not allowed/i);
+      }
     });
   });
 
