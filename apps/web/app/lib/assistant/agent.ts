@@ -100,6 +100,12 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     messages,
     tools: buildToolSet(opts.ctx),
     stopWhen: stepCountIs(maxSteps),
+    // Force a real tool call on the FIRST step only, then let the loop run free. Otherwise bggpt-gemma
+    // sometimes *narrates* the tool calls as JSON in prose instead of invoking them (a prose-only turn,
+    // no report). `tool_choice: 'required'` on step 0 makes that structurally impossible; the prompt's
+    // ordering rule lands that forced call on run_sql, not emit_report. Later steps need 'auto' so the
+    // model can finalize with emit_report and stop. (fix: emit_report schema adherence — prose-only)
+    prepareStep: ({ stepNumber }) => ({ toolChoice: stepNumber === 0 ? 'required' : 'auto' }),
     // Low temperature: this is a structured tool-calling task (run_sql → emit_report by schema), not
     // creative writing. The model default (~0.7+) made it skip emit_report or mis-shape blocks; a low
     // value sharply improves instruction/schema adherence. (fix: emit_report schema adherence)
