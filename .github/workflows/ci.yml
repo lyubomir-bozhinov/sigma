@@ -51,3 +51,6 @@ jobs:
       - name: Test
         if: ${{ !cancelled() }}
         run: pnpm test
+      - name: Golden reports
+        if: ${{ !cancelled() }}
+        run: pnpm test:golden
