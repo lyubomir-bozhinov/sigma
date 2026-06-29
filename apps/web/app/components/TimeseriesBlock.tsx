@@ -61,8 +61,8 @@ export function TimeseriesBlock({ points, series, truncated }: TimeseriesBlockPr
 
   // Y domain across all series.
   const allValues = allSeries.flatMap((s) => s.pts.map((p) => p.value));
-  const minVal = Math.min(...allValues);
-  const maxVal = Math.max(...allValues);
+  let minVal = Infinity, maxVal = -Infinity;
+  for (const v of allValues) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; }
   const valueSpan = maxVal - minVal || 1;
 
   // X axis is driven by the longest series (all series share the same period index).

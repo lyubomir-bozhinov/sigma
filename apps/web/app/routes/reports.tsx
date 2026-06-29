@@ -20,18 +20,19 @@ function keyToId(key: string) {
   return key.replace(/^report\//, '').replace(/\.json$/, '');
 }
 
-export async function loader({ context }: Route.LoaderArgs): Promise<{ reports: ReportSummary[] }> {
+export async function loader({ context }: Route.LoaderArgs): Promise<{ reports: ReportSummary[]; truncated: boolean }> {
   const bucket = context.cloudflare.env.REPORTS;
-  if (!bucket) return { reports: [] };
+  if (!bucket) return { reports: [], truncated: false };
 
-  const listed = await bucket.list({ prefix: 'report/', limit: 200 });
-  if (listed.objects.length === 0) return { reports: [] };
+  // include: ['customMetadata'] is required — R2 list() omits metadata fields without it.
+  const listed = await bucket.list({ prefix: 'report/', limit: 50, include: ['customMetadata'] }).catch(() => null);
+  if (!listed || listed.objects.length === 0) return { reports: [], truncated: false };
 
   // Separate objects that already carry metadata from those that need a full fetch.
   const hasMetadata = listed.objects.filter((o) => o.customMetadata?.title);
   const needsFetch = listed.objects
     .filter((o) => !o.customMetadata?.title)
-    .slice(0, 30); // cap parallel fetches for old reports
+    .slice(0, 30); // cap parallel fetches for old reports without stored metadata
 
   const fromMeta: ReportSummary[] = hasMetadata.map((obj) => ({
     id: keyToId(obj.key),
@@ -66,15 +67,17 @@ export async function loader({ context }: Route.LoaderArgs): Promise<{ reports: 
   ).filter((r): r is ReportSummary => r !== null);
 
   const reports = [...fromMeta, ...fromJson].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
+    a.createdAt > b.createdAt ? -1 : a.createdAt < b.createdAt ? 1 : 0,
   );
 
-  return { reports };
+  return { reports, truncated: listed.truncated };
 }
 
 function fmtDate(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso.slice(0, 10);
   try {
-    return new Date(iso).toLocaleDateString('bg-BG', {
+    return d.toLocaleDateString('bg-BG', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -85,8 +88,10 @@ function fmtDate(iso: string) {
 }
 
 function fmtTime(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
   try {
-    return new Date(iso).toLocaleTimeString('bg-BG', {
+    return d.toLocaleTimeString('bg-BG', {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -96,7 +101,7 @@ function fmtTime(iso: string) {
 }
 
 export default function ReportsIndexPage({ loaderData }: Route.ComponentProps) {
-  const { reports } = loaderData;
+  const { reports, truncated } = loaderData;
 
   return (
     <main id="main" className="reports-index">
@@ -121,7 +126,7 @@ export default function ReportsIndexPage({ loaderData }: Route.ComponentProps) {
           </p>
         </div>
       ) : (
-        <ol className="reports-list" reversed>
+        <ol className="reports-list">
           {reports.map((r) => (
             <li key={r.id} className="reports-list__item">
               <Link to={`/reports/${r.id}`} className="reports-list__link">
@@ -138,6 +143,11 @@ export default function ReportsIndexPage({ loaderData }: Route.ComponentProps) {
             </li>
           ))}
         </ol>
+      )}
+      {truncated && (
+        <p className="reports-index__truncated">
+          Показани са само последните 50 справки.
+        </p>
       )}
     </main>
   );

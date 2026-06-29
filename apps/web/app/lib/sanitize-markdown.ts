@@ -22,6 +22,10 @@ export function isSafeHref(href: string): boolean {
   const trimmed = href.trim();
   if (!trimmed) return false;
 
+  // Protocol-relative URLs (//host or \\host) are not relative paths — they resolve to an
+  // external origin and bypass the scheme check below. Reject them explicitly.
+  if (/^[/\\]{2}/.test(trimmed)) return false;
+
   const colonIdx = trimmed.indexOf(':');
   if (colonIdx === -1) return true; // no colon → scheme-free relative URL → safe
 

@@ -48,13 +48,13 @@ export function ReportMethodologyCallout({ provenance }: ReportMethodologyCallou
 
       <div className="report-methodology__body">
         <section className="report-methodology__section">
-          <h3 className="report-methodology__heading">Въпрос</h3>
+          <h2 className="report-methodology__heading">Въпрос</h2>
           <p className="report-methodology__question">{provenance.question}</p>
         </section>
 
         {provenance.sources.length > 0 && (
           <section className="report-methodology__section">
-            <h3 className="report-methodology__heading">Източници на данни</h3>
+            <h2 className="report-methodology__heading">Източници на данни</h2>
             <ul className="report-methodology__sources">
               {provenance.sources.map((src) => (
                 <li key={src.handle} className="report-methodology__source-item">
@@ -76,7 +76,7 @@ export function ReportMethodologyCallout({ provenance }: ReportMethodologyCallou
 
         {provenance.freshness.length > 0 && (
           <section className="report-methodology__section">
-            <h3 className="report-methodology__heading">Актуалност на данните</h3>
+            <h2 className="report-methodology__heading">Актуалност на данните</h2>
             <FreshnessList freshness={provenance.freshness} />
           </section>
         )}
