@@ -12,6 +12,7 @@ const NAV = [
   { to: '/trends', label: 'Тренд' },
   { to: '/map', label: 'Карта' },
   { to: '/competition', label: 'Конкуренция' },
+  { to: '/reports', label: 'Справки' },
   { to: '/methodology', label: 'Методология' },
 ];
 
