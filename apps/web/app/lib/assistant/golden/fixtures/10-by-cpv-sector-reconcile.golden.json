@@ -1,0 +1,65 @@
+{
+  "id": "10-by-cpv-sector-reconcile",
+  "prompt": "Разход по сектор 45 (строителство)",
+  "steps": [
+    {
+      "tool": "run_sql",
+      "sql": "SELECT substr(t.cpv_code, 1, 2) AS division, COUNT(*) AS contracts, SUM(c.amount_eur) AS value_eur FROM contracts c JOIN tenders t ON t.id = c.tender_id WHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна' AND substr(t.cpv_code, 1, 2) = '45' GROUP BY division",
+      "result": {
+        "rows": [
+          {
+            "division": "45",
+            "contracts": 80,
+            "value_eur": 3000000
+          }
+        ]
+      }
+    }
+  ],
+  "emit": {
+    "title": "Разход по сектор 45",
+    "question": "Разход по сектор 45 (строителство)",
+    "blocks": [
+      {
+        "type": "totals",
+        "items": [
+          {
+            "label": "Брой договори",
+            "ref": {
+              "resultId": "R1",
+              "row": 0,
+              "col": "contracts"
+            },
+            "format": "number"
+          },
+          {
+            "label": "Стойност (EUR)",
+            "ref": {
+              "resultId": "R1",
+              "row": 0,
+              "col": "value_eur"
+            },
+            "format": "money"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "queriesContracts": true,
+    "rollup": {
+      "target": "sector_totals",
+      "grain": {
+        "division": "45"
+      },
+      "aggregate": {
+        "count": 80,
+        "sumEur": 3000000
+      },
+      "rollupRow": {
+        "count": 80,
+        "sumEur": 3000000
+      }
+    }
+  }
+}
