@@ -12,7 +12,7 @@
 
 import { Link } from 'react-router';
 import { money } from '@sigma/shared';
-import type { ResolvedBlock } from '~/lib/assistant-contract/report';
+import type { ResolvedBlock, CellFormat } from '~/lib/assistant-contract/report';
 import { formatCell, entityHref } from '~/lib/assistant/render-format';
 import { TotalsStrip } from '~/components/TotalsStrip';
 import { FactsList } from '~/components/FactsList';
@@ -36,9 +36,11 @@ function CalloutBlock({ title, md }: { title: string; md: string }) {
 function BarBlock({
   points,
   truncated,
+  format,
 }: {
   points: { label: string | number | null; value: number }[];
   truncated?: boolean;
+  format?: CellFormat;
 }) {
   if (points.length === 0) return <p className="chart-empty">Няма данни</p>;
   const max = Math.max(1, ...points.map((p) => p.value));
@@ -56,7 +58,7 @@ function BarBlock({
                 aria-hidden="true"
               />
               <span className="report-bar__label">{label}</span>
-              <span className="report-bar__value num">{money(p.value)}</span>
+              <span className="report-bar__value num">{formatCell(p.value, format ?? 'money')}</span>
             </li>
           );
         })}
@@ -186,7 +188,7 @@ function Block({ block }: { block: ResolvedBlock }) {
     }
 
     case 'bar':
-      return <BarBlock points={block.points} truncated={block.truncated} />;
+      return <BarBlock points={block.points} truncated={block.truncated} format={block.format} />;
 
     case 'flows':
       return <FlowsBlock edges={block.edges} truncated={block.truncated} />;

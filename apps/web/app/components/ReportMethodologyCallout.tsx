@@ -74,12 +74,12 @@ export function ReportMethodologyCallout({ provenance }: ReportMethodologyCallou
           </section>
         )}
 
-        {provenance.freshness.length > 0 && (
-          <section className="report-methodology__section">
-            <h2 className="report-methodology__heading">Актуалност на данните</h2>
-            <FreshnessList freshness={provenance.freshness} />
-          </section>
-        )}
+        <section className="report-methodology__section">
+          <h2 className="report-methodology__heading">Актуалност на данните</h2>
+          {provenance.freshness.length > 0
+            ? <FreshnessList freshness={provenance.freshness} />
+            : <p className="report-methodology__freshness-na">Няма налична информация за актуалността на данните.</p>}
+        </section>
 
         <section className="report-methodology__section report-methodology__meta">
           <dl className="report-methodology__meta-list">

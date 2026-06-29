@@ -60,6 +60,17 @@ function randomReportId(): string {
   return `r_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
+async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: string }[]> {
+  try {
+    const { results } = await db
+      .prepare('SELECT source, as_of FROM data_freshness WHERE as_of IS NOT NULL')
+      .all<{ source: string; as_of: string }>();
+    return (results ?? []).map((r) => ({ source: r.source, asOf: r.as_of }));
+  } catch {
+    return [];
+  }
+}
+
 /** Persist a resolved report to R2 and return its ID. Returns null on any write failure. */
 async function persistReport(
   ctx: ToolContext,
@@ -77,7 +88,7 @@ async function persistReport(
       question: ctx.userQuestion ?? '',
       sources: ctx.sources,
       snapshot: ctx.results,
-      freshness: [] as { source: string; asOf: string }[],
+      freshness: await fetchFreshness(ctx.db),
       model: modelId,
       promptVersion: PROMPT_VERSION,
     },

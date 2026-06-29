@@ -8,8 +8,7 @@
 //     (spec §5) and every figure stays auditable.
 //
 // Dependency direction: this module MAY import from `../assistant`; `../assistant` must NEVER import
-// from here. Authored on top of #80 (`feat/ai-assistant-impl`) so the re-export resolves; rebase
-// onto `main` once #80 lands. (Design rationale: spec §4/§5/§7 + the §9 hardening review in PR #79.)
+// from here. (Design rationale: spec §4/§5/§7 + the §9 hardening review in PR #79.)
 // See ./README.md.
 
 export type {
