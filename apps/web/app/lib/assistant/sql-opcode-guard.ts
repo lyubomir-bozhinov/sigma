@@ -23,6 +23,16 @@
 // allowlist a name-keyed superset minimises false-denials there while a missing opcode still fails CLOSED.
 // The test asserts the live SQLite is one of the KNOWN versions (drift tripwire) and that the corpus opcode
 // universe is a subset of this allowlist.
+//
+// D1-ENGINE COVERAGE (review #12). The allowlist is harvested and unit-tested only on node:sqlite; D1's own
+// SQLite is the one engine it has not been measured against. This is sound because the RUNTIME path
+// (`assertReadOnlyPlan`, called by run_sql) EXPLAINs against the LIVE D1 binding and fails CLOSED on any
+// unlisted opcode — so an unseen D1 read opcode degrades to a false-DENY of a legitimate read, never a
+// missed write. To confirm the allowlist actually covers D1 (no spurious denials) there is a manual,
+// skipped-by-default verification in sql-opcode-guard.test.ts → "D1 engine opcode verification": it
+// EXPLAINs the canonical+adversarial corpus against a real D1 and asserts the opcode universe ⊆ this set.
+// Run it after a Node bump or guard change (it is kept out of CI to avoid remote-D1 credentials/latency):
+//   VERIFY_D1_OPCODES=1 D1_DATABASE_NAME=sigma pnpm exec vitest run app/lib/assistant/sql-opcode-guard.test.ts
 
 import type { GuardResult } from './sql-guard';
 

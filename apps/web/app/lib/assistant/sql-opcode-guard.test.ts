@@ -11,6 +11,7 @@
 // appear in any read plan. Hence the guard is a DEFAULT-DENY ALLOWLIST keyed by opcode NAME.
 
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assertReadOnlySelect } from './sql-guard';
@@ -30,7 +31,10 @@ import {
 // these. This set is a drift tripwire: if a Node bump introduces an UNKNOWN SQLite version, this test
 // fails and the opcode harvest must be re-run (a new optimisation could emit an opcode the allowlist has
 // never seen → fail-closed deny in production). A query's opcodes are still validated by the SUBSET test.
-const KNOWN_SQLITE_VERSIONS: ReadonlySet<string> = new Set(['3.53.2', '3.51.3']);
+// 3.53.0 ships on Node 24 (engines is ">=22", so contributors land here): a patch below the 3.53.2 we
+// already cover and proven by the SUBSET test to emit no opcode outside the allowlist — so a hard version
+// failure there is spurious. It is listed explicitly rather than range-matched to keep the tripwire exact.
+const KNOWN_SQLITE_VERSIONS: ReadonlySet<string> = new Set(['3.53.2', '3.53.0', '3.51.3']);
 
 let db: DatabaseSync;
 
@@ -258,5 +262,64 @@ describe('assertReadOnlyPlan — D1-shaped async boundary', () => {
     const verdict = await assertReadOnlyPlan(db2, 'SELECT 1');
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) expect(verdict.reason).toBe('could not verify read-only execution plan');
+  });
+});
+
+// Manual D1-engine verification (review #12, should-fix). The allowlist above is harvested and asserted
+// only against node:sqlite; the one engine it has never seen is D1's own SQLite, which is what production
+// actually EXPLAINs against. The runtime path already fails CLOSED on any unlisted opcode (assertReadOnlyPlan
+// runs EXPLAIN on the live binding) — so a divergence degrades to a false-DENY, never a missed write — but
+// nothing proves D1's read-opcode universe ⊆ READ_ONLY_OPCODES (or even that D1 returns opcode rows via
+// .all()). This block captures exactly that, one-off, against a REAL D1. It is SKIPPED by default so CI
+// never depends on remote D1 credentials/latency. Run it manually after a Node bump or guard change:
+//
+//   VERIFY_D1_OPCODES=1 D1_DATABASE_NAME=sigma pnpm exec vitest run \
+//     --config vitest.config.ts app/lib/assistant/sql-opcode-guard.test.ts
+//
+// (Add `--remote` semantics by default; set D1_LOCAL=1 to EXPLAIN against the local .wrangler D1 instead.)
+const RUN_D1_VERIFY = process.env.VERIFY_D1_OPCODES === '1';
+describe.skipIf(!RUN_D1_VERIFY)('D1 engine opcode verification (manual)', () => {
+  function d1Explain(sql: string): string[] {
+    const dbName = process.env.D1_DATABASE_NAME ?? 'sigma';
+    const location = process.env.D1_LOCAL === '1' ? '--local' : '--remote';
+    // execFileSync (no shell) so multi-token SQL needs no quoting; collapse newlines for the --command arg.
+    const out = execFileSync(
+      'pnpm',
+      [
+        'exec',
+        'wrangler',
+        'd1',
+        'execute',
+        dbName,
+        location,
+        '--json',
+        '--command',
+        `EXPLAIN ${sql.replace(/\s+/g, ' ').trim()}`,
+      ],
+      { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+    );
+    const json = JSON.parse(out.slice(out.indexOf('['))) as Array<{
+      results?: { opcode?: string }[];
+    }>;
+    const rows = json[0]?.results ?? [];
+    return rows.map((r) => r.opcode).filter((op): op is string => typeof op === 'string');
+  }
+
+  it('every read opcode D1 emits for the corpus is in READ_ONLY_OPCODES', () => {
+    const bounded: string[] = [];
+    for (const q of CANONICAL_QUERIES) {
+      const structural = assertReadOnlySelect(q.sql);
+      if (!structural.ok) continue;
+      const lim = guardSelect(structural.sql);
+      if (lim.ok) bounded.push(lim.sql);
+    }
+    const universe = new Set<string>();
+    for (const sql of [...bounded, ...ADVERSARIAL_READS, ...SCALAR_READS]) {
+      for (const op of d1Explain(sql)) universe.add(op);
+    }
+    // D1 must actually return opcode rows via .all() — if it returns none, the runtime L3 guard is a no-op.
+    expect(universe.size, 'D1 returned no EXPLAIN opcode rows via .all()').toBeGreaterThan(0);
+    const extra = [...universe].filter((op) => !READ_ONLY_OPCODES.has(op)).sort();
+    expect(extra, `D1 emits read opcodes outside the allowlist: ${extra.join(', ')}`).toEqual([]);
   });
 });
