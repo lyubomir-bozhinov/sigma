@@ -198,7 +198,8 @@ export const EMIT_REPORT_JSON_SCHEMA = {
           title: { type: 'string', description: 'Заглавие за callout' },
           items: {
             type: 'array',
-            description: 'За totals: {label,ref,format}. За facts: {term,ref}. ref={resultId,row,col}.',
+            description:
+              'За totals: {label,ref,format}. За facts: {term,ref}. ref={resultId,row,col}.',
           },
           ref: {
             type: 'object',
@@ -209,7 +210,10 @@ export const EMIT_REPORT_JSON_SCHEMA = {
               col: { type: 'string' },
             },
           },
-          resultId: { type: 'string', description: 'Хендъл за table/bar/flows/timeseries (напр. R1)' },
+          resultId: {
+            type: 'string',
+            description: 'Хендъл за table/bar/flows/timeseries (напр. R1)',
+          },
           columns: { type: 'array', description: 'За table: [{key,header,format,link?}]' },
           labelCol: { type: 'string' },
           valueCol: { type: 'string' },
