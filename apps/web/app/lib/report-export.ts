@@ -79,7 +79,7 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       case 'timeseries': {
-        const pts = block.points ?? block.series?.[0]?.points ?? [];
+        const pts = block.points ?? [];
         lines.push(
           mdTable(
             ['Период', 'Стойност'],
@@ -274,7 +274,7 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
         break;
 
       case 'timeseries': {
-        const pts = block.points ?? block.series?.[0]?.points ?? [];
+        const pts = block.points ?? [];
         children.push(
           new Table({
             width: { size: 60, type: WidthType.PERCENTAGE },
