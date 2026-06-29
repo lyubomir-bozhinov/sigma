@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // EXPLAIN-opcode guard tests (spec §9.4, G2 Part B) — proves the opcode allowlist against REAL bytecode
 // plans, not hand-faked lists. We compile the real migration schema into an in-process SQLite
 // (node:sqlite, Node 26 built-in) and EXPLAIN each statement to harvest its actual VDBE opcodes.
