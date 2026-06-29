@@ -174,7 +174,18 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // „run_sql FIRST, emit_report after" ordering rule lives in system-prompt.ts. Trade-off: a pure
     // meta/clarifying turn is also forced to call one tool first (usually describe_schema) — acceptable
     // for a data-analysis assistant where nearly every turn is a data question.
-    prepareStep: ({ stepNumber }) => ({ toolChoice: stepNumber === 0 ? 'required' : 'auto' }),
+    //
+    // Additionally: if the last step contained a failed emit_report (ok:false — shape validation errors
+    // returned to the model), force `required` again so the model retries the tool call rather than
+    // falling back to prose. Without this the model answers in text then emits `ok:false` and stops.
+    prepareStep: ({ stepNumber, steps }) => {
+      if (stepNumber === 0) return { toolChoice: 'required' };
+      const lastStep = steps[steps.length - 1];
+      const hadFailedReport = lastStep?.toolResults.some(
+        (tr) => tr.toolName === 'emit_report' && (tr.output as { ok: boolean }).ok === false,
+      );
+      return { toolChoice: hadFailedReport ? 'required' : 'auto' };
+    },
     // Bound worst-case resource use (review #80): cancel on client disconnect; one explicit retry
     // (the SDK default of 2 silently multiplies the per-step call count beyond the visible step cap);
     // a per-step output backstop (the model emits block structure + refs, not the bound data values).
