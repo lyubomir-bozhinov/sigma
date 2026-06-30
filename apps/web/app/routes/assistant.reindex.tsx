@@ -29,7 +29,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   // yet), so read these structurally — the same cast pattern as assistant.chat.tsx.
   const env = context.cloudflare.env as unknown as ReindexEnv;
 
-  const auth = authorizeSeed(env.ASSISTANT_SEED_TOKEN, bearerToken(request.headers.get('authorization')));
+  const auth = authorizeSeed(
+    env.ASSISTANT_SEED_TOKEN,
+    bearerToken(request.headers.get('authorization')),
+  );
   // Unconfigured → behave as if the route does not exist; configured-but-wrong bearer → 403.
   if (auth.status === 'unconfigured') return new Response('Not Found', { status: 404 });
   if (auth.status === 'forbidden') return new Response('Forbidden', { status: 403 });
