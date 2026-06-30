@@ -21,3 +21,7 @@ LOG_IP_KEY=dev-only-log-ip-key-change-me
 # Optional: enables the one-shot schema-corpus seed route POST /assistant/reindex (off when unset).
 # High-entropy value; sent as `Authorization: Bearer <token>`. See app/lib/assistant/README.md.
 # ASSISTANT_SEED_TOKEN=
+#
+# Transcript signing key (HMAC-SHA-256 over server-emitted messages).
+# Prod: `wrangler secret put ASSISTANT_HMAC_KEY`. Never commit the real value.
+ASSISTANT_HMAC_KEY=dev-only-assistant-hmac-key-change-me
