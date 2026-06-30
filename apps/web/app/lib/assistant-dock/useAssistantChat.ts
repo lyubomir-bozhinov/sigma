@@ -52,7 +52,7 @@ const transport = new DefaultChatTransport<UIMessage>({
 });
 
 /** useChat wired to /assistant/chat, with the transcript restored from / persisted to localStorage. */
-export const useAssistantChat = () => {
+export const useAssistantChat = (): ReturnType<typeof useChat> & { reset: () => void } => {
   // Throttle streamed token updates so the dock re-renders ~20×/s instead of once per token (the SDK's
   // intended knob for this); the final message still renders in full once the stream settles.
   const chat = useChat({ transport, experimental_throttle: 50 });
