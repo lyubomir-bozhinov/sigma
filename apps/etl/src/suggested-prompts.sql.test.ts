@@ -90,6 +90,20 @@ describe('suggested-prompts slot SQL (real SQLite)', () => {
     });
   });
 
+  it('slot 1 excludes a value_suspect row even when it is the largest in-window amount', () => {
+    withDb((dbPath) => {
+      // A repaired-but-flagged row larger than the top 'ok' contract (c:in2 = 9000). The NAMED headline
+      // gates on value_flag = 'ok', so this must NOT be picked — slot 1 stays on c:in2.
+      sqlite(
+        dbPath,
+        `INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, bids_received, value_flag, amount_eur)
+         VALUES ('c:susp', 't:open', 'eik:X', 12000, 'EUR', '2024-01-09', 2, 'value_suspect', 12000);`,
+      );
+      const firstLine = runSlot(dbPath, SLOT1_SQL, '2024-01-10', 7).split('\n')[0];
+      expect(firstLine).toBe('Институция А|9000.0|ok|45');
+    });
+  });
+
   it('slot 2 sums signed spend per CPV division over amount_eur IS NOT NULL', () => {
     withDb((dbPath) => {
       // Division 45 in window: c:in1 1000 + c:in2 9000 + c:unk 4000 + c:nob 3000 = 17000 over 4 rows.

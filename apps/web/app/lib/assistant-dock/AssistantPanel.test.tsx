@@ -27,6 +27,7 @@ const props = (over: Partial<Props> = {}): Props => ({
   onStop: vi.fn(),
   onPick: vi.fn(),
   onCollapse: vi.fn(),
+  onNewChat: vi.fn(),
   onRetry: vi.fn(),
   ...over,
 });
@@ -76,5 +77,30 @@ describe('AssistantPanel', () => {
     render(<AssistantPanel {...props({ busy: true })} />);
 
     expect(screen.getByLabelText('Съобщение до асистента')).toBeDisabled();
+  });
+
+  it('hides the new-chat button when there are no messages', () => {
+    render(<AssistantPanel {...props()} />);
+
+    expect(screen.queryByRole('button', { name: 'Нов разговор' })).not.toBeInTheDocument();
+  });
+
+  it('triggers onNewChat when the new-chat button is clicked', async () => {
+    const user = userEvent.setup();
+    const onNewChat = vi.fn();
+    render(<AssistantPanel {...props({ messages: [message('1', 'Отговор')], onNewChat })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Нов разговор' }));
+
+    expect(onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces the new conversation to screen readers', async () => {
+    const user = userEvent.setup();
+    render(<AssistantPanel {...props({ messages: [message('1', 'Отговор')] })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Нов разговор' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Започнат е нов разговор');
   });
 });

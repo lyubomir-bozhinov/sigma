@@ -12,6 +12,10 @@ import { count, money, pct } from '@sigma/shared';
 // design; soundness depends on that upstream derivation, guarded here by (a) a runtime reconciliation
 // tripwire that logs `etl_prompt_reconcile_mismatch` on drift and (b) the slot-1 outlier guard, which
 // suppresses a named top-1 pick that amplifies a single bad row a sum would merely dilute.
+//
+// The NAMED slot-1 pick additionally gates on `value_flag = 'ok'` (stricter than the reconciling
+// `amount_eur IS NOT NULL`): a named headline must never attach an authority to a row the pipeline
+// flagged as suspect. The aggregate slots keep the wider basis so the totals still reconcile.
 
 const CPV_LABELS = new Map(CPV_SECTORS.map((s) => [s.code, s.label]));
 
@@ -34,7 +38,7 @@ SELECT a.name AS authority, c.amount_eur AS amount_eur, c.value_flag AS value_fl
 FROM contracts c
 JOIN tenders t ON t.id = c.tender_id
 JOIN authorities a ON a.id = t.authority_id
-WHERE c.amount_eur IS NOT NULL AND c.value_flag <> 'annex_suspect'
+WHERE c.amount_eur IS NOT NULL AND c.value_flag = 'ok'
   AND c.signed_at > date(?1, '-' || ?2 || ' day') AND c.signed_at <= ?1
 ORDER BY c.amount_eur DESC
 LIMIT 5;
@@ -108,7 +112,10 @@ interface Slot4Row {
 /**
  * Sanitize a feed-sourced authority name for display: NFC-normalize, strip zero-width / bidi-override
  * controls (U+200B–200F, U+202A–202E, U+2028/U+2029), collapse whitespace, and cap at ~80 chars with
- * an ellipsis. React escapes already; this is defence-in-depth + layout safety.
+ * an ellipsis. NOTE: it does NOT strip HTML — XSS-safety relies on React escaping at the one render
+ * site (AssistantEmptyState renders `label` as a text child); a non-React render of `label` would be
+ * unsafe. This sanitizer is defence-in-depth (bidi/zero-width spoofing) + layout safety, not the XSS
+ * boundary itself.
  */
 export function sanitizeName(s: string): string {
   const stripped = s

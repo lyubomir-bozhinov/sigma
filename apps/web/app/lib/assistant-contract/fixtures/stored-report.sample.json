@@ -20,7 +20,13 @@
       {
         "type": "table",
         "columns": [
-          { "key": "company", "header": "Компания", "align": "left", "format": "text", "link": { "kind": "company", "idCol": "eik" } },
+          {
+            "key": "company",
+            "header": "Компания",
+            "align": "left",
+            "format": "text",
+            "link": { "kind": "company", "idCol": "eik" }
+          },
           { "key": "eik", "header": "ЕИК", "align": "left", "format": "text" },
           { "key": "total_eur", "header": "Обща стойност", "align": "right", "format": "money" },
           { "key": "contracts", "header": "Договори", "align": "right", "format": "number" }

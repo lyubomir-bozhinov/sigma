@@ -94,6 +94,16 @@ export const saveTranscript = (messages: UIMessage[], storage = defaultStorage()
   }
 };
 
+// Clear the transcript key only (collapsed flag survives). Writes '[]' — StorageLike has no removeItem.
+export const clearTranscript = (storage = defaultStorage()): void => {
+  if (!storage) return;
+  try {
+    storage.setItem(TRANSCRIPT_KEY, '[]');
+  } catch (error) {
+    devWarn('[assistant] transcript not cleared (storage unavailable)', error);
+  }
+};
+
 // null when no preference is stored, so the dock can pick a device-appropriate default (open on desktop,
 // collapsed on mobile) instead of forcing open everywhere. A stored '0'/'1' always wins.
 export const loadCollapsed = (storage = defaultStorage()): boolean | null => {
