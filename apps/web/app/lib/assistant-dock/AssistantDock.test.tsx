@@ -14,6 +14,7 @@ const mock = vi.hoisted(() => ({
     stop: vi.fn(),
     regenerate: vi.fn(),
     clearError: vi.fn(),
+    reset: vi.fn(),
   },
 }));
 
@@ -25,6 +26,7 @@ beforeEach(() => {
   mock.chat.status = 'ready';
   mock.chat.error = undefined;
   mock.chat.sendMessage.mockClear();
+  mock.chat.reset.mockClear();
   // jsdom has no matchMedia — stub it to "desktop" (the modal <dialog> path needs a real browser).
   vi.stubGlobal(
     'matchMedia',
@@ -99,5 +101,17 @@ describe('AssistantDock', () => {
     expect(mock.chat.sendMessage).toHaveBeenCalledWith({
       text: 'Кои са най-големите възложители по похарчени средства?',
     });
+  });
+
+  it('clears the conversation via the new-chat button', async () => {
+    const user = userEvent.setup();
+    mock.chat.messages = [
+      { id: '1', role: 'assistant', parts: [{ type: 'text', text: 'Отговор' }] },
+    ];
+    render(<AssistantDock />);
+
+    await user.click(screen.getByRole('button', { name: 'Нов разговор' }));
+
+    expect(mock.chat.reset).toHaveBeenCalledTimes(1);
   });
 });
