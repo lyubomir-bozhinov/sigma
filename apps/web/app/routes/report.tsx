@@ -111,7 +111,6 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
 
       {/* D1–D3: block rendering (timeseries, markdown, CSP) */}
       <ReportBlockRenderer blocks={report.blocks} />
-
     </main>
   );
 }
