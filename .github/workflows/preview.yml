@@ -96,21 +96,22 @@ jobs:
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      # The BgGPT key is a per-worker-script secret, so the freshly-deployed sigma-pr-<n> worker does NOT
-      # inherit it from the dev worker — set it here so /assistant/chat works in the preview (the assistant
-      # binds the shared dev Vectorize/R2 by name, but the key must be attached per script). Runs AFTER the
+      # The provider key (OpenRouter) is a per-worker-script secret, so the freshly-deployed sigma-pr-<n>
+      # worker does NOT inherit it from the dev worker — set it here so /assistant/chat works in the preview
+      # (the assistant binds the shared dev Vectorize/R2 by name, and reaches the model through the AI
+      # Gateway configured in wrangler.jsonc vars, but the key must be attached per script). Runs AFTER the
       # deploy: the worker must exist before a secret can be put on it. Optional + fails OPEN: if
-      # BGGPT_API_KEY is unset on the `preview` Environment, skip it — the assistant degrades to a controlled
-      # 503 (UI-only preview), which must NOT fail an otherwise-good preview deploy.
-      - name: Provision assistant key (BGGPT_API_KEY) on the preview worker
+      # ASSISTANT_API_KEY is unset on the `preview` Environment, skip it — the assistant degrades to a
+      # controlled 503 (UI-only preview), which must NOT fail an otherwise-good preview deploy.
+      - name: Provision assistant key (ASSISTANT_API_KEY) on the preview worker
         env:
-          BGGPT_API_KEY: ${{ secrets.BGGPT_API_KEY }}
+          ASSISTANT_API_KEY: ${{ secrets.ASSISTANT_API_KEY }}
         run: |
-          if [ -z "${BGGPT_API_KEY}" ]; then
-            echo "::notice::BGGPT_API_KEY is not set on the 'preview' Environment — the assistant will 503 in this preview (UI only). See docs/dev-environments.md."
+          if [ -z "${ASSISTANT_API_KEY}" ]; then
+            echo "::notice::ASSISTANT_API_KEY is not set on the 'preview' Environment — the assistant will 503 in this preview (UI only). See docs/dev-environments.md."
             exit 0
           fi
-          printf '%s' "${BGGPT_API_KEY}" | pnpm --filter @sigma/web exec wrangler secret put BGGPT_API_KEY --name "$SIGMA_WEB_NAME"
+          printf '%s' "${ASSISTANT_API_KEY}" | pnpm --filter @sigma/web exec wrangler secret put ASSISTANT_API_KEY --name "$SIGMA_WEB_NAME"
 
       - name: Comment preview URL on PR
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
