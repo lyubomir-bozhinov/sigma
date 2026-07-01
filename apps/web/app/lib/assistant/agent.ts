@@ -32,12 +32,12 @@ export interface AgentEnv {
    * transits the gateway for logging / cost / rate-limit visibility (§9.5).
    */
   AI_GATEWAY_BASE_URL?: string;
-  /** Model id, provider-scoped (e.g. `google/gemma-4-31b-it:free`). Swappable via config alone. */
+  /** Model id, provider-scoped (e.g. `google/gemma-4-31b-it`). Swappable via config alone. */
   ASSISTANT_MODEL?: string;
   MAX_STEPS?: string;
 }
 
-const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
+const DEFAULT_MODEL = 'google/gemma-4-31b-it';
 const DEFAULT_MAX_STEPS = 6;
 // Hard ceiling on the tool-loop length regardless of env, bounding worst-case model calls per turn.
 // `MAX_STEPS` is operator-supplied config — a misconfigured deploy could otherwise stall the loop
