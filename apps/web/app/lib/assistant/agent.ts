@@ -1,7 +1,12 @@
 // Thin Vercel-AI-SDK wiring (spec §2). Carries NO logic — it maps the SDK-agnostic tool registry
-// (tools.ts) to SDK `tool()`s and runs the streamed tool-calling loop against BgGPT, routed through
-// the Cloudflare AI Gateway (§9.5). Everything testable lives in the pure modules; this layer needs
-// `BGGPT_API_KEY` + bindings and is only exercised end-to-end on a deployed Worker.
+// (tools.ts) to SDK `tool()`s and runs the streamed tool-calling loop against the chat model, routed
+// through the Cloudflare AI Gateway (§9.5). Everything testable lives in the pure modules; this layer
+// needs `ASSISTANT_API_KEY` + bindings and is only exercised end-to-end on a deployed Worker.
+//
+// Provider-agnostic by design: the OpenAI-compatible provider is pointed at the AI Gateway, whose
+// upstream (OpenRouter today) and model are pure config — switch models/providers by editing
+// `ASSISTANT_MODEL` / `AI_GATEWAY_BASE_URL`, no code change. Routing is MANDATORY: with no gateway
+// URL configured we fail closed rather than call the provider directly (see `buildModel`).
 
 import { createOpenAI } from '@ai-sdk/openai';
 import {
@@ -18,16 +23,23 @@ import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
 
 export interface AgentEnv {
-  BGGPT_API_KEY: string;
-  AI_GATEWAY_BASE_URL?: string; // OpenAI-compatible AI Gateway passthrough; empty → api.bggpt.ai (§9.5)
-  BGGPT_MODEL?: string;
+  /** Provider API key (OpenRouter today). SECRET — `wrangler secret put ASSISTANT_API_KEY`. */
+  ASSISTANT_API_KEY: string;
+  /**
+   * REQUIRED — OpenAI-compatible endpoint of the Cloudflare AI Gateway upstream, e.g.
+   * `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openrouter/v1`. Empty ⇒ fail closed
+   * (we never call the provider directly). This is the single lever that guarantees LLM traffic
+   * transits the gateway for logging / cost / rate-limit visibility (§9.5).
+   */
+  AI_GATEWAY_BASE_URL?: string;
+  /** Model id, provider-scoped (e.g. `google/gemma-4-31b-it`). Swappable via config alone. */
+  ASSISTANT_MODEL?: string;
   MAX_STEPS?: string;
 }
 
-const DEFAULT_MODEL = 'bggpt-gemma-3-27b-fp8';
-const DEFAULT_BASE_URL = 'https://api.bggpt.ai/v1';
+const DEFAULT_MODEL = 'google/gemma-4-31b-it';
 const DEFAULT_MAX_STEPS = 6;
-// Hard ceiling on the tool-loop length regardless of env, bounding worst-case BgGPT calls per turn.
+// Hard ceiling on the tool-loop length regardless of env, bounding worst-case model calls per turn.
 // `MAX_STEPS` is operator-supplied config — a misconfigured deploy could otherwise stall the loop
 // (0/negative) or uncap it (a huge value). (review #80)
 const MAX_STEPS_CAP = 20;
@@ -42,13 +54,22 @@ export function resolveMaxSteps(raw: string | undefined): number {
   return Math.min(Math.floor(n), MAX_STEPS_CAP);
 }
 
-// `.chat()` forces the chat-completions endpoint BgGPT speaks (not the OpenAI Responses API).
+// `.chat()` forces the chat-completions endpoint (not the OpenAI Responses API), which is what the
+// gateway upstream (OpenRouter/BgGPT/etc.) speaks.
+//
+// Fail closed: refuse to build a model unless the AI Gateway base URL is configured. Without it the
+// only alternative is a direct provider call, which would silently bypass the gateway's logging, cost
+// accounting and rate limiting — exactly the visibility guarantee we require. The chat route also
+// gates on this up front (503), so in practice this throw is defense-in-depth.
 function buildModel(env: AgentEnv) {
-  const provider = createOpenAI({
-    baseURL: env.AI_GATEWAY_BASE_URL || DEFAULT_BASE_URL,
-    apiKey: env.BGGPT_API_KEY,
-  });
-  return provider.chat(env.BGGPT_MODEL || DEFAULT_MODEL);
+  const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
+  if (!baseURL) {
+    throw new Error(
+      'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
+    );
+  }
+  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
+  return provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
 }
 
 function buildToolSet(ctx: ToolContext): ToolSet {
@@ -83,11 +104,11 @@ export interface RunAssistantOptions {
   messages: UIMessage[];
   schemaContext?: string[];
   freshness?: string;
-  abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the BgGPT loop (review #80)
+  abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the model loop (review #80)
 }
 
 /**
- * Run one assistant turn: BgGPT (via AI Gateway) + the bounded tool loop, returned as the streamed
+ * Run one assistant turn: the chat model (via AI Gateway) + the bounded tool loop, returned as the streamed
  * UI-message Response the chat route hands back to the dock. (Returns a `Response` rather than the
  * SDK result so no internal SDK type leaks across the module boundary.)
  */
@@ -100,8 +121,8 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     messages,
     tools: buildToolSet(opts.ctx),
     stopWhen: stepCountIs(maxSteps),
-    // Force a real tool call on the FIRST step (then let the loop run free). bggpt-gemma-3-27b under the
-    // streamed loop otherwise narrates the call as prose (writes ```sql / `[run_sql(...)]` instead of
+    // Force a real tool call on the FIRST step (then let the loop run free). Weaker chat models under the
+    // streamed loop otherwise narrate the call as prose (writes ```sql / `[run_sql(...)]` instead of
     // invoking it) — `tool_choice: 'required'` makes that structurally impossible. Step 0 only: later
     // steps need `auto` so the model can finalize with `emit_report` and stop. Measured against the real
     // streamText path this took the failing cases from 0/4 to 4/4 (run_sql→emit_report). The matching
@@ -114,7 +135,7 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // a per-step output backstop (the model emits block structure + refs, not the bound data values).
     abortSignal: opts.abortSignal,
     maxRetries: 1,
-    // Low temperature materially improves tool-calling reliability with bggpt-gemma-3-27b: under the
+    // Low temperature materially improves tool-calling reliability with weaker chat models: under the
     // streamed tool loop the model otherwise drifts into NARRATING the call (writing `run_sql(...)` /
     // ```sql as prose) instead of emitting a real function call. Local probes: ~75% tool-call rate at
     // the model default vs ~88% at 0.1 (streamed). Determinism here is desirable — we want the SQL, not
@@ -126,7 +147,7 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     maxOutputTokens: 8192,
   });
   return result.toUIMessageStreamResponse({
-    // Graceful degradation (§7): a BgGPT outage / rate-limit / timeout surfaces mid-stream as a
+    // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
     // readable Bulgarian line instead of a broken connection. The SDK default redacts the error to
     // "An error occurred." to avoid leaking server details — we log it server-side (Workers tail)
     // and show our own message. A full rate-limit + circuit-breaker is the launch gate (README).

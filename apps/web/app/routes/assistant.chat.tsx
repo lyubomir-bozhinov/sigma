@@ -1,11 +1,12 @@
 // Resource route: the assistant chat endpoint. The dock POSTs the UIMessage history; we run one
-// agent turn (BgGPT via the AI Gateway + the read-only tool loop) and stream the result back. The
-// server is stateless (spec §5) — nothing per-user is persisted here.
+// agent turn (the chat model via the AI Gateway + the read-only tool loop) and stream the result
+// back. The server is stateless (spec §5) — nothing per-user is persisted here.
 
 import type { UIMessage } from 'ai';
 import type { Route } from './+types/assistant.chat';
 import { runAssistant, type AgentEnv } from '../lib/assistant/agent';
 import {
+  gatewayRunner,
   retrieveSchemaContext,
   type EmbeddingRunner,
   type VectorIndex,
@@ -80,13 +81,22 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const env = context.cloudflare.env;
-  // Fail fast and CLEARLY if the model key is unprovisioned, rather than starting a turn that surfaces a
-  // generic mid-stream BgGPT 401 indistinguishable from a real outage (review #80).
-  if (!(env as unknown as AgentEnv).BGGPT_API_KEY) {
-    console.error('[assistant] BGGPT_API_KEY is not set — endpoint not provisioned');
+  // Fail fast and CLEARLY if the assistant is unprovisioned, rather than starting a turn that surfaces a
+  // generic mid-stream 401 indistinguishable from a real outage (review #80). We require BOTH the
+  // provider key AND the AI Gateway base URL: routing through the gateway is mandatory (fail closed),
+  // so a missing gateway URL is "unconfigured", not a licence to call the provider directly.
+  const agentEnv = env as unknown as AgentEnv & { AI_GATEWAY_ID?: string };
+  if (!agentEnv.ASSISTANT_API_KEY || !agentEnv.AI_GATEWAY_BASE_URL?.trim()) {
+    console.error(
+      '[assistant] ASSISTANT_API_KEY / AI_GATEWAY_BASE_URL not set — endpoint not provisioned',
+    );
     return Response.json({ error: 'Асистентът все още не е конфигуриран.' }, { status: 503 });
   }
-  const ai = env.AI as unknown as EmbeddingRunner | undefined;
+  // Route RAG embeddings (Workers AI) through the same AI Gateway as the LLM, so ALL model traffic is
+  // observable in one place (§9.5). The gateway slug comes from `AI_GATEWAY_ID`.
+  const ai = env.AI
+    ? gatewayRunner(env.AI as unknown as EmbeddingRunner, agentEnv.AI_GATEWAY_ID)
+    : undefined;
   const vectorize = env.VECTORIZE as unknown as VectorIndex | undefined;
   // The latest user message text — used both to RAG-ground the prompt and as the server-authoritative
   // report question, so the model's echo can never smuggle an unbound number into the question slot
