@@ -141,8 +141,12 @@ export interface ReportIndexEntry {
 const isReportIndexEntry = (v: unknown): v is ReportIndexEntry => {
   if (typeof v !== 'object' || v === null) return false;
   const e = v as Record<string, unknown>;
-  return typeof e.id === 'string' && typeof e.title === 'string' &&
-    typeof e.question === 'string' && typeof e.createdAt === 'string';
+  return (
+    typeof e.id === 'string' &&
+    typeof e.title === 'string' &&
+    typeof e.question === 'string' &&
+    typeof e.createdAt === 'string'
+  );
 };
 
 export const loadReportIndex = (storage = defaultStorage()): ReportIndexEntry[] => {

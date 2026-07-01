@@ -69,8 +69,12 @@ export function TimeseriesBlock({ points, series, truncated, format }: Timeserie
 
   // Y domain across all series.
   const allValues = allSeries.flatMap((s) => s.pts.map((p) => p.value));
-  let minVal = Infinity, maxVal = -Infinity;
-  for (const v of allValues) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; }
+  let minVal = Infinity,
+    maxVal = -Infinity;
+  for (const v of allValues) {
+    if (v < minVal) minVal = v;
+    if (v > maxVal) maxVal = v;
+  }
   const valueSpan = maxVal - minVal || 1;
 
   // X axis is driven by the longest series (all series share the same period index).
@@ -80,8 +84,7 @@ export function TimeseriesBlock({ points, series, truncated, format }: Timeserie
   const xOf = (i: number): number =>
     PAD.left + (ptCount > 1 ? (i / (ptCount - 1)) * CHART_W : CHART_W / 2);
   // Y increases downward in SVG; higher values map to smaller y.
-  const yOf = (v: number): number =>
-    PAD.top + CHART_H - ((v - minVal) / valueSpan) * CHART_H;
+  const yOf = (v: number): number => PAD.top + CHART_H - ((v - minVal) / valueSpan) * CHART_H;
 
   // Y-axis: evenly spaced ticks from minVal to maxVal.
   const yTicks = Array.from({ length: Y_TICK_COUNT + 1 }, (_, i) => {
@@ -104,13 +107,15 @@ export function TimeseriesBlock({ points, series, truncated, format }: Timeserie
         <thead>
           <tr>
             <th scope="col">Период</th>
-            {allSeries.length > 1
-              ? allSeries.map((s, si) => (
-                  <th key={si} scope="col">
-                    {s.label || `Серия ${si + 1}`}
-                  </th>
-                ))
-              : <th scope="col">Стойност</th>}
+            {allSeries.length > 1 ? (
+              allSeries.map((s, si) => (
+                <th key={si} scope="col">
+                  {s.label || `Серия ${si + 1}`}
+                </th>
+              ))
+            ) : (
+              <th scope="col">Стойност</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -118,18 +123,16 @@ export function TimeseriesBlock({ points, series, truncated, format }: Timeserie
             <tr key={i}>
               <td>{String(pt.period ?? '')}</td>
               {allSeries.map((s, si) => (
-                <td key={si}>{s.pts[i] != null ? formatCell(s.pts[i].value, format ?? 'money') : '—'}</td>
+                <td key={si}>
+                  {s.pts[i] != null ? formatCell(s.pts[i].value, format ?? 'money') : '—'}
+                </td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
 
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        aria-hidden="true"
-        className="timeseries-block__svg"
-      >
+      <svg viewBox={`0 0 ${W} ${H}`} aria-hidden="true" className="timeseries-block__svg">
         {/* Gridlines + Y-axis labels */}
         {yTicks.map((tick, ti) => (
           <g key={ti}>
@@ -185,13 +188,7 @@ export function TimeseriesBlock({ points, series, truncated, format }: Timeserie
             <g key={si} className={`ts-series ${cls}`}>
               <path d={pathD} className="ts-line" />
               {svgPts.map((p, pi) => (
-                <circle
-                  key={pi}
-                  cx={p.x.toFixed(1)}
-                  cy={p.y.toFixed(1)}
-                  r={3}
-                  className="ts-dot"
-                >
+                <circle key={pi} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r={3} className="ts-dot">
                   <title>
                     {p.period != null ? `${p.period}: ` : ''}
                     {p.value}
@@ -213,7 +210,10 @@ export function TimeseriesBlock({ points, series, truncated, format }: Timeserie
       {allSeries.length > 1 && (
         <figcaption className="timeseries-block__legend">
           {allSeries.map((s, si) => (
-            <span key={si} className={`ts-legend-item ${SERIES_CLASSES[si % SERIES_CLASSES.length]}`}>
+            <span
+              key={si}
+              className={`ts-legend-item ${SERIES_CLASSES[si % SERIES_CLASSES.length]}`}
+            >
               {s.label}
             </span>
           ))}

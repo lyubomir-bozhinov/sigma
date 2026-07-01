@@ -4,7 +4,11 @@
 // per-source data freshness dates, and the model / prompt version that produced the report.
 // Rendered on every /reports/:id page as the authoritative provenance footer.
 
-import type { ReportProvenance, SourceFreshness, FreshnessSource } from '~/lib/assistant-contract/report';
+import type {
+  ReportProvenance,
+  SourceFreshness,
+  FreshnessSource,
+} from '~/lib/assistant-contract/report';
 
 // Bulgarian labels for each data source.
 const SOURCE_LABELS: Record<FreshnessSource, string> = {
@@ -76,9 +80,13 @@ export function ReportMethodologyCallout({ provenance }: ReportMethodologyCallou
 
         <section className="report-methodology__section">
           <h2 className="report-methodology__heading">Актуалност на данните</h2>
-          {provenance.freshness.length > 0
-            ? <FreshnessList freshness={provenance.freshness} />
-            : <p className="report-methodology__freshness-na">Няма налична информация за актуалността на данните.</p>}
+          {provenance.freshness.length > 0 ? (
+            <FreshnessList freshness={provenance.freshness} />
+          ) : (
+            <p className="report-methodology__freshness-na">
+              Няма налична информация за актуалността на данните.
+            </p>
+          )}
         </section>
 
         <section className="report-methodology__section report-methodology__meta">

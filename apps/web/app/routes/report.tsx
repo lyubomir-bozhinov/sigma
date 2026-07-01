@@ -15,10 +15,7 @@
 // Until C4 deploys, every /reports/:id request returns 404.
 
 import type { Route } from './+types/report';
-import {
-  type StoredReport,
-  STORED_REPORT_SCHEMA_VERSION,
-} from '~/lib/assistant-contract/report';
+import { type StoredReport, STORED_REPORT_SCHEMA_VERSION } from '~/lib/assistant-contract/report';
 import { ReportBlockRenderer } from '~/components/ReportBlockRenderer';
 import { ReportAiWatermark } from '~/components/ReportAiWatermark';
 import { ReportMethodologyCallout } from '~/components/ReportMethodologyCallout';
@@ -29,7 +26,11 @@ import { ReportToolbar } from '~/components/ReportToolbar';
 function isStoredReport(value: unknown): value is StoredReport {
   if (typeof value !== 'object' || value === null) return false;
   // Accept schemaVersion >= 1 so future minor bumps render as best-effort rather than 404.
-  if (!('schemaVersion' in value) || typeof value.schemaVersion !== 'number' || (value.schemaVersion as number) < STORED_REPORT_SCHEMA_VERSION) {
+  if (
+    !('schemaVersion' in value) ||
+    typeof value.schemaVersion !== 'number' ||
+    (value.schemaVersion as number) < STORED_REPORT_SCHEMA_VERSION
+  ) {
     return false;
   }
   if (!('id' in value) || typeof value.id !== 'string') return false;
@@ -37,7 +38,8 @@ function isStoredReport(value: unknown): value is StoredReport {
     return false;
   }
   if (!Array.isArray((value.report as { blocks?: unknown }).blocks)) return false;
-  if (!('provenance' in value) || typeof value.provenance !== 'object' || value.provenance === null) return false;
+  if (!('provenance' in value) || typeof value.provenance !== 'object' || value.provenance === null)
+    return false;
   return true;
 }
 

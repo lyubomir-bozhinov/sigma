@@ -65,7 +65,12 @@ export function ReportToolbar({ report }: ReportToolbarProps) {
 
   return (
     <div className="report-toolbar">
-      <button type="button" className="report-action-btn" onClick={handleMarkdown} title="Изтегли като Markdown файл">
+      <button
+        type="button"
+        className="report-action-btn"
+        onClick={handleMarkdown}
+        title="Изтегли като Markdown файл"
+      >
         <IconMarkdown />
         Markdown
       </button>
@@ -80,12 +85,19 @@ export function ReportToolbar({ report }: ReportToolbarProps) {
         <IconDocx />
         {docxLoading ? 'Генериране…' : 'Word (.docx)'}
       </button>
-      <button type="button" className="report-action-btn" onClick={handlePrint} title="Принтирай или запази като PDF">
+      <button
+        type="button"
+        className="report-action-btn"
+        onClick={handlePrint}
+        title="Принтирай или запази като PDF"
+      >
         <IconPrint />
         Принтирай / PDF
       </button>
       {docxError && (
-        <p role="alert" className="report-toolbar__error">{docxError}</p>
+        <p role="alert" className="report-toolbar__error">
+          {docxError}
+        </p>
       )}
     </div>
   );

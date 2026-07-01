@@ -28,11 +28,7 @@ export function reportToMarkdown(report: ResolvedReport): string {
         lines.push(block.md, '');
         break;
       case 'callout':
-        lines.push(
-          `> **${block.title}**`,
-          ...block.md.split('\n').map((l) => `> ${l}`),
-          '',
-        );
+        lines.push(`> **${block.title}**`, ...block.md.split('\n').map((l) => `> ${l}`), '');
         break;
       case 'totals':
         lines.push(
@@ -67,7 +63,12 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       case 'bar':
-        lines.push(...block.points.map((pt, i) => `${i + 1}. ${pt.label} — ${fmt(pt.value, block.format ?? 'money')}`), '');
+        lines.push(
+          ...block.points.map(
+            (pt, i) => `${i + 1}. ${pt.label} — ${fmt(pt.value, block.format ?? 'money')}`,
+          ),
+          '',
+        );
         break;
       case 'flows':
         lines.push(
@@ -83,7 +84,10 @@ export function reportToMarkdown(report: ResolvedReport): string {
         lines.push(
           mdTable(
             ['Период', 'Стойност'],
-            pts.map(({ period, value }) => [String(period ?? ''), fmt(value, block.format ?? 'money')]),
+            pts.map(({ period, value }) => [
+              String(period ?? ''),
+              fmt(value, block.format ?? 'money'),
+            ]),
           ),
           '',
         );
@@ -106,7 +110,11 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function safeFilename(title: string, ext: string): string {
-  return `${title.slice(0, 50).replace(/[^а-яa-z0-9]/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}.${ext}`;
+  return `${title
+    .slice(0, 50)
+    .replace(/[^а-яa-z0-9]/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')}.${ext}`;
 }
 
 export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
@@ -146,7 +154,9 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
     switch (block.type) {
       case 'text':
         for (const para of block.md.split(/\n{2,}/).filter(Boolean)) {
-          children.push(new Paragraph({ text: para.replace(/[*_`]/g, ''), spacing: { after: 120 } }));
+          children.push(
+            new Paragraph({ text: para.replace(/[*_`]/g, ''), spacing: { after: 120 } }),
+          );
         }
         break;
 
@@ -173,8 +183,14 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
                   (it) =>
                     new TableCell({
                       children: [
-                        new Paragraph({ children: [new TextRun({ text: fmt(it.value, it.format), bold: true, size: 28 })] }),
-                        new Paragraph({ children: [new TextRun({ text: it.label, size: 18, color: '666666' })] }),
+                        new Paragraph({
+                          children: [
+                            new TextRun({ text: fmt(it.value, it.format), bold: true, size: 28 }),
+                          ],
+                        }),
+                        new Paragraph({
+                          children: [new TextRun({ text: it.label, size: 18, color: '666666' })],
+                        }),
                       ],
                     }),
                 ),
@@ -192,7 +208,11 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
               (it) =>
                 new TableRow({
                   children: [
-                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: it.term, bold: true })] })] }),
+                    new TableCell({
+                      children: [
+                        new Paragraph({ children: [new TextRun({ text: it.term, bold: true })] }),
+                      ],
+                    }),
                     new TableCell({ children: [new Paragraph({ text: String(it.value ?? '—') })] }),
                   ],
                 }),
@@ -206,7 +226,19 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
           children: block.columns.map(
             (col) =>
               new TableCell({
-                children: [new Paragraph({ children: [new TextRun({ text: col.header, bold: true, allCaps: true, size: 18, color: '666666' })] })],
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: col.header,
+                        bold: true,
+                        allCaps: true,
+                        size: 18,
+                        color: '666666',
+                      }),
+                    ],
+                  }),
+                ],
               }),
           ),
         });
@@ -257,7 +289,11 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
               new TableRow({
                 children: ['Възложител', 'Изпълнител', 'Стойност (EUR)'].map(
                   (h) =>
-                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })] }),
+                    new TableCell({
+                      children: [
+                        new Paragraph({ children: [new TextRun({ text: h, bold: true })] }),
+                      ],
+                    }),
                 ),
               }),
               ...block.edges.map(
@@ -281,7 +317,12 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
             rows: [
               new TableRow({
                 children: ['Период', 'Стойност'].map(
-                  (h) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })] }),
+                  (h) =>
+                    new TableCell({
+                      children: [
+                        new Paragraph({ children: [new TextRun({ text: h, bold: true })] }),
+                      ],
+                    }),
                 ),
               }),
               ...pts.map(
@@ -304,7 +345,14 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
 
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: 'AI-генерирано, неофициално — СИГМА', italics: true, color: '888888', size: 18 })],
+      children: [
+        new TextRun({
+          text: 'AI-генерирано, неофициално — СИГМА',
+          italics: true,
+          color: '888888',
+          size: 18,
+        }),
+      ],
       spacing: { before: 400 },
       border: { top: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' } },
     }),
