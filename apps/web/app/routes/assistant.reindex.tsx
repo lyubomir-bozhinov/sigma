@@ -10,13 +10,19 @@
 // the cheap 404/403 above the expensive embed).
 
 import type { Route } from './+types/assistant.reindex';
-import { indexSchemaCorpus, type EmbeddingRunner, type VectorIndex } from '../lib/assistant/rag';
+import {
+  gatewayRunner,
+  indexSchemaCorpus,
+  type EmbeddingRunner,
+  type VectorIndex,
+} from '../lib/assistant/rag';
 import { authorizeSeed, bearerToken } from '../lib/assistant/seed-endpoint';
 
 interface ReindexEnv {
   ASSISTANT_SEED_TOKEN?: string;
   AI?: EmbeddingRunner;
   VECTORIZE?: VectorIndex;
+  AI_GATEWAY_ID?: string;
 }
 
 /** GET hits no loader logic — 404 so the endpoint leaks nothing on a casual probe. */
@@ -43,7 +49,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const indexed = await indexSchemaCorpus(env.AI, env.VECTORIZE);
+    // Route the seed's embedding calls through the AI Gateway too (same slug as the chat path).
+    const ai = gatewayRunner(env.AI, env.AI_GATEWAY_ID);
+    const indexed = await indexSchemaCorpus(ai, env.VECTORIZE);
     return Response.json({ ok: true, indexed });
   } catch (error) {
     console.error('[assistant] /reindex failed', error);
