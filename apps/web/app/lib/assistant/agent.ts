@@ -180,7 +180,7 @@ export interface RunAssistantOptions {
 export async function runAssistant(opts: RunAssistantOptions): Promise<Response> {
   const maxSteps = resolveMaxSteps(opts.env.MAX_STEPS);
   const messages = await convertToModelMessages(opts.messages);
-  const modelId = opts.env.BGGPT_MODEL || DEFAULT_MODEL;
+  const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
   const result = streamText({
     model: buildModel(opts.env),
     system: buildSystemPrompt({ schemaContext: opts.schemaContext, freshness: opts.freshness }),
