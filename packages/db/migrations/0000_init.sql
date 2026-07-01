@@ -202,7 +202,7 @@ CREATE TABLE home_totals (
   value_eur    REAL NOT NULL,             -- SUM(amount_eur), clean rows only; paired with the (larger) corpus contracts count — the two do NOT cover one set
   authorities  INTEGER NOT NULL,
   bidders      INTEGER NOT NULL,
-  suspect      INTEGER NOT NULL,          -- COUNT of value_suspect rows (data-quality KPI); these ARE summed (repaired) — NOT the NULL-amount_eur rows that are excluded from sums
+  suspect      INTEGER NOT NULL,          -- COUNT of value_suspect rows (data-quality KPI); summed via repair to the procedure estimate, except a value_suspect row with no estimate (amount_eur NULL, excluded like other NULL rows)
   first_date   TEXT,
   last_date    TEXT,
   as_of        TEXT,                       -- data_freshness 'admin' as_of (latest real contract date)

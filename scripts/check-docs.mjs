@@ -33,7 +33,10 @@ const SCAN_ROOTS = [
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.turbo', '.wrangler']);
 const TEXT_EXT = /\.(md|ts|tsx|js|mjs|cjs|jsx|sql|json|yml|yaml)$/;
 const DOCS_REF = /\bdocs\/[A-Za-z0-9_./-]+\.md\b/g;
-const MD_LINK = /\]\(([^)]+\.md)(?:#[^)]*)?\)/g;
+// Inline `](path.md)`, with optional `#anchor` and optional `"title"`.
+const MD_LINK = /\]\(\s*([^)\s#]+\.md)(?:#[^)\s]*)?(?:\s+"[^"]*")?\s*\)/g;
+// Reference-style definition `[label]: path.md`.
+const MD_REF_LINK = /^\s*\[[^\]]+\]:\s*([^\s#]+\.md)/gm;
 
 // ── pure helpers (unit-tested in check-docs.test.mjs) ──────────────────────────
 
@@ -66,12 +69,18 @@ export function extractDocsRefs(text) {
   return refs;
 }
 
-/** Repo-internal markdown link targets in an index file's text; external URLs skipped. */
+/**
+ * Repo-internal markdown link targets in an index file's text; external URLs skipped.
+ * Handles inline links (incl. `#anchor` and `"title"`) and reference-style definitions,
+ * so a doc linked in any of those forms is not miscounted as an orphan.
+ */
 export function linkTargets(text) {
   const targets = [];
-  for (const m of text.matchAll(MD_LINK)) {
-    if (/^(https?:)?\/\//.test(m[1])) continue; // external
-    targets.push(m[1]);
+  for (const re of [MD_LINK, MD_REF_LINK]) {
+    for (const m of text.matchAll(re)) {
+      if (/^(https?:)?\/\//.test(m[1])) continue; // external
+      targets.push(m[1]);
+    }
   }
   return targets;
 }
