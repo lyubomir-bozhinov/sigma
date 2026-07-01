@@ -80,8 +80,8 @@ describe.each(POSITIVE.map((f) => [f.id, f] as const))('golden fixture %s', (_id
     expect(() => assertAmountEurUsage(fixture)).not.toThrow();
   });
 
-  it('3. applies the default contract filters and surfaces the callout', () => {
-    expect(() => assertDefaultFiltersApplied(fixture, report())).not.toThrow();
+  it('3. applies the default contract filters (gate enforced; callout not rendered)', () => {
+    expect(() => assertDefaultFiltersApplied(fixture)).not.toThrow();
   });
 
   it('4. reconciles any presented count/sum against a valid rollup', () => {

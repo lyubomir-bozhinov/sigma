@@ -51,7 +51,7 @@ export default function ReportsIndexPage() {
         <h1 className="reports-index__title">Генерирани справки</h1>
         <p className="reports-index__description">
           Справките са съставени автоматично от езиков модел и не представляват официални документи.
-          Проверявайте критични числа от първичен источник.
+          Проверявайте критични числа от първичен източник.
         </p>
       </header>
 

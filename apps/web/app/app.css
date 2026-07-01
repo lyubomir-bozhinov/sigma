@@ -3961,8 +3961,8 @@ html.a11y-textonly .assistant-dock {
   align-items: flex-start;
   gap: var(--s-3);
   padding: var(--s-3) var(--s-4);
-  background: var(--accent-bg);
-  border-left: 3px solid var(--accent);
+  background: #fef9c3;
+  border-left: 3px solid #ca8a04;
   margin-bottom: var(--s-6);
 }
 
@@ -3970,8 +3970,8 @@ html.a11y-textonly .assistant-dock {
   flex: none;
   display: inline-block;
   padding: 2px var(--s-2);
-  background: var(--accent);
-  color: var(--paper);
+  background: #ca8a04;
+  color: #fff;
   font: 700 10px/1.4 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -4643,6 +4643,7 @@ html.a11y-textonly .assistant-dock {
   body {
     background: white !important;
     color: black !important;
+    padding-right: 0 !important;
     font-size: 10pt;
     font-family:
       system-ui,
@@ -4677,7 +4678,7 @@ html.a11y-textonly .assistant-dock {
   }
 
   .report-watermark__badge {
-    background: #c0392b !important;
+    background: #ca8a04 !important;
     color: white !important;
     font-size: 7pt !important;
     padding: 1pt 4pt !important;

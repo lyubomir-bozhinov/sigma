@@ -18,7 +18,6 @@ import type { Route } from './+types/report';
 import { type StoredReport, STORED_REPORT_SCHEMA_VERSION } from '~/lib/assistant-contract/report';
 import { ReportBlockRenderer } from '~/components/ReportBlockRenderer';
 import { ReportAiWatermark } from '~/components/ReportAiWatermark';
-import { ReportMethodologyCallout } from '~/components/ReportMethodologyCallout';
 import { ReportToolbar } from '~/components/ReportToolbar';
 
 // ── R2 fetch ────────────────────────────────────────────────────────────────
@@ -96,7 +95,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export default function ReportPage({ loaderData }: Route.ComponentProps) {
   const { report: stored } = loaderData;
-  const { report, provenance } = stored;
+  const { report } = stored;
 
   return (
     <main id="main" className="report-page">
@@ -113,8 +112,6 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
       {/* D1–D3: block rendering (timeseries, markdown, CSP) */}
       <ReportBlockRenderer blocks={report.blocks} />
 
-      {/* D5 + D6: methodology callout with per-source freshness */}
-      <ReportMethodologyCallout provenance={provenance} />
     </main>
   );
 }
