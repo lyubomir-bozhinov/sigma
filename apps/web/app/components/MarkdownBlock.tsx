@@ -21,7 +21,8 @@ import { sanitizeLinkHref } from '~/lib/sanitize-markdown';
 // Regex is created inside renderInline (not at module scope) to avoid shared mutable lastIndex state.
 
 function renderInline(text: string): ReactNode[] {
-  const INLINE_RE = /(\*\*([^*]+)\*\*)|(\*(?!\*)([^*]+)\*(?!\*))|(`([^`]+)`)|\[([^\]]*)\]\(([^)]*)\)/g;
+  const INLINE_RE =
+    /(\*\*([^*]+)\*\*)|(\*(?!\*)([^*]+)\*(?!\*))|(`([^`]+)`)|\[([^\]]*)\]\(([^)]*)\)/g;
   const nodes: ReactNode[] = [];
   let pos = 0;
   let key = 0;

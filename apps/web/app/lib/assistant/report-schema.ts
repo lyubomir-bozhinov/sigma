@@ -123,7 +123,12 @@ export type ResolvedBlock =
       rows: ResolvedRow[];
       truncated?: boolean;
     }
-  | { type: 'bar'; points: { label: string | number | null; value: number }[]; truncated?: boolean; format?: CellFormat }
+  | {
+      type: 'bar';
+      points: { label: string | number | null; value: number }[];
+      truncated?: boolean;
+      format?: CellFormat;
+    }
   | {
       type: 'flows';
       edges: { from: string; to: string; valueEur: number }[];
@@ -547,7 +552,12 @@ export function bindReport(
             const value = asNumber(vals[i] ?? null);
             if (value !== null) points.push({ period: sanitizeCell(period[i] ?? null), value });
           }
-          blocks.push({ type: 'timeseries', points, truncated: r.truncated ?? false, format: b.format });
+          blocks.push({
+            type: 'timeseries',
+            points,
+            truncated: r.truncated ?? false,
+            format: b.format,
+          });
         }
         break;
       }

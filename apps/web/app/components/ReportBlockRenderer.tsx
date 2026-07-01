@@ -52,13 +52,11 @@ function BarBlock({
           const label = p.label == null || p.label === '' ? '—' : String(p.label);
           return (
             <li key={i} className="report-bar__row">
-              <span
-                className="report-bar__fill"
-                style={{ width: `${pct}%` }}
-                aria-hidden="true"
-              />
+              <span className="report-bar__fill" style={{ width: `${pct}%` }} aria-hidden="true" />
               <span className="report-bar__label">{label}</span>
-              <span className="report-bar__value num">{formatCell(p.value, format ?? 'money')}</span>
+              <span className="report-bar__value num">
+                {formatCell(p.value, format ?? 'money')}
+              </span>
             </li>
           );
         })}
@@ -173,11 +171,7 @@ function Block({ block }: { block: ResolvedBlock }) {
       }));
       return (
         <div className="report-block report-block--table">
-          <DataTable
-            columns={columns}
-            rows={block.rows}
-            getKey={(_, i) => i}
-          />
+          <DataTable columns={columns} rows={block.rows} getKey={(_, i) => i} />
           {block.truncated && (
             <p className="report-block__truncated-note">
               Показани са само първите резултати — данните са отрязани.
@@ -196,7 +190,11 @@ function Block({ block }: { block: ResolvedBlock }) {
     case 'timeseries':
       return (
         <div className="report-block report-block--timeseries">
-          <TimeseriesBlock points={block.points} truncated={block.truncated} format={block.format} />
+          <TimeseriesBlock
+            points={block.points}
+            truncated={block.truncated}
+            format={block.format}
+          />
         </div>
       );
 

@@ -34,7 +34,8 @@ export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
           id: output.storedId,
           title: output.report.title,
           question: output.report.question,
-          createdAt: (message as { createdAt?: Date }).createdAt?.toISOString() ?? new Date().toISOString(),
+          createdAt:
+            (message as { createdAt?: Date }).createdAt?.toISOString() ?? new Date().toISOString(),
         });
       }
     }

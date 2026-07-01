@@ -40,7 +40,16 @@ describe('reportToMarkdown', () => {
 
   it('renders bar points as numbered list with formatted values', () => {
     const md = reportToMarkdown(
-      report([{ type: 'bar', points: [{ label: 'Фирма А', value: 500000 }, { label: 'Фирма Б', value: 200000 }], format: 'money' }]),
+      report([
+        {
+          type: 'bar',
+          points: [
+            { label: 'Фирма А', value: 500000 },
+            { label: 'Фирма Б', value: 200000 },
+          ],
+          format: 'money',
+        },
+      ]),
     );
     expect(md).toContain('1. Фирма А');
     expect(md).toContain('2. Фирма Б');
@@ -59,7 +68,15 @@ describe('reportToMarkdown', () => {
 
   it('renders timeseries as a markdown table', () => {
     const md = reportToMarkdown(
-      report([{ type: 'timeseries', points: [{ period: '2024-01', value: 1000 }, { period: '2024-02', value: 2000 }] }]),
+      report([
+        {
+          type: 'timeseries',
+          points: [
+            { period: '2024-01', value: 1000 },
+            { period: '2024-02', value: 2000 },
+          ],
+        },
+      ]),
     );
     expect(md).toContain('| Период | Стойност |');
     expect(md).toContain('2024-01');
@@ -68,11 +85,16 @@ describe('reportToMarkdown', () => {
 
   it('renders table block with column headers', () => {
     const md = reportToMarkdown(
-      report([{
-        type: 'table',
-        columns: [{ key: 'name', header: 'Фирма', format: 'text' }, { key: 'val', header: 'Сума', format: 'money' }],
-        rows: [{ cells: ['Фирма АД', 999999] }],
-      }]),
+      report([
+        {
+          type: 'table',
+          columns: [
+            { key: 'name', header: 'Фирма', format: 'text' },
+            { key: 'val', header: 'Сума', format: 'money' },
+          ],
+          rows: [{ cells: ['Фирма АД', 999999] }],
+        },
+      ]),
     );
     expect(md).toContain('| Фирма | Сума |');
     expect(md).toContain('Фирма АД');
