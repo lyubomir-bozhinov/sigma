@@ -37,9 +37,18 @@ test('extractDocsRefs does not false-match .markdown', () => {
   assert.deepEqual(extractDocsRefs('see docs/etl.markdown'), []);
 });
 
-test('linkTargets keeps internal links and skips external URLs', () => {
-  const text = '[a](core-scope.md) [b](https://x.dev/y/z.md) [c](adr/README.md#top)';
-  assert.deepEqual(linkTargets(text), ['core-scope.md', 'adr/README.md']);
+test('linkTargets keeps internal links (inline, anchored, titled, reference-style) and skips external URLs', () => {
+  const text = [
+    '[a](core-scope.md) [b](https://x.dev/y/z.md) [c](adr/README.md#top)',
+    '[d](etl.md "ETL doc")',
+    '[ref]: v1-implementation-plan.md',
+  ].join('\n');
+  assert.deepEqual(linkTargets(text).sort(), [
+    'adr/README.md',
+    'core-scope.md',
+    'etl.md',
+    'v1-implementation-plan.md',
+  ]);
 });
 
 test('isMarkdown rejects non-.md files that live under docs/ (finding #1)', () => {
