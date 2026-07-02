@@ -67,6 +67,7 @@ describe('the tool registry', () => {
     expect(ASSISTANT_TOOLS.map((t) => t.name).sort()).toEqual([
       'describe_schema',
       'eop_fetch',
+      'find_entity',
       'reconcile_rollup',
       'run_sql',
       'semantic_search',
@@ -188,6 +189,46 @@ describe('semantic_search', () => {
       query: async () => ({ matches: [] }),
     } as unknown as NonNullable<ToolContext['vectorize']>;
     expect(await runTool('semantic_search', { query: 'x' }, c)).toMatch(/не е налично/);
+  });
+});
+
+describe('find_entity — Cyrillic-safe name → id resolution', () => {
+  it('returns the exact join id per hit, labelled by kind (the СТОЛИЧНА ОБЩИНА case)', async () => {
+    const c = ctx([
+      { kind: 'authority', ref: '000696327', title: 'СТОЛИЧНА ОБЩИНА', ident: '000696327' },
+      { kind: 'company', ref: '831646048', title: '"АВТОМАГИСТРАЛИ" ЕАД', ident: '831646048' },
+    ]);
+    // Title-case query that a case-sensitive LIKE would miss against the uppercase-stored name.
+    const out = await runTool('find_entity', { name: 'Столична община' }, c);
+    expect(out).toContain('възложител id=000696327 — СТОЛИЧНА ОБЩИНА');
+    expect(out).toContain('изпълнител id=831646048 — "АВТОМАГИСТРАЛИ" ЕАД');
+  });
+
+  it('asks for a longer term when nothing searchable remains', async () => {
+    expect(await runTool('find_entity', { name: 'а' }, ctx())).toMatch(/поне 2 знака/);
+  });
+
+  it('reports no match (not an error) when the FTS query returns nothing', async () => {
+    expect(await runTool('find_entity', { name: 'несъществуваща организация' }, ctx([]))).toMatch(
+      /Няма намерени субекти/,
+    );
+  });
+
+  it('degrades gracefully if the FTS query throws', async () => {
+    const c = ctx();
+    c.db = {
+      prepare() {
+        return {
+          bind() {
+            return this;
+          },
+          async all() {
+            throw new Error('search_index missing');
+          },
+        };
+      },
+    } as unknown as D1Database;
+    expect(await runTool('find_entity', { name: 'Столична община' }, c)).toMatch(/не е налично/);
   });
 });
 

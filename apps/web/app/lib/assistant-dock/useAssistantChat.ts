@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { classifyHttpError, networkError } from './errors';
+import { condenseForPost } from './condense';
 import { clearTranscript, loadTranscript, saveTranscript, trimMessages } from './storage';
 
 const ENDPOINT = '/assistant/chat';
@@ -44,11 +45,19 @@ export const classifyingFetch = async (
   throw new Error(classifyHttpError({ status: response.status, serverMessage }));
 };
 
+/**
+ * Shape the outbound POST body: condense old turns into one recap message so their meaning survives
+ * (condense.ts), then apply the count/byte trim as the hard backstop against the server's caps — a
+ * pathological transcript can still never 413. Exported for tests.
+ */
+export const prepareChatBody = (messages: UIMessage[]): { messages: UIMessage[] } => ({
+  messages: trimMessages(condenseForPost(messages)),
+});
+
 const transport = new DefaultChatTransport<UIMessage>({
   api: ENDPOINT,
   fetch: classifyingFetch,
-  // Send only the most recent messages so the POST stays under the server's body/message caps.
-  prepareSendMessagesRequest: ({ messages }) => ({ body: { messages: trimMessages(messages) } }),
+  prepareSendMessagesRequest: ({ messages }) => ({ body: prepareChatBody(messages) }),
 });
 
 /** useChat wired to /assistant/chat, with the transcript restored from / persisted to localStorage. */
