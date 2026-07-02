@@ -94,7 +94,8 @@ export function createPhaseFilter(): TransformStream<UIMessageChunk, UIMessageCh
 // Strip emit_report's failure detail (schema echoes) before the client: mask a thrown execute's
 // errorText and empty a returned `{ ok:false, errors }`; the success `{ ok:true, report }` passes.
 function redactEmitReportOutput(chunk: UIMessageChunk): UIMessageChunk {
-  if (chunk.type === 'tool-output-error') {
+  // Mask the raw errorText of both emit_report error variants — it can echo schema/column shape.
+  if (chunk.type === 'tool-output-error' || chunk.type === 'tool-input-error') {
     return { ...chunk, errorText: REPORT_FAILED_TEXT };
   }
   if (chunk.type !== 'tool-output-available') return chunk;

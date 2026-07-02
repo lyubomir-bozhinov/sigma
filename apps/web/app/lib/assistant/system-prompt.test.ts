@@ -4,7 +4,7 @@ import {
   DATA_TRUST_RULE,
   EDITORIAL_SKELETON,
   EMIT_REPORT_POLICY,
-  INTERNALS_NON_DISCLOSURE_RULE,
+  NO_INTERNAL_FIELDS_RULE,
   RECONCILE_RULE,
   VALUES_BY_REFERENCE_RULE,
 } from './system-prompt';
@@ -24,8 +24,8 @@ describe('buildSystemPrompt', () => {
     expect(buildSystemPrompt()).toContain(RECONCILE_RULE);
   });
 
-  it('forbids disclosing SQL / column / tool internals in the conversational prose', () => {
-    expect(buildSystemPrompt()).toContain(INTERNALS_NON_DISCLOSURE_RULE);
+  it('forbids disclosing SQL / column / tool internals in prose and report blocks (one folded rule)', () => {
+    expect(buildSystemPrompt()).toContain(NO_INTERNAL_FIELDS_RULE);
   });
 
   it('hardens the prompt-injection boundary: embedded "instructions" in data are framed as data to ignore', () => {

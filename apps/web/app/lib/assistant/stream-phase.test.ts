@@ -2,25 +2,27 @@ import { describe, expect, it } from 'vitest';
 import type { UIMessageChunk } from 'ai';
 import { createPhaseFilter } from './stream-phase';
 
-// Hand-built RAW UIMessageChunks (the wire shape the filter consumes), NOT the persisted
-// `tool-<name>` part shape — those are different layers. The cast crosses that boundary once here.
-const c = (x: unknown): UIMessageChunk => x as UIMessageChunk;
+// Cast a hand-built RAW UIMessageChunk (the wire shape the filter consumes) — NOT the persisted
+// `tool-<name>` part shape; those are different layers. The cast crosses that boundary once here.
+const asChunk = (raw: unknown): UIMessageChunk => raw as UIMessageChunk;
 
-const start = () => c({ type: 'start' });
-const finish = () => c({ type: 'finish' });
-const text = (id: string, delta: string) => c({ type: 'text-delta', id, delta });
+const start = () => asChunk({ type: 'start' });
+const finish = () => asChunk({ type: 'finish' });
+const text = (id: string, delta: string) => asChunk({ type: 'text-delta', id, delta });
 const toolInputStart = (toolCallId: string, toolName: string) =>
-  c({ type: 'tool-input-start', toolCallId, toolName });
+  asChunk({ type: 'tool-input-start', toolCallId, toolName });
 const toolInputDelta = (toolCallId: string, inputTextDelta: string) =>
-  c({ type: 'tool-input-delta', toolCallId, inputTextDelta });
+  asChunk({ type: 'tool-input-delta', toolCallId, inputTextDelta });
 const toolInputAvailable = (toolCallId: string, toolName: string, input: unknown) =>
-  c({ type: 'tool-input-available', toolCallId, toolName, input });
+  asChunk({ type: 'tool-input-available', toolCallId, toolName, input });
 const toolOutput = (toolCallId: string, output: unknown) =>
-  c({ type: 'tool-output-available', toolCallId, output });
+  asChunk({ type: 'tool-output-available', toolCallId, output });
 const toolOutputError = (toolCallId: string, errorText: string) =>
-  c({ type: 'tool-output-error', toolCallId, errorText });
+  asChunk({ type: 'tool-output-error', toolCallId, errorText });
+const toolInputError = (toolCallId: string, toolName: string, errorText: string) =>
+  asChunk({ type: 'tool-input-error', toolCallId, toolName, errorText });
 const phase = (p: 'thinking' | 'querying' | 'composing') =>
-  c({ type: 'data-phase', data: { phase: p }, transient: true });
+  asChunk({ type: 'data-phase', data: { phase: p }, transient: true });
 
 // Drive a scripted chunk sequence through the transform and collect the exact output.
 async function runFilter(chunks: UIMessageChunk[]): Promise<UIMessageChunk[]> {
@@ -103,6 +105,18 @@ describe('createPhaseFilter', () => {
     ]);
   });
 
+  it('masks the raw errorText of an emit_report input-schema error (tool-input-error)', async () => {
+    const out = await runFilter([
+      toolInputStart('c3', 'emit_report'),
+      toolInputError('c3', 'emit_report', 'SCHEMAECHO_amount_eur_malformed'),
+    ]);
+    expect(out).toEqual([
+      phase('composing'),
+      toolInputStart('c3', 'emit_report'),
+      toolInputError('c3', 'emit_report', 'Справката не можа да бъде съставена.'),
+    ]);
+  });
+
   it('drops an unattributed tool output (unknown toolCallId) — fail closed', async () => {
     const out = await runFilter([toolOutput('ghost', 'SELECT leaked FROM secrets')]);
     expect(out).toEqual([phase('querying')]);
@@ -110,35 +124,38 @@ describe('createPhaseFilter', () => {
 
   it('drops reasoning chunks', async () => {
     expect(
-      await runFilter([c({ type: 'reasoning-delta', id: 'r1', delta: 'plan the SQL' })]),
+      await runFilter([asChunk({ type: 'reasoning-delta', id: 'r1', delta: 'plan the SQL' })]),
     ).toEqual([]);
   });
 
   it('drops source, file, and message-metadata chunks (strict allowlist)', async () => {
     const out = await runFilter([
-      c({ type: 'source-url', sourceId: 's1', url: 'https://x' }),
-      c({ type: 'file', url: 'https://f', mediaType: 'text/csv' }),
-      c({ type: 'message-metadata', messageMetadata: { usage: 42 } }),
+      asChunk({ type: 'source-url', sourceId: 's1', url: 'https://x' }),
+      asChunk({ type: 'file', url: 'https://f', mediaType: 'text/csv' }),
+      asChunk({ type: 'message-metadata', messageMetadata: { usage: 42 } }),
     ]);
     expect(out).toEqual([]);
   });
 
   it('passes the data-report-ready part through unchanged', async () => {
-    const ready = c({ type: 'data-report-ready', data: { reportId: 'abc', title: 'Справка' } });
+    const ready = asChunk({
+      type: 'data-report-ready',
+      data: { reportId: 'abc', title: 'Справка' },
+    });
     expect(await runFilter([ready])).toEqual([ready]);
   });
 
   it('passes text and structural markers through unchanged', async () => {
     const out = await runFilter([
-      c({ type: 'start-step' }),
+      asChunk({ type: 'start-step' }),
       text('t1', 'здравей'),
-      c({ type: 'finish-step' }),
+      asChunk({ type: 'finish-step' }),
       finish(),
     ]);
     expect(out).toEqual([
-      c({ type: 'start-step' }),
+      asChunk({ type: 'start-step' }),
       text('t1', 'здравей'),
-      c({ type: 'finish-step' }),
+      asChunk({ type: 'finish-step' }),
       finish(),
     ]);
   });
@@ -156,7 +173,12 @@ describe('createPhaseFilter', () => {
   });
 
   it('drops malformed chunks without throwing', async () => {
-    const out = await runFilter([c(null), c({}), c({ type: 123 }), text('t1', 'оцелях')]);
+    const out = await runFilter([
+      asChunk(null),
+      asChunk({}),
+      asChunk({ type: 123 }),
+      text('t1', 'оцелях'),
+    ]);
     expect(out).toEqual([text('t1', 'оцелях')]);
   });
 
