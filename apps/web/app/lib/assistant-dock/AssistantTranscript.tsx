@@ -1,13 +1,27 @@
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
-import { isReportPending, projectChip, reportOutputFromMessage } from './report-projection';
+import {
+  isReportPending,
+  isToolTurnWithoutReport,
+  projectChip,
+  reportOutputFromMessage,
+} from './report-projection';
 import { addToReportIndex } from './storage';
-import { AssistantMessage } from './AssistantMessage';
+import { AssistantMessage, messageText } from './AssistantMessage';
 import { ReportChip } from './ReportChip';
 
 interface AssistantTranscriptProps {
   messages: UIMessage[];
+  /** A turn is still in flight (status 'submitted' | 'streaming') — suppress the settled-turn fallback. */
+  busy: boolean;
 }
+
+// Shown when a turn SETTLES having made tool calls but produced neither a report nor prose — e.g. the
+// model ran out of tool steps before composing an answer. Actionable, so the reader isn't left with a
+// blank turn (the root fix is elsewhere; this is the last-resort safety net).
+const NO_ANSWER_FALLBACK =
+  'Не успях да съставя справка за този въпрос в наличните стъпки. Опитайте по-конкретно — напр. ' +
+  'посочете възложител, период или сектор.';
 
 // Slack (px) for "still at the bottom": absorbs sub-pixel rounding and the few px a streamed token adds
 // between the scroll event and the re-render. A small constant (~2 lines), not a derived value.
@@ -20,7 +34,7 @@ const STICK_THRESHOLD_PX = 40;
  * content in view while streaming, but only while the reader is already near the bottom — so scrolling
  * up to read history isn't interrupted.
  */
-export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
+export const AssistantTranscript = ({ messages, busy }: AssistantTranscriptProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -65,8 +79,18 @@ export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
       aria-live="polite"
       aria-label="Разговор с асистента"
     >
-      {messages.map((message) => {
+      {messages.map((message, index) => {
         const report = reportOutputFromMessage(message);
+        // Only the LAST turn, once settled (not busy), can be the no-answer case — an earlier turn always
+        // has a following user message, and a mid-stream turn legitimately has tool calls but no report yet.
+        const showNoAnswer =
+          !busy &&
+          index === messages.length - 1 &&
+          message.role === 'assistant' &&
+          !report &&
+          !isReportPending(message) &&
+          isToolTurnWithoutReport(message) &&
+          messageText(message) === '';
         return (
           <div key={message.id} className="assistant-turn">
             <AssistantMessage message={message} />
@@ -81,6 +105,9 @@ export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
             ) : null}
             {isReportPending(message) ? (
               <p className="assistant-transcript__pending">Подготвям справка…</p>
+            ) : null}
+            {showNoAnswer ? (
+              <p className="assistant-transcript__error">{NO_ANSWER_FALLBACK}</p>
             ) : null}
           </div>
         );
