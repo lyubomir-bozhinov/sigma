@@ -13,9 +13,16 @@ export const TRANSCRIPT_KEY = 'sigma.assistant.transcript';
 export const COLLAPSED_KEY = 'sigma.assistant.collapsed';
 export const REPORTS_INDEX_KEY = 'sigma.reports.index';
 
-// The server keeps only the last 24 messages (assistant.chat.tsx → MAX_MESSAGES); mirror it so we never
-// persist or POST more than it will use.
+// POST cap: the server keeps only the last 24 messages (assistant.chat.tsx → MAX_MESSAGES); mirror it so
+// we never POST more than it will use. Applied to the wire copy in useAssistantChat, after condensation.
 export const MAX_MESSAGES = 24;
+
+// Storage caps: deliberately LARGER than the POST caps. The persisted transcript is the local source of
+// truth the recap is condensed from (condense.ts), so old turns must survive here even though only a
+// condensed copy goes over the wire. Bounded well under the ~5 MB same-origin localStorage quota —
+// report tool-parts are heavy and stay in the persisted copy.
+export const STORAGE_MAX_MESSAGES = 60;
+export const STORAGE_MAX_BYTES = 1024 * 1024; // 1 MB
 
 // The server rejects request bodies over 256 KB with 413 (assistant.chat.tsx → MAX_BODY_BYTES). Trim the
 // persisted/posted history below that so the existing history PLUS the new turn useChat appends, PLUS the
@@ -87,7 +94,10 @@ export const loadTranscript = (storage = defaultStorage()): UIMessage[] => {
 export const saveTranscript = (messages: UIMessage[], storage = defaultStorage()): void => {
   if (!storage) return;
   try {
-    storage.setItem(TRANSCRIPT_KEY, JSON.stringify(trimMessages(messages)));
+    storage.setItem(
+      TRANSCRIPT_KEY,
+      JSON.stringify(trimMessages(messages, STORAGE_MAX_MESSAGES, STORAGE_MAX_BYTES)),
+    );
   } catch (error) {
     // Non-fatal: quota exceeded / storage blocked. The chat keeps working in memory.
     devWarn('[assistant] transcript not persisted (storage unavailable)', error);
