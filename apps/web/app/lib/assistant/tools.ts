@@ -70,6 +70,9 @@ export interface ToolContext {
   // R2 bucket for persisting StoredReports (Lane C4 / D4). When present, emit_report writes the
   // resolved report before returning so /reports/:id can serve it without re-querying D1.
   reports?: R2Bucket;
+  // Set true by emit_report once a VALID (ok:true) report is produced this turn. Read by the agent loop's
+  // step planner (chooseToolChoice) so it stops force-finalizing once a report exists.
+  reportEmitted?: boolean;
 }
 
 export interface AssistantTool {
