@@ -11,6 +11,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import {
   convertToModelMessages,
+  createUIMessageStreamResponse,
   jsonSchema,
   stepCountIs,
   streamText,
@@ -19,6 +20,8 @@ import {
   type UIMessage,
 } from 'ai';
 import { buildSystemPrompt } from './system-prompt';
+import { createPhaseFilter } from './stream-phase';
+import { EMIT_REPORT_TOOL } from '../assistant-contract/stream';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
 import type { TemporalContext } from './temporal';
@@ -185,7 +188,7 @@ function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
   }
   // Terminal tool — finalizes the report by binding values from THIS turn's server-executed results
   // (never client-supplied). Returns validation errors for the model to retry against (§4, §9.1).
-  set.emit_report = tool({
+  set[EMIT_REPORT_TOOL] = tool({
     description:
       'Финализира справка. Блоковете реферират резултатни хендъли (R1…); сървърът свързва числата. ' +
       'Извикай го за всеки отговор с число, класация, сравнение или разбивка (виж системните правила).',
@@ -277,14 +280,20 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // leaves headroom while still capping worst-case tokens per step.
     maxOutputTokens: 8192,
   });
-  return result.toUIMessageStreamResponse({
-    // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
-    // readable Bulgarian line instead of a broken connection. The SDK default redacts the error to
-    // "An error occurred." to avoid leaking server details — we log it server-side (Workers tail)
-    // and show our own message. A full rate-limit + circuit-breaker is the launch gate (README).
-    onError: (error) => {
-      console.error('[assistant] stream error', error);
-      return 'Асистентът временно не е достъпен. Опитай отново след малко.';
-    },
-  });
+  // Only phases + prose + the resolved report reach the dock; the internal tool loop (SQL assembly,
+  // raw rows, reasoning) never leaves the Worker — see stream-phase.ts.
+  const uiStream = result
+    .toUIMessageStream({
+      // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
+      // readable Bulgarian line instead of a broken connection. The SDK default redacts the error to
+      // "An error occurred." — we log server-side (Workers tail) and show our own message.
+      onError: (error) => {
+        console.error('[assistant] stream error', error);
+        return 'Асистентът временно не е достъпен. Опитай отново след малко.';
+      },
+      sendReasoning: false, // chain-of-thought never crosses the wire
+      sendSources: false,
+    })
+    .pipeThrough(createPhaseFilter());
+  return createUIMessageStreamResponse({ stream: uiStream });
 }
