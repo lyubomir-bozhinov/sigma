@@ -96,6 +96,8 @@ describe('prepareChatBody', () => {
     expect(messages.length).toBeLessThanOrEqual(MAX_MESSAGES);
     expect(messages[0].id).toMatch(/^recap-/);
     expect(messages[messages.length - 1].id).toBe('m39');
-    expect(new TextEncoder().encode(JSON.stringify(messages)).length).toBeLessThanOrEqual(MAX_BYTES);
+    expect(new TextEncoder().encode(JSON.stringify(messages)).length).toBeLessThanOrEqual(
+      MAX_BYTES,
+    );
   });
 });

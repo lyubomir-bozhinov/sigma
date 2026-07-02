@@ -66,7 +66,10 @@ describe('condenseForPost', () => {
         },
       ],
     } as unknown as UIMessage;
-    const msgs = [reportMsg, ...Array.from({ length: 14 }, (_, i) => msg(`m${i}`, 'user', `t${i}`))];
+    const msgs = [
+      reportMsg,
+      ...Array.from({ length: 14 }, (_, i) => msg(`m${i}`, 'user', `t${i}`)),
+    ];
 
     const recapText = (condenseForPost(msgs)[0].parts[0] as { text: string }).text;
     const bullet = recapText.split('\n')[1];
@@ -96,7 +99,10 @@ describe('condenseForPost', () => {
 
   it('caps each bullet gist at 200 characters', () => {
     const long = 'въпрос '.repeat(60); // ~420 chars, single line
-    const msgs = [msg('a', 'user', long), ...Array.from({ length: 14 }, (_, i) => msg(`m${i}`, 'user', `t${i}`))];
+    const msgs = [
+      msg('a', 'user', long),
+      ...Array.from({ length: 14 }, (_, i) => msg(`m${i}`, 'user', `t${i}`)),
+    ];
 
     const bullet = (condenseForPost(msgs)[0].parts[0] as { text: string }).text.split('\n')[1];
     expect(bullet.length).toBeLessThanOrEqual('- [потребител] '.length + 201); // 200 + ellipsis
@@ -121,8 +127,13 @@ describe('condenseForPost', () => {
   it('caps the whole recap, dropping the OLDEST bullets first', () => {
     // 60 condensed turns × ~200-char gists ≫ RECAP_MAX_CHARS — the recap must stay bounded and keep
     // the newest of the condensed turns (the oldest context is the least valuable).
-    const older = Array.from({ length: 60 }, (_, i) => msg(`old${i}`, 'user', `въпрос ${i} ${'х'.repeat(190)}`));
-    const msgs = [...older, ...Array.from({ length: KEEP_RECENT }, (_, i) => msg(`m${i}`, 'user', `t${i}`))];
+    const older = Array.from({ length: 60 }, (_, i) =>
+      msg(`old${i}`, 'user', `въпрос ${i} ${'х'.repeat(190)}`),
+    );
+    const msgs = [
+      ...older,
+      ...Array.from({ length: KEEP_RECENT }, (_, i) => msg(`m${i}`, 'user', `t${i}`)),
+    ];
 
     const recapText = (condenseForPost(msgs)[0].parts[0] as { text: string }).text;
     expect(recapText.length).toBeLessThanOrEqual(RECAP_MAX_CHARS);
