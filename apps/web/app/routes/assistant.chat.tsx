@@ -14,6 +14,7 @@ import {
 import { resolveRowsReadBudget, type ToolContext } from '../lib/assistant/tools';
 import { selectClientMessages } from '../lib/assistant/chat-input';
 import { firstPartyRejection } from '../lib/assistant/request-guard';
+import { resolveTemporalContext } from '../lib/assistant/temporal';
 
 function latestUserText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -128,12 +129,21 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
   }
 
+  // Deterministic temporal grounding: resolve any relative Bulgarian period phrase in the question to
+  // absolute ISO bounds from the server clock, so the model uses real dates instead of guessing from its
+  // stale training prior (temporal.ts). Undefined when the question carries no period phrase — no block,
+  // no injected filter.
+  const temporal = question
+    ? (resolveTemporalContext(question, new Date()) ?? undefined)
+    : undefined;
+
   try {
     return await runAssistant({
       env: env as unknown as AgentEnv,
       ctx,
       messages,
       schemaContext,
+      temporal,
       abortSignal: request.signal,
     });
   } catch (error) {

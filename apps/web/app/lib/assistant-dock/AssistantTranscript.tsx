@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
-import { projectChip, reportOutputFromMessage } from './report-projection';
+import { isToolTurnWithoutReport, projectChip, reportOutputFromMessage } from './report-projection';
 import { addToReportIndex } from './storage';
-import { AssistantMessage } from './AssistantMessage';
+import { AssistantMessage, messageText } from './AssistantMessage';
 import { AssistantPhaseLine } from './AssistantPhaseLine';
 import { ReportChip } from './ReportChip';
 import type { AssistantPhase } from '../assistant-contract/stream';
@@ -11,10 +11,17 @@ interface AssistantTranscriptProps {
   messages: UIMessage[];
   /** The ephemeral turn phase, rendered as a status line inside this log region. */
   phase: AssistantPhase | null;
-  /** A turn is in flight. While busy, the streaming message's report result is withheld so a
-   *  mid-turn {ok:false}/chip never shows alongside the phase line (it may still change on retry). */
+  /** A turn is in flight. While busy, the streaming message's report result is withheld (mid-turn it
+   *  may still change on retry) and the settled-turn no-answer fallback is suppressed. */
   busy: boolean;
 }
+
+// Shown when a turn SETTLES having made tool calls but produced neither a report nor prose — e.g. the
+// model ran out of tool steps before composing an answer. Actionable, so the reader isn't left with a
+// blank turn (the root fix is elsewhere; this is the last-resort safety net).
+const NO_ANSWER_FALLBACK =
+  'Не успях да съставя справка за този въпрос в наличните стъпки. Опитайте по-конкретно — напр. ' +
+  'посочете възложител, период или сектор.';
 
 // Slack (px) for "still at the bottom": absorbs sub-pixel rounding and the few px a streamed token adds
 // between the scroll event and the re-render. A small constant (~2 lines), not a derived value.
@@ -77,6 +84,15 @@ export const AssistantTranscript = ({ messages, phase, busy }: AssistantTranscri
         // {ok:false} mid-turn and flip to a chip on retry. Show chip/failure only once the turn settles.
         const streaming = busy && index === messages.length - 1;
         const report = streaming ? null : reportOutputFromMessage(message);
+        // A settled last turn that made tool calls but produced neither a report nor prose — the
+        // no-answer safety net (afc93d8). `!busy` already implies the report tool isn't mid-flight.
+        const showNoAnswer =
+          !busy &&
+          index === messages.length - 1 &&
+          message.role === 'assistant' &&
+          !report &&
+          isToolTurnWithoutReport(message) &&
+          messageText(message) === '';
         return (
           <div key={message.id} className="assistant-turn">
             <AssistantMessage message={message} />
@@ -88,6 +104,9 @@ export const AssistantTranscript = ({ messages, phase, busy }: AssistantTranscri
             ) : null}
             {report && !report.ok ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
+            ) : null}
+            {showNoAnswer ? (
+              <p className="assistant-transcript__error">{NO_ANSWER_FALLBACK}</p>
             ) : null}
           </div>
         );

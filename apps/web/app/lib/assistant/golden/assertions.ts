@@ -18,9 +18,6 @@ import {
 } from '../../../../workers/assistant/default-filters';
 import type { GoldenFixture } from './types';
 
-/** The title the wired `finalizeReport` gives the prepended default-filters callout block. */
-export const DEFAULT_FILTER_CALLOUT_TITLE = 'Приложени филтри по подразбиране';
-
 /** The exact success string the production `reconcile_rollup` tool returns when the two sides agree. */
 export const RECONCILED = 'Съгласувано.';
 
@@ -58,17 +55,18 @@ export function assertAmountEurUsage(fixture: GoldenFixture): void {
 }
 
 // ── 3. Default filters applied ────────────────────────────────────────────────────────────────────
-// A contracts step carries the safe default predicates (so the wired gate accepts it), and the resolved
-// report leads with the server-authored default-filter callout. For each declared opt-out the matching
-// `ВНИМАНИЕ:` warning line is sourced from `applyDefaultFilters({…})` and asserted distinct from its
-// default counterpart — proving the opt-out machinery surfaces the risk to the reader.
+// A contracts step carries the safe default predicates (so the wired gate accepts it). For each
+// declared opt-out the matching `ВНИМАНИЕ:` warning line is sourced from `applyDefaultFilters({…})`
+// and asserted distinct from its default counterpart — proving the opt-out machinery surfaces the
+// risk to the reader. The callout is NOT asserted to appear in the rendered report: it was removed
+// from finalizeReport to avoid surfacing raw DB field names/values in the UI (E3 gate still runs).
 const OPTOUT_OPTIONS: Record<string, DefaultFilterOptions> = {
   includeUnsummable: { includeUnsummable: true },
   includeSynthetic: { includeSynthetic: true },
   publishedAt: { dateField: 'published_at' },
 };
 
-export function assertDefaultFiltersApplied(fixture: GoldenFixture, report: ResolvedReport): void {
+export function assertDefaultFiltersApplied(fixture: GoldenFixture): void {
   if (fixture.expect.queriesContracts) {
     for (const step of fixture.steps) {
       const gate = assertDefaultFilters(step.sql);
@@ -78,10 +76,6 @@ export function assertDefaultFiltersApplied(fixture: GoldenFixture, report: Reso
       if (gate.callout.length === 0) {
         throw new Error(`contracts step produced no default-filter callout: ${step.sql}`);
       }
-    }
-    const head = report.blocks[0];
-    if (!head || head.type !== 'callout' || head.title !== DEFAULT_FILTER_CALLOUT_TITLE) {
-      throw new Error('resolved report does not lead with the default-filter callout block');
     }
   }
 

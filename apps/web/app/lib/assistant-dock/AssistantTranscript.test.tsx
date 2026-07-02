@@ -37,6 +37,14 @@ const failedReportMessage = (id: string) =>
     { type: 'tool-emit_report', state: 'output-available', output: { ok: false, errors: ['x'] } },
   ]);
 
+// A turn that ran tool calls (run_sql) but never emitted a report — the "out of steps" case.
+const toolOnlyMessage = (id: string) =>
+  message(id, 'assistant', [
+    { type: 'tool-run_sql', state: 'output-available', output: 'R1 (колони: …) — 100 ред(а)' },
+  ]);
+
+const NO_ANSWER = /Не успях да съставя справка за този въпрос/;
+
 describe('AssistantTranscript', () => {
   it('renders message prose', () => {
     render(
@@ -97,5 +105,23 @@ describe('AssistantTranscript', () => {
     );
 
     expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
+  });
+
+  it('shows the no-answer fallback when a settled turn made tool calls but no report', () => {
+    render(<AssistantTranscript messages={[toolOnlyMessage('11')]} phase={null} busy={false} />);
+
+    expect(screen.getByText(NO_ANSWER)).toBeInTheDocument();
+  });
+
+  it('does NOT show the fallback while the turn is still streaming', () => {
+    render(<AssistantTranscript messages={[toolOnlyMessage('12')]} phase={null} busy={true} />);
+
+    expect(screen.queryByText(NO_ANSWER)).not.toBeInTheDocument();
+  });
+
+  it('does NOT show the fallback for a completed report turn', () => {
+    render(<AssistantTranscript messages={[reportMessage('13')]} phase={null} busy={false} />);
+
+    expect(screen.queryByText(NO_ANSWER)).not.toBeInTheDocument();
   });
 });

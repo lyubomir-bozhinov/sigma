@@ -70,10 +70,9 @@ export interface ToolContext {
   // R2 bucket for persisting StoredReports (Lane C4 / D4). When present, emit_report writes the
   // resolved report before returning so /reports/:id can serve it without re-querying D1.
   reports?: R2Bucket;
-  // Callout lines for the default contract filters this turn's run_sql actually applied (E3 / Guard G1).
-  // run_sql sets it from assertDefaultFilters; finalizeReport prepends them as a callout block so the
-  // reader always sees which safe defaults shaped the figures. Empty for rollup-only / non-contracts turns.
-  appliedFilterCallout?: string[];
+  // Set true by emit_report once a VALID (ok:true) report is produced this turn. Read by the agent loop's
+  // step planner (chooseToolChoice) so it stops force-finalizing once a report exists.
+  reportEmitted?: boolean;
 }
 
 export interface AssistantTool {
@@ -130,7 +129,6 @@ const runSqlTool: AssistantTool = {
     // the EXPLAIN round-trip below. Rollup-only / non-contracts queries bypass (callout []).
     const filters = assertDefaultFilters(sql);
     if (!filters.ok) return `Заявката е отхвърлена: ${filters.reason}.`;
-    ctx.appliedFilterCallout = filters.callout;
 
     // L3: verify the plan the database actually compiled is read-only (closes the residual gap a parser
     // miss could leave on the read-write D1 binding). Runs after the structural gates so we EXPLAIN only
@@ -400,15 +398,5 @@ export function finalizeReport(input: unknown, ctx: ToolContext): BindResult {
   // The route sets ctx.userQuestion to the real user message — it owns the displayed question so the
   // model's echo cannot smuggle an unbound number into the question slot (§9.1, review #80).
   const bound = bindReport(shape.value, ctx.results, { question: ctx.userQuestion });
-  // E3 / Guard G1: when this turn's run_sql applied the safe default contract filters, surface them as a
-  // leading callout so the reader sees which assumptions shaped the figures. Server-authored trusted
-  // text (from applyDefaultFilters); only prepended on a successful bind, never disturbing the error path.
-  if (bound.ok && ctx.appliedFilterCallout?.length) {
-    bound.report.blocks.unshift({
-      type: 'callout',
-      title: 'Приложени филтри по подразбиране',
-      md: ctx.appliedFilterCallout.join(' '),
-    });
-  }
   return bound;
 }

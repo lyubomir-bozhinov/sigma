@@ -58,6 +58,23 @@ export const reportOutputFromMessage = (message: MessageLike): EmitReportOutput 
   return lastOk ?? lastAny;
 };
 
+/**
+ * True when the assistant made ≥1 tool call this turn but produced NO emit_report part at all — i.e. the
+ * turn ran out of tool steps (or otherwise stopped) before composing a report. The transcript pairs this
+ * with "no visible prose" and a settled turn to show a graceful fallback instead of a blank turn. It does
+ * NOT fire for a report failure (that surfaces its own ok:false affordance) — only for the missing-report
+ * case. `tool-emit_report` is itself a `tool-` part, so its presence (in any state) suppresses this.
+ */
+export const isToolTurnWithoutReport = (message: MessageLike): boolean => {
+  let sawTool = false;
+  for (const part of message.parts ?? []) {
+    const type = part.type ?? '';
+    if (type === EMIT_REPORT_PART) return false;
+    if (type.startsWith('tool-') || type === 'dynamic-tool') sawTool = true;
+  }
+  return sawTool;
+};
+
 const toNumber = (value: string | number | null): number | null => {
   if (value == null) return null;
   if (typeof value === 'number') return value;

@@ -68,8 +68,7 @@ export interface ReplayOutcome {
   /**
    * The real `reconcile_rollup` tool's return string, when the fixture declares a reconcile expectation
    * — `'Съгласувано.'` on success, or the rejection / mismatch message. Undefined when no reconcile is
-   * expected. Driven AFTER finalize so the rollup query does not clobber the contracts default-filter
-   * callout (run_sql overwrites `ctx.appliedFilterCallout` on every call).
+   * expected. Driven AFTER finalize so the rollup handle does not clobber the contracts result handles.
    */
   reconcileReturn?: string;
 }
