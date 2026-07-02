@@ -39,38 +39,63 @@ const failedReportMessage = (id: string) =>
 
 describe('AssistantTranscript', () => {
   it('renders message prose', () => {
-    render(<AssistantTranscript messages={[userMessage('1', 'Здравейте')]} phase={null} />);
+    render(
+      <AssistantTranscript messages={[userMessage('1', 'Здравейте')]} phase={null} busy={false} />,
+    );
 
     expect(screen.getByText('Здравейте')).toBeInTheDocument();
   });
 
   it('renders a report chip for a finished report', () => {
-    render(<AssistantTranscript messages={[reportMessage('2')]} phase={null} />);
+    render(<AssistantTranscript messages={[reportMessage('2')]} phase={null} busy={false} />);
 
     expect(screen.getByText('Заглавие на справка')).toBeInTheDocument();
   });
 
   it('does not render a chip for a prose-only message', () => {
-    render(<AssistantTranscript messages={[userMessage('3', 'само текст')]} phase={null} />);
+    render(
+      <AssistantTranscript messages={[userMessage('3', 'само текст')]} phase={null} busy={false} />,
+    );
 
     expect(screen.queryByText('Заглавие на справка')).not.toBeInTheDocument();
   });
 
   it('shows a failure line when the report could not be composed', () => {
-    render(<AssistantTranscript messages={[failedReportMessage('5')]} phase={null} />);
+    render(<AssistantTranscript messages={[failedReportMessage('5')]} phase={null} busy={false} />);
 
     expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
   });
 
   it('renders the phase line inside the aria-live log region', () => {
-    render(<AssistantTranscript messages={[userMessage('6', 'въпрос')]} phase="querying" />);
+    render(
+      <AssistantTranscript messages={[userMessage('6', 'въпрос')]} phase="querying" busy={false} />,
+    );
 
     expect(within(screen.getByRole('log')).getByText('Търся в данните…')).toBeInTheDocument();
   });
 
   it('renders no phase line when idle', () => {
-    render(<AssistantTranscript messages={[userMessage('7', 'въпрос')]} phase={null} />);
+    render(
+      <AssistantTranscript messages={[userMessage('7', 'въпрос')]} phase={null} busy={false} />,
+    );
 
     expect(screen.queryByText('Търся в данните…')).not.toBeInTheDocument();
+  });
+
+  it('withholds a failed report result on the streaming message while busy', () => {
+    render(
+      <AssistantTranscript messages={[failedReportMessage('9')]} phase="composing" busy={true} />,
+    );
+
+    expect(screen.getByText('Съставям справка…')).toBeInTheDocument();
+    expect(screen.queryByText('Справката не можа да бъде съставена.')).not.toBeInTheDocument();
+  });
+
+  it('shows the failed report result once the turn settles', () => {
+    render(
+      <AssistantTranscript messages={[failedReportMessage('10')]} phase={null} busy={false} />,
+    );
+
+    expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
   });
 });

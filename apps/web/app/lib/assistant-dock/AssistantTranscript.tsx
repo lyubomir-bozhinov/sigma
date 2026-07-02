@@ -11,6 +11,9 @@ interface AssistantTranscriptProps {
   messages: UIMessage[];
   /** The ephemeral turn phase, rendered as a status line inside this log region. */
   phase: AssistantPhase | null;
+  /** A turn is in flight. While busy, the streaming message's report result is withheld so a
+   *  mid-turn {ok:false}/chip never shows alongside the phase line (it may still change on retry). */
+  busy: boolean;
 }
 
 // Slack (px) for "still at the bottom": absorbs sub-pixel rounding and the few px a streamed token adds
@@ -24,7 +27,7 @@ const STICK_THRESHOLD_PX = 40;
  * content in view while streaming, but only while the reader is already near the bottom — so scrolling
  * up to read history isn't interrupted.
  */
-export const AssistantTranscript = ({ messages, phase }: AssistantTranscriptProps) => {
+export const AssistantTranscript = ({ messages, phase, busy }: AssistantTranscriptProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -69,8 +72,11 @@ export const AssistantTranscript = ({ messages, phase }: AssistantTranscriptProp
       aria-live="polite"
       aria-label="Разговор с асистента"
     >
-      {messages.map((message) => {
-        const report = reportOutputFromMessage(message);
+      {messages.map((message, index) => {
+        // Withhold the result for the still-streaming (last) message: its emit_report can settle
+        // {ok:false} mid-turn and flip to a chip on retry. Show chip/failure only once the turn settles.
+        const streaming = busy && index === messages.length - 1;
+        const report = streaming ? null : reportOutputFromMessage(message);
         return (
           <div key={message.id} className="assistant-turn">
             <AssistantMessage message={message} />
