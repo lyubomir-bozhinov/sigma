@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildFallbackReport, FALLBACK_TITLE, guessFormat } from './report-fallback';
+import {
+  buildFallbackReport,
+  FALLBACK_TITLE,
+  guessFormat,
+  humanizeColumn,
+} from './report-fallback';
 import type { QueryResult } from './report-schema';
 
 describe('buildFallbackReport — server-side last-resort finalizer', () => {
@@ -16,9 +21,10 @@ describe('buildFallbackReport — server-side last-resort finalizer', () => {
       const block = out.report.blocks[0]!;
       expect(block.type).toBe('totals');
       if (block.type === 'totals') {
+        // labels are humanized Bulgarian, not the raw SQL column names
         expect(block.items).toEqual([
-          { label: 'total_spent_eur', value: 250264972.88, format: 'money' },
-          { label: 'contract_count', value: 293, format: 'number' },
+          { label: 'Общо похарчено (€)', value: 250264972.88, format: 'money' },
+          { label: 'Брой договори', value: 293, format: 'number' },
         ]);
       }
     }
@@ -103,5 +109,25 @@ describe('guessFormat', () => {
     expect(guessFormat('single_offer_share')).toBe('percent');
     expect(guessFormat('signed_at')).toBe('date');
     expect(guessFormat('authority_name')).toBe('text');
+  });
+});
+
+describe('humanizeColumn', () => {
+  it('maps the columns the model produces to Bulgarian labels (no raw identifiers)', () => {
+    expect(humanizeColumn('total_spent_eur')).toBe('Общо похарчено (€)');
+    expect(humanizeColumn('contracts_count')).toBe('Брой договори');
+    expect(humanizeColumn('contract_count')).toBe('Брой договори');
+    expect(humanizeColumn('won_eur')).toBe('Спечелено (€)');
+    expect(humanizeColumn('total_eur')).toBe('Обща стойност (€)');
+    expect(humanizeColumn('authority_name')).toBe('Възложител');
+    expect(humanizeColumn('bidder_name')).toBe('Изпълнител');
+    expect(humanizeColumn('single_offer_share')).toBe('Дял с една оферта');
+    expect(humanizeColumn('period')).toBe('Период');
+    expect(humanizeColumn('year')).toBe('Година');
+  });
+
+  it('degrades an unmapped column to a de-snaked, capitalised label — never the raw identifier', () => {
+    expect(humanizeColumn('some_custom_field')).toBe('Some custom field');
+    expect(humanizeColumn('widget_id')).toBe('Widget');
   });
 });

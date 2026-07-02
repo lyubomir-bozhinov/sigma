@@ -24,6 +24,42 @@ import {
 // beneath it (server-authoritative), so the report still reads in context.
 export const FALLBACK_TITLE = 'Справка по наличните данни';
 
+// Turn a raw SQL column name into a human Bulgarian label, so a server-synthesized fallback doesn't show
+// `total_spent_eur` / `contracts_count` to the reader. A curated map covers the columns the model actually
+// produces (per describe-schema's canonical queries); anything unrecognised degrades to a de-snaked,
+// capitalised form (never the raw identifier). Only the DISPLAY label changes — the bound value still
+// references the real column.
+const COLUMN_LABELS: [RegExp, string][] = [
+  [/^period$|^месец$|^month$|тримесеч|quarter/, 'Период'],
+  [/^year$|^година$|годин/, 'Година'],
+  [/(spent|похарчен|разход)/, 'Общо похарчено (€)'],
+  [/(won|спечелен)/, 'Спечелено (€)'],
+  [/(amount|sum|total|value|стойност|сума)/, 'Обща стойност (€)'],
+  [/(single.?offer|една.?оферта).*(share|дял)|(share|дял).*(single|оферта)/, 'Дял с една оферта'],
+  [/(share|дял|percent|процент)/, 'Дял'],
+  [
+    /(contract|договор).*(count|брой|number|num|_n\b)|(count|брой).*(contract|договор)|^contracts?$|^договори$/,
+    'Брой договори',
+  ],
+  [/count|брой|number$|^n$|^n_/, 'Брой'],
+  [/authorit|възложител/, 'Възложител'],
+  [/bidder|contractor|company|изпълнител|компани|фирма/, 'Изпълнител'],
+  [/sector|cpv|сектор/, 'Сектор'],
+  [/signed|date|дата/, 'Дата'],
+  [/name|title|наименование|^име$/, 'Наименование'],
+];
+
+export function humanizeColumn(col: string): string {
+  const c = col.toLowerCase();
+  for (const [re, label] of COLUMN_LABELS) if (re.test(c)) return label;
+  // Fallback: drop id/eur/count suffixes, de-snake, capitalise — readable even for an unmapped column.
+  const cleaned = col
+    .replace(/_(eur|id)$/i, '')
+    .replace(/_/g, ' ')
+    .trim();
+  return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : col;
+}
+
 // Guess a display format from a column name, mirroring how the model picks one so the fallback reads like
 // a normal report. Unknown → text (safe; the renderer shows the raw cell).
 export function guessFormat(col: string): CellFormat {
@@ -59,7 +95,7 @@ export function buildFallbackReport(results: QueryResult[], question: string): B
           isNumericColumn(last, i)
             ? [
                 {
-                  label: col,
+                  label: humanizeColumn(col),
                   ref: { resultId: last.handle, row: 0, col },
                   format: guessFormat(col),
                 },
@@ -75,7 +111,11 @@ export function buildFallbackReport(results: QueryResult[], question: string): B
       {
         type: 'table',
         resultId: last.handle,
-        columns: last.columns.map((col) => ({ key: col, header: col, format: guessFormat(col) })),
+        columns: last.columns.map((col) => ({
+          key: col,
+          header: humanizeColumn(col),
+          format: guessFormat(col),
+        })),
       },
     ];
   }
