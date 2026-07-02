@@ -6,6 +6,7 @@
 // The thin Vercel-AI-SDK layer (separate, needs the `ai` dep + bindings) just maps these definitions
 // to SDK `tool()`s and runs streamText against BgGPT via the AI Gateway — it carries no logic.
 
+import { searchMatchQuery } from '@sigma/db';
 import { describeSchema } from './describe-schema';
 import { assertReadOnlySelect } from './sql-guard';
 import { guardSelect } from './sql-ast-guard';
@@ -181,6 +182,67 @@ const semanticSearchTool: AssistantTool = {
       // and the route's retrieveSchemaContext fallback — review #80).
       console.error('[assistant] semantic_search failed', e);
       return 'Семантичното търсене не е налично в момента.';
+    }
+  },
+};
+
+// Entity resolution by name — the CASE-INSENSITIVE, Cyrillic-safe path. SQLite's `LIKE`/`=`/`upper()`
+// fold case for ASCII ONLY, so a model-authored `WHERE name LIKE '%Столична община%'` silently misses
+// the row stored as „СТОЛИЧНА ОБЩИНА" (uppercase) and the assistant wrongly answers „not found". This
+// tool reuses the site's FTS5 `search_index` (unicode61 tokenizer folds case + diacritics for Cyrillic
+// and Latin alike) via the SAME ranked prefix-AND query the website uses (`searchMatchQuery`), and hands
+// back the exact join id (`search_index.ref` = authority_id / bidder_id). run_sql cannot do this itself:
+// its parser rejects FTS `MATCH` (see describe-schema). Server-authored + parameterized, so it bypasses
+// the run_sql guard safely.
+const findEntityTool: AssistantTool = {
+  name: 'find_entity',
+  description:
+    'Намира точния идентификатор (id) на ВЪЗЛОЖИТЕЛ или ИЗПЪЛНИТЕЛ по име — толерантно към ГЛАВНИ/малки ' +
+    'букви, диакритика и правописни варианти. ПОЛЗВАЙ ТОЗИ инструмент (а НЕ `LIKE`/`=` върху name, които ' +
+    'са чувствителни към регистъра за кирилица и пропускат съвпадения), за да намериш организация по име. ' +
+    'Върнатото id ползвай в run_sql: `t.authority_id = <id>` за възложител, `c.bidder_id = <id>` за изпълнител.',
+  parameters: {
+    type: 'object',
+    required: ['name'],
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', description: 'име (или част от него) на възложител/изпълнител' },
+      kind: {
+        type: 'string',
+        enum: ['authority', 'company'],
+        description: 'по избор: ограничи до възложител (authority) или изпълнител (company)',
+      },
+    },
+  },
+  async execute(args, ctx) {
+    const match = searchMatchQuery(str(args.name));
+    if (!match) return 'Въведи име за търсене (поне 2 знака).';
+    const kind = args.kind === 'authority' || args.kind === 'company' ? args.kind : null;
+    try {
+      const { results } = kind
+        ? await ctx.db
+            .prepare(
+              'SELECT kind, ref, title, ident FROM search_index WHERE kind = ? AND search_index MATCH ? ORDER BY rank LIMIT 8',
+            )
+            .bind(kind, match)
+            .all<{ kind: string; ref: string; title: string; ident: string | null }>()
+        : await ctx.db
+            .prepare(
+              "SELECT kind, ref, title, ident FROM search_index WHERE kind IN ('authority','company') AND search_index MATCH ? ORDER BY rank LIMIT 8",
+            )
+            .bind(match)
+            .all<{ kind: string; ref: string; title: string; ident: string | null }>();
+      if (!results || results.length === 0) return 'Няма намерени субекти с това име.';
+      const label = (k: string) =>
+        k === 'authority' ? 'възложител' : k === 'company' ? 'изпълнител' : k;
+      return results
+        .map((r) => `${label(r.kind)} id=${r.ref} — ${r.title}${r.ident ? ` (${r.ident})` : ''}`)
+        .join('\n');
+    } catch (e) {
+      // Degrade to a friendly, retry-able message instead of surfacing the raw error (consistent with
+      // run_sql / semantic_search — review #80).
+      console.error('[assistant] find_entity failed', e);
+      return 'Търсенето по име не е налично в момента.';
     }
   },
 };
@@ -370,6 +432,7 @@ const reconcileRollupTool: AssistantTool = {
 export const ASSISTANT_TOOLS: AssistantTool[] = [
   describeSchemaTool,
   runSqlTool,
+  findEntityTool,
   semanticSearchTool,
   eopFetchTool,
   sourceLinkTool,
