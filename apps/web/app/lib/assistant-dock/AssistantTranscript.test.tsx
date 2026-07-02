@@ -110,6 +110,26 @@ describe('AssistantTranscript', () => {
     expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
   });
 
+  it('does NOT flash the failure line for an ok:false on the last turn while still busy (retry pending)', () => {
+    // A first emit returns ok:false and the loop retries; the failure line must not flash before the
+    // successful retry lands. While busy the pending indicator carries the state instead.
+    render(<AssistantTranscript messages={[failedReportMessage('5b')]} busy={true} />);
+
+    expect(screen.queryByText('Справката не можа да бъде съставена.')).not.toBeInTheDocument();
+  });
+
+  it('still shows the failure line for an earlier settled turn while a new turn streams', () => {
+    // An earlier turn that genuinely ended ok:false keeps its failure line even though a later turn is busy.
+    render(
+      <AssistantTranscript
+        messages={[failedReportMessage('5c'), userMessage('5d', 'нов въпрос')]}
+        busy={true}
+      />,
+    );
+
+    expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
+  });
+
   it('shows the no-answer fallback when a settled turn made tool calls but no report', () => {
     render(<AssistantTranscript messages={[toolOnlyMessage('6')]} busy={false} />);
 
