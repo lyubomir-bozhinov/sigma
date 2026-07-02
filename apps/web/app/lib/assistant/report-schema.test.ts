@@ -447,6 +447,25 @@ describe('findProseNumbers', () => {
     expect(findProseNumbers('през 2023 г., топ 5, 3-ти по ред, към 2026-06-18')).toHaveLength(0);
   });
 
+  it('ignores MM.YYYY / DD.MM.YYYY date notation (not a material number)', () => {
+    // The grouped-thousands pattern used to read "01.2026" as "01.202" (the year's first three digits),
+    // so a freshness/period callout echoing the resolved dates was wrongly rejected.
+    expect(findProseNumbers('данните са до 01.2026')).toHaveLength(0);
+    expect(findProseNumbers('период 01.2023 – 12.2023')).toHaveLength(0);
+    expect(findProseNumbers('към 01.02.2026 г.')).toHaveLength(0);
+  });
+
+  it('ignores the "сто" word-family but still flags the "на сто" percent idiom', () => {
+    // The percent idiom "на сто" (= per hundred) must not swallow the whole "сто" word-family — those are
+    // ordinary procurement prose, not percentages.
+    expect(findProseNumbers('Договор на стойност 5 обособени позиции')).toHaveLength(0);
+    expect(findProseNumbers('Разходи на Столична община за 2023 г.')).toHaveLength(0);
+    expect(findProseNumbers('поръчки на стотици възложители')).toHaveLength(0);
+    // the genuine percentage idiom is still caught
+    expect(findProseNumbers('50 на сто от договорите')).not.toHaveLength(0);
+    expect(findProseNumbers('ръст от 95%')).not.toHaveLength(0);
+  });
+
   it('catches markup-split and alternative number forms (review #80)', () => {
     // a magnitude word split from its digits by markdown bold still reads as "12 млрд." to a human
     expect(findProseNumbers('усвоени **12** **млрд.** евро')).not.toHaveLength(0);
