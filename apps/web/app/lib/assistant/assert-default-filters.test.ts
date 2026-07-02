@@ -148,4 +148,55 @@ describe('assertDefaultFilters', () => {
     );
     expect(r).toEqual({ ok: true, callout: [] });
   });
+
+  // Conditional signed_at-window guard: a series that BUCKETS by signed_at must bracket the date range,
+  // else stray out-of-coverage rows (2016, 2029) leak into their own period buckets.
+  const DEFAULTS = "c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна'";
+  const JOIN = 'FROM contracts c JOIN tenders t ON t.id = c.tender_id';
+
+  it('rejects an UNBOUNDED year rollup (buckets by signed_at, no date range)', () => {
+    const r = assertDefaultFilters(
+      `SELECT substr(c.signed_at, 1, 4) AS year, SUM(c.amount_eur) AS total_eur ${JOIN} ` +
+        `WHERE ${DEFAULTS} AND c.signed_at IS NOT NULL GROUP BY year`,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/времеви обхват/);
+  });
+
+  it('rejects a bucketed series bounded only by the GLOB well-formedness check (not a date range)', () => {
+    const r = assertDefaultFilters(
+      `SELECT substr(c.signed_at, 1, 7) AS period, SUM(c.amount_eur) AS s ${JOIN} ` +
+        `WHERE ${DEFAULTS} AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' GROUP BY period`,
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it('accepts a year rollup bracketed by a raw signed_at range', () => {
+    const r = assertDefaultFilters(
+      `SELECT substr(c.signed_at, 1, 4) AS year, SUM(c.amount_eur) AS total_eur ${JOIN} ` +
+        `WHERE ${DEFAULTS} AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now') GROUP BY year`,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts a bucketed series pinned to a fixed year via substr equality', () => {
+    const r = assertDefaultFilters(
+      `SELECT substr(c.signed_at, 1, 4) AS year, COUNT(*) AS n ${JOIN} ` +
+        `WHERE ${DEFAULTS} AND substr(c.signed_at, 1, 4) = '2023' GROUP BY year`,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts a month series bounded by a period filter (>= … AND < …)', () => {
+    const r = assertDefaultFilters(
+      `SELECT substr(c.signed_at, 1, 7) AS period, SUM(c.amount_eur) AS s ${JOIN} ` +
+        `WHERE ${DEFAULTS} AND c.signed_at >= '2026-01-01' AND c.signed_at < '2026-07-03' GROUP BY period`,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('does NOT require a date window for a non-temporal aggregate (signed_at not bucketed)', () => {
+    const r = assertDefaultFilters(`SELECT SUM(c.amount_eur) AS s ${JOIN} WHERE ${DEFAULTS}`);
+    expect(r.ok).toBe(true);
+  });
 });
