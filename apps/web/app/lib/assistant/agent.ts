@@ -11,6 +11,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import {
   convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   jsonSchema,
   stepCountIs,
   streamText,
@@ -21,6 +23,7 @@ import {
 import { buildSystemPrompt } from './system-prompt';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
+import { buildFallbackReport } from './report-fallback';
 import type { TemporalContext } from './temporal';
 
 export interface AgentEnv {
@@ -224,7 +227,23 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const maxSteps = resolveMaxSteps(opts.env.MAX_STEPS);
   const messages = await convertToModelMessages(opts.messages);
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
+
+  // Resolves when the model loop (all steps + tool executions) is fully finished, so the last-resort
+  // finalizer below runs only after the model has had every chance to emit its own report. `onError`
+  // resolves it too (and flags the error) so the wrapping stream can never hang if the model throws —
+  // and so we don't paste a synthesized report on top of a genuine provider-failure message.
+  let resolveModelFinished!: () => void;
+  const modelFinished = new Promise<void>((resolve) => {
+    resolveModelFinished = resolve;
+  });
+  let modelErrored = false;
+
   const result = streamText({
+    onFinish: () => resolveModelFinished(),
+    onError: () => {
+      modelErrored = true;
+      resolveModelFinished();
+    },
     model: buildModel(opts.env),
     system: buildSystemPrompt({
       schemaContext: opts.schemaContext,
@@ -277,7 +296,41 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // leaves headroom while still capping worst-case tokens per step.
     maxOutputTokens: 8192,
   });
-  return result.toUIMessageStreamResponse({
+  // Wrap the model's UI stream so we can append a SERVER-SYNTHESIZED report when the model gathered real
+  // data but never produced a valid one. Without this a weak-model shape error / step-budget exhaustion
+  // dead-ends the turn on „couldn't compose" even though the answer is already in ctx.results. The
+  // injected part uses the SAME `tool-emit_report` shape the model would have produced, so the dock
+  // renders a normal report chip; values are bound through bindReport (server-owned, never model-written).
+  const stream = createUIMessageStream<UIMessage>({
+    execute: async ({ writer }) => {
+      writer.merge(result.toUIMessageStream());
+      await modelFinished;
+      // Skip the fallback when the model finalized, gathered no data, or errored (a provider failure
+      // already surfaced its own message — don't paste a report over it).
+      if (modelErrored || opts.ctx.reportEmitted || opts.ctx.results.length === 0) return;
+      try {
+        const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
+        if (!built.ok) return;
+        const storedId = await persistReport(opts.ctx, built, modelId);
+        const toolCallId = `fallback_${randomReportId()}`;
+        writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
+        writer.write({
+          type: 'tool-input-available',
+          toolCallId,
+          toolName: 'emit_report',
+          input: {},
+        });
+        writer.write({
+          type: 'tool-output-available',
+          toolCallId,
+          output: { ok: true as const, report: built.report, ...(storedId ? { storedId } : {}) },
+        });
+        opts.ctx.reportEmitted = true;
+      } catch (err) {
+        // The fallback is best-effort: never let it break the response the model already streamed.
+        console.error('[assistant] fallback finalizer failed', err);
+      }
+    },
     // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
     // readable Bulgarian line instead of a broken connection. The SDK default redacts the error to
     // "An error occurred." to avoid leaking server details — we log it server-side (Workers tail)
@@ -287,4 +340,5 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       return 'Асистентът временно не е достъпен. Опитай отново след малко.';
     },
   });
+  return createUIMessageStreamResponse({ stream });
 }
