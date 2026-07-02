@@ -21,6 +21,7 @@ import {
 import { buildSystemPrompt } from './system-prompt';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
+import type { TemporalContext } from './temporal';
 
 export interface AgentEnv {
   /** Provider API key (OpenRouter today). SECRET — `wrangler secret put ASSISTANT_API_KEY`. */
@@ -74,7 +75,7 @@ function buildModel(env: AgentEnv) {
 
 // System-prompt version string used in StoredReport provenance for regression tracing.
 // Bump this whenever system-prompt.ts changes semantically.
-const PROMPT_VERSION = '2026-06-28';
+const PROMPT_VERSION = '2026-07-02'; // + deterministic temporal-context block (temporal.ts)
 
 /** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
 function randomReportId(): string {
@@ -169,6 +170,9 @@ export interface RunAssistantOptions {
   messages: UIMessage[];
   schemaContext?: string[];
   freshness?: string;
+  // Deterministic, server-resolved temporal context for this turn (temporal.ts). Threaded into the system
+  // prompt so the model uses absolute dates instead of guessing relative periods from its stale prior.
+  temporal?: TemporalContext;
   abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the model loop (review #80)
 }
 
@@ -183,7 +187,11 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
   const result = streamText({
     model: buildModel(opts.env),
-    system: buildSystemPrompt({ schemaContext: opts.schemaContext, freshness: opts.freshness }),
+    system: buildSystemPrompt({
+      schemaContext: opts.schemaContext,
+      freshness: opts.freshness,
+      temporal: opts.temporal,
+    }),
     messages,
     tools: buildToolSet(opts.ctx, modelId),
     stopWhen: stepCountIs(maxSteps),
