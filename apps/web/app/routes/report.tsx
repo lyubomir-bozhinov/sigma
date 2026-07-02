@@ -88,7 +88,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const stored = await loadReport(bucket, id);
   if (!stored) throw new Response('Not Found', { status: 404 });
 
-  return { report: stored };
+  // Strip provenance (SQL, model, prompt version) before serializing to the client —
+  // single-fetch sends the full loader return as hydration JSON regardless of what the
+  // component reads, so sensitive fields must be omitted here, not just left unrendered.
+  const { provenance: _omit, ...clientSafe } = stored;
+  return { report: clientSafe };
 }
 
 // ── UI ───────────────────────────────────────────────────────────────────────
