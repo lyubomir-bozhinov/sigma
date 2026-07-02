@@ -18,7 +18,6 @@ import type { Route } from './+types/report';
 import { type StoredReport, STORED_REPORT_SCHEMA_VERSION } from '~/lib/assistant-contract/report';
 import { ReportBlockRenderer } from '~/components/ReportBlockRenderer';
 import { ReportAiWatermark } from '~/components/ReportAiWatermark';
-import { ReportMethodologyCallout } from '~/components/ReportMethodologyCallout';
 import { ReportToolbar } from '~/components/ReportToolbar';
 
 // ── R2 fetch ────────────────────────────────────────────────────────────────
@@ -89,14 +88,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const stored = await loadReport(bucket, id);
   if (!stored) throw new Response('Not Found', { status: 404 });
 
-  return { report: stored };
+  // Strip provenance (SQL, model, prompt version) before serializing to the client —
+  // single-fetch sends the full loader return as hydration JSON regardless of what the
+  // component reads, so sensitive fields must be omitted here, not just left unrendered.
+  const { provenance: _omit, ...clientSafe } = stored;
+  return { report: clientSafe };
 }
 
 // ── UI ───────────────────────────────────────────────────────────────────────
 
 export default function ReportPage({ loaderData }: Route.ComponentProps) {
   const { report: stored } = loaderData;
-  const { report, provenance } = stored;
+  const { report } = stored;
 
   return (
     <main id="main" className="report-page">
@@ -112,9 +115,6 @@ export default function ReportPage({ loaderData }: Route.ComponentProps) {
 
       {/* D1–D3: block rendering (timeseries, markdown, CSP) */}
       <ReportBlockRenderer blocks={report.blocks} />
-
-      {/* D5 + D6: methodology callout with per-source freshness */}
-      <ReportMethodologyCallout provenance={provenance} />
     </main>
   );
 }
