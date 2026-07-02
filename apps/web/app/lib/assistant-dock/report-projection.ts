@@ -35,11 +35,15 @@ const isEmitReportOutput = (value: unknown): value is EmitReportOutput => {
 /**
  * The emit_report tool output from a settled part of this message, or null if the turn has no report yet
  * (prose-only, the tool is still running, or the output is malformed). Returns the `{ ok: false }` form
- * too, so the caller can surface a failure affordance. Returns the LAST well-formed output: on a
- * validation-retry turn (`{ ok: false }` then `{ ok: true }`) the successful report must win.
+ * too, so the caller can surface a failure affordance.
+ *
+ * When the model retries emit_report after a validation failure, the message has multiple settled parts.
+ * We return the LAST ok:true output so a successful retry is surfaced instead of the earlier failure.
+ * Falls back to the last output of any kind so a persistent failure is still shown.
  */
 export const reportOutputFromMessage = (message: MessageLike): EmitReportOutput | null => {
-  let latest: EmitReportOutput | null = null;
+  let lastOk: EmitReportOutput | null = null;
+  let lastAny: EmitReportOutput | null = null;
   for (const part of message.parts ?? []) {
     if (
       part.type === EMIT_REPORT_PART &&
@@ -47,10 +51,11 @@ export const reportOutputFromMessage = (message: MessageLike): EmitReportOutput 
       part.output != null &&
       isEmitReportOutput(part.output)
     ) {
-      latest = part.output;
+      lastAny = part.output;
+      if (part.output.ok) lastOk = part.output;
     }
   }
-  return latest;
+  return lastOk ?? lastAny;
 };
 
 const toNumber = (value: string | number | null): number | null => {

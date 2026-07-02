@@ -11,6 +11,7 @@ import { devWarn } from './dev-warn';
 
 export const TRANSCRIPT_KEY = 'sigma.assistant.transcript';
 export const COLLAPSED_KEY = 'sigma.assistant.collapsed';
+export const REPORTS_INDEX_KEY = 'sigma.reports.index';
 
 // The server keeps only the last 24 messages (assistant.chat.tsx → MAX_MESSAGES); mirror it so we never
 // persist or POST more than it will use.
@@ -47,8 +48,6 @@ export const trimMessages = (
   maxBytes = MAX_BYTES,
 ): UIMessage[] => {
   let kept = messages.slice(-maxMessages);
-  // Always keep at least one message: a single over-budget turn is sent anyway, the server 413s it, and
-  // the dock surfaces that error (errors.ts) — so the turn isn't dropped silently.
   while (kept.length > 1 && byteLength(JSON.stringify(kept)) > maxBytes) {
     kept = kept.slice(1);
   }
@@ -95,6 +94,16 @@ export const saveTranscript = (messages: UIMessage[], storage = defaultStorage()
   }
 };
 
+// Clear the transcript key only (collapsed flag survives). Writes '[]' — StorageLike has no removeItem.
+export const clearTranscript = (storage = defaultStorage()): void => {
+  if (!storage) return;
+  try {
+    storage.setItem(TRANSCRIPT_KEY, '[]');
+  } catch (error) {
+    devWarn('[assistant] transcript not cleared (storage unavailable)', error);
+  }
+};
+
 // null when no preference is stored, so the dock can pick a device-appropriate default (open on desktop,
 // collapsed on mobile) instead of forcing open everywhere. A stored '0'/'1' always wins.
 export const loadCollapsed = (storage = defaultStorage()): boolean | null => {
@@ -114,5 +123,52 @@ export const saveCollapsed = (collapsed: boolean, storage = defaultStorage()): v
     storage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
   } catch (error) {
     devWarn('[assistant] dock state not persisted (storage unavailable)', error);
+  }
+};
+
+// Per-browser report index — populated when a report is persisted to R2 and its storedId arrives in the
+// dock. The index is the authoritative source for /reports; the server never enumerates the bucket so
+// each visitor sees only their own reports (spec §5: "без глобално изброяване").
+const MAX_REPORTS_INDEX = 50;
+
+export interface ReportIndexEntry {
+  id: string;
+  title: string;
+  question: string;
+  createdAt: string;
+}
+
+const isReportIndexEntry = (v: unknown): v is ReportIndexEntry => {
+  if (typeof v !== 'object' || v === null) return false;
+  const e = v as Record<string, unknown>;
+  return (
+    typeof e.id === 'string' &&
+    typeof e.title === 'string' &&
+    typeof e.question === 'string' &&
+    typeof e.createdAt === 'string'
+  );
+};
+
+export const loadReportIndex = (storage = defaultStorage()): ReportIndexEntry[] => {
+  try {
+    const raw = storage?.getItem(REPORTS_INDEX_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isReportIndexEntry);
+  } catch {
+    return [];
+  }
+};
+
+export const addToReportIndex = (entry: ReportIndexEntry, storage = defaultStorage()): void => {
+  if (!storage) return;
+  try {
+    const existing = loadReportIndex(storage);
+    if (existing.some((e) => e.id === entry.id)) return; // deduplicate
+    const updated = [entry, ...existing].slice(0, MAX_REPORTS_INDEX);
+    storage.setItem(REPORTS_INDEX_KEY, JSON.stringify(updated));
+  } catch {
+    // Non-fatal: quota exceeded / storage blocked
   }
 };

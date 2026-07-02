@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { classifyHttpError, networkError } from './errors';
 import { isPhasePart, type AssistantPhase } from '../assistant-contract/stream';
-import { loadTranscript, saveTranscript, trimMessages } from './storage';
+import { clearTranscript, loadTranscript, saveTranscript, trimMessages } from './storage';
 
 const ENDPOINT = '/assistant/chat';
 
@@ -55,6 +55,7 @@ const transport = new DefaultChatTransport<UIMessage>({
 /** useChat wired to /assistant/chat, with the transcript restored from / persisted to localStorage. */
 export const useAssistantChat = (): UseChatHelpers<UIMessage> & {
   phase: AssistantPhase | null;
+  reset: () => void;
 } => {
   // The ephemeral turn phase, delivered as a transient data part via onData (never in messages).
   const [phase, setPhase] = useState<AssistantPhase | null>(null);
@@ -69,6 +70,10 @@ export const useAssistantChat = (): UseChatHelpers<UIMessage> & {
   });
   const { messages, status, setMessages } = chat;
 
+  // stop() is fire-and-forget, so a late settle can re-trigger persist/re-render after reset(); this flag
+  // re-clears storage + transcript until the next send lifts it — sendMessage is the ONLY path that lifts it.
+  const suppressPersist = useRef(false);
+
   // Restore the saved transcript once, after mount (localStorage is client-only → SSR-safe).
   useEffect(() => {
     const saved = loadTranscript();
@@ -78,8 +83,16 @@ export const useAssistantChat = (): UseChatHelpers<UIMessage> & {
   // Persist after each settled turn (status 'ready'). The length guard is load-bearing: it stops the
   // empty initial state from clobbering stored history before the restore effect's setMessages commits.
   useEffect(() => {
-    if (status === 'ready' && messages.length > 0) saveTranscript(messages);
-  }, [messages, status]);
+    if (status !== 'ready' || messages.length === 0) return;
+    if (suppressPersist.current) {
+      // A superseded turn settled after reset() — a late flush can repopulate chat.messages, so re-clear
+      // storage AND the transcript (else the old conversation visibly reappears). Next run early-returns.
+      clearTranscript();
+      setMessages([]);
+      return;
+    }
+    saveTranscript(messages);
+  }, [messages, status, setMessages]);
 
   // The phase line is ephemeral: clear it when the turn settles, and on submit so a stale phase from
   // the previous turn can't flash before the first onData of the next one arrives.
@@ -87,5 +100,20 @@ export const useAssistantChat = (): UseChatHelpers<UIMessage> & {
     if (status === 'submitted' || status === 'ready' || status === 'error') setPhase(null);
   }, [status]);
 
-  return { ...chat, phase };
+  // Start a fresh chat: abort any in-flight turn, drop the transcript (memory + storage), clear the error.
+  const reset = () => {
+    suppressPersist.current = true;
+    chat.stop();
+    chat.setMessages([]);
+    chat.clearError();
+    clearTranscript();
+  };
+
+  // Wrap sendMessage so a new turn lifts the post-reset suppression — only then may persistence resume.
+  const sendMessage: typeof chat.sendMessage = (...args) => {
+    suppressPersist.current = false;
+    return chat.sendMessage(...args);
+  };
+
+  return { ...chat, sendMessage, reset, phase };
 };
