@@ -15,7 +15,8 @@ import type { UIMessage } from 'ai';
 const isToolResponseEcho = (text: string): boolean =>
   text.trimStart().startsWith('<tool_response>');
 
-const textOf = (message: UIMessage): string => {
+// Exported for reuse by condense.ts — the recap bullets share the same notion of "visible prose".
+export const textOf = (message: UIMessage): string => {
   const parts = message.parts ?? [];
 
   // Index of the last non-text, non-step-start part (i.e. any tool invocation / tool result).

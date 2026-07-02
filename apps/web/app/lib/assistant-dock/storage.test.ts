@@ -8,6 +8,7 @@ import {
   MAX_MESSAGES,
   saveCollapsed,
   saveTranscript,
+  STORAGE_MAX_MESSAGES,
   TRANSCRIPT_KEY,
   trimMessages,
   type StorageLike,
@@ -94,6 +95,18 @@ describe('transcript persistence', () => {
 
   it('returns an empty array when nothing is stored', () => {
     expect(loadTranscript(fakeStorage())).toEqual([]);
+  });
+
+  it('persists more than the POST cap — the storage budget is the larger STORAGE_MAX_MESSAGES', () => {
+    const store = fakeStorage();
+    const msgs = Array.from({ length: STORAGE_MAX_MESSAGES + 5 }, (_, i) => msg(String(i), 'x'));
+
+    saveTranscript(msgs, store);
+
+    const kept = loadTranscript(store);
+    expect(kept).toHaveLength(STORAGE_MAX_MESSAGES);
+    expect(STORAGE_MAX_MESSAGES).toBeGreaterThan(MAX_MESSAGES);
+    expect(kept[0]!.id).toBe('5');
   });
 
   it('returns an empty array on malformed JSON', () => {

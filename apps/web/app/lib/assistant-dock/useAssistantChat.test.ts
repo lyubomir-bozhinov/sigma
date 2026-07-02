@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { UIMessage } from 'ai';
 import { ASSISTANT_ERROR_COPY } from './errors';
-import { classifyingFetch } from './useAssistantChat';
+import { MAX_BYTES, MAX_MESSAGES } from './storage';
+import { classifyingFetch, prepareChatBody } from './useAssistantChat';
 
 const jsonResponse = (status: number, error?: string) =>
   new Response(error === undefined ? null : JSON.stringify({ error }), {
@@ -75,5 +77,25 @@ describe('classifyingFetch', () => {
     );
 
     await expect(classifyingFetch('/assistant/chat')).rejects.toBe(abort);
+  });
+});
+
+describe('prepareChatBody', () => {
+  const msg = (id: string, text: string): UIMessage =>
+    ({ id, role: 'user', parts: [{ type: 'text', text }] }) as UIMessage;
+
+  it('short history goes out verbatim', () => {
+    const msgs = Array.from({ length: 5 }, (_, i) => msg(`m${i}`, `t${i}`));
+    expect(prepareChatBody(msgs)).toEqual({ messages: msgs });
+  });
+
+  it('long history is condensed to one recap + recent turns and stays under the POST caps', () => {
+    const msgs = Array.from({ length: 40 }, (_, i) => msg(`m${i}`, `въпрос ${i} `.repeat(50)));
+    const { messages } = prepareChatBody(msgs);
+
+    expect(messages.length).toBeLessThanOrEqual(MAX_MESSAGES);
+    expect(messages[0].id).toMatch(/^recap-/);
+    expect(messages[messages.length - 1].id).toBe('m39');
+    expect(new TextEncoder().encode(JSON.stringify(messages)).length).toBeLessThanOrEqual(MAX_BYTES);
   });
 });
