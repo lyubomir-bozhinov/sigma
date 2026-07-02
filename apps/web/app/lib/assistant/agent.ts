@@ -112,7 +112,7 @@ function buildModel(env: AgentEnv) {
 
 // System-prompt version string used in StoredReport provenance for regression tracing.
 // Bump this whenever system-prompt.ts changes semantically.
-const PROMPT_VERSION = '2026-07-02'; // + deterministic temporal-context block (temporal.ts)
+const PROMPT_VERSION = '2026-07-02-headline-totals'; // + leading totals-headline rule for list/breakdown
 
 /** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
 function randomReportId(): string {
