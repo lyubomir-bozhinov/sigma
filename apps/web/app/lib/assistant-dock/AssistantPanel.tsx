@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai';
+import type { AssistantPhase } from '../assistant-contract/stream';
 import { AssistantComposer } from './AssistantComposer';
 import { AssistantEmptyState } from './AssistantEmptyState';
 import { AssistantTranscript } from './AssistantTranscript';
@@ -7,6 +8,8 @@ interface AssistantPanelProps {
   messages: UIMessage[];
   /** A turn is in flight (status 'submitted' | 'streaming'). */
   busy: boolean;
+  /** The ephemeral turn phase surfaced in the transcript. */
+  phase: AssistantPhase | null;
   onSend: (text: string) => void;
   onStop: () => void;
   onPick: (prompt: string) => void;
@@ -24,6 +27,7 @@ interface AssistantPanelProps {
 export const AssistantPanel = ({
   messages,
   busy,
+  phase,
   onSend,
   onStop,
   onPick,
@@ -48,7 +52,7 @@ export const AssistantPanel = ({
       {messages.length === 0 ? (
         <AssistantEmptyState onPick={onPick} />
       ) : (
-        <AssistantTranscript messages={messages} />
+        <AssistantTranscript messages={messages} phase={phase} />
       )}
     </div>
 

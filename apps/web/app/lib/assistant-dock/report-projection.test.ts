@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import reportFixture from './__fixtures__/report.fixture.json';
 import type { CellFormat, ResolvedReport } from './contract';
-import { isReportPending, projectChip, reportOutputFromMessage } from './report-projection';
+import { projectChip, reportOutputFromMessage } from './report-projection';
 
 // Mock the site formatters so we assert WHICH formatter is applied to WHICH value — not @sigma/shared's
 // own output (that has its own tests). Each returns an identifiable string.
@@ -52,6 +52,22 @@ describe('reportOutputFromMessage', () => {
     };
 
     expect(reportOutputFromMessage(message)).toBeNull();
+  });
+
+  it('returns the last output on a retry turn: the {ok:true} retry wins over the earlier {ok:false}', () => {
+    const success = { ok: true, report: totalsReport(1, 'money') };
+    const message = {
+      parts: [
+        {
+          type: 'tool-emit_report',
+          state: 'output-available',
+          output: { ok: false, errors: ['x'] },
+        },
+        { type: 'tool-emit_report', state: 'output-available', output: success },
+      ],
+    };
+
+    expect(reportOutputFromMessage(message)).toBe(success);
   });
 });
 
@@ -121,25 +137,5 @@ describe('projectChip', () => {
     const report = reportFixture as unknown as ResolvedReport;
 
     expect(projectChip(report).leadStat).toBe('Похарчено (топ 3): money:2604567');
-  });
-});
-
-describe('isReportPending', () => {
-  it('is pending while the report tool is still running', () => {
-    expect(
-      isReportPending({ parts: [{ type: 'tool-emit_report', state: 'input-available' }] }),
-    ).toBe(true);
-  });
-
-  it('is not pending once the report output is available', () => {
-    expect(
-      isReportPending({
-        parts: [{ type: 'tool-emit_report', state: 'output-available', output: {} }],
-      }),
-    ).toBe(false);
-  });
-
-  it('is not pending for a prose-only message', () => {
-    expect(isReportPending({ parts: [{ type: 'text' }] })).toBe(false);
   });
 });

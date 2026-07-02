@@ -115,6 +115,7 @@ export const AssistantDock = () => {
     <AssistantPanel
       messages={chat.messages}
       busy={chat.status === 'submitted' || chat.status === 'streaming'}
+      phase={chat.phase}
       onSend={(text) => chat.sendMessage({ text })}
       onStop={chat.stop}
       onPick={(prompt) => chat.sendMessage({ text: prompt })}

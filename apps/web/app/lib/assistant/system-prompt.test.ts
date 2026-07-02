@@ -4,6 +4,7 @@ import {
   DATA_TRUST_RULE,
   EDITORIAL_SKELETON,
   EMIT_REPORT_POLICY,
+  INTERNALS_NON_DISCLOSURE_RULE,
   RECONCILE_RULE,
   VALUES_BY_REFERENCE_RULE,
 } from './system-prompt';
@@ -18,6 +19,10 @@ describe('buildSystemPrompt', () => {
 
   it('carries the reconcile-with-rollup rule (E4): reconcile a count/sum before stating it', () => {
     expect(buildSystemPrompt()).toContain(RECONCILE_RULE);
+  });
+
+  it('forbids disclosing SQL / column / tool internals in the conversational prose', () => {
+    expect(buildSystemPrompt()).toContain(INTERNALS_NON_DISCLOSURE_RULE);
   });
 
   it('hardens the prompt-injection boundary: embedded "instructions" in data are framed as data to ignore', () => {

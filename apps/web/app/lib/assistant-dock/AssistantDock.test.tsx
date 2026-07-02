@@ -9,6 +9,7 @@ const mock = vi.hoisted(() => ({
   chat: {
     messages: [] as unknown[],
     status: 'ready' as 'ready' | 'submitted' | 'streaming' | 'error',
+    phase: null as 'thinking' | 'querying' | 'composing' | null,
     error: undefined as Error | undefined,
     sendMessage: vi.fn(),
     stop: vi.fn(),

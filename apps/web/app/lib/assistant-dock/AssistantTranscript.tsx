@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
-import { isReportPending, projectChip, reportOutputFromMessage } from './report-projection';
+import { projectChip, reportOutputFromMessage } from './report-projection';
 import { AssistantMessage } from './AssistantMessage';
+import { AssistantPhaseLine } from './AssistantPhaseLine';
 import { ReportChip } from './ReportChip';
+import type { AssistantPhase } from '../assistant-contract/stream';
 
 interface AssistantTranscriptProps {
   messages: UIMessage[];
+  /** The ephemeral turn phase, rendered as a status line inside this log region. */
+  phase: AssistantPhase | null;
 }
 
 // Slack (px) for "still at the bottom": absorbs sub-pixel rounding and the few px a streamed token adds
@@ -19,7 +23,7 @@ const STICK_THRESHOLD_PX = 40;
  * content in view while streaming, but only while the reader is already near the bottom — so scrolling
  * up to read history isn't interrupted.
  */
-export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
+export const AssistantTranscript = ({ messages, phase }: AssistantTranscriptProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -56,12 +60,10 @@ export const AssistantTranscript = ({ messages }: AssistantTranscriptProps) => {
             {report && !report.ok ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
             ) : null}
-            {isReportPending(message) ? (
-              <p className="assistant-transcript__pending">Подготвям справка…</p>
-            ) : null}
           </div>
         );
       })}
+      <AssistantPhaseLine phase={phase} />
     </div>
   );
 };

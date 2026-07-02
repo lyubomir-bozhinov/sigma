@@ -4,6 +4,7 @@
 // chip is a projection of that report's title + one lead statistic.
 
 import { count, date, money, pct } from '@sigma/shared';
+import { EMIT_REPORT_PART } from '../assistant-contract/stream';
 import type { CellFormat, EmitReportOutput, ResolvedReport } from './contract';
 
 // Minimal shape we read from a useChat UIMessage part — avoids coupling to the SDK's full part typing
@@ -16,8 +17,6 @@ interface MessagePartLike {
 interface MessageLike {
   parts?: MessagePartLike[];
 }
-
-const EMIT_REPORT_PART = 'tool-emit_report';
 
 export interface ReportChipData {
   title: string;
@@ -36,31 +35,23 @@ const isEmitReportOutput = (value: unknown): value is EmitReportOutput => {
 /**
  * The emit_report tool output from a settled part of this message, or null if the turn has no report yet
  * (prose-only, the tool is still running, or the output is malformed). Returns the `{ ok: false }` form
- * too, so the caller can surface a failure affordance.
+ * too, so the caller can surface a failure affordance. Returns the LAST well-formed output: on a
+ * validation-retry turn (`{ ok: false }` then `{ ok: true }`) the successful report must win.
  */
 export const reportOutputFromMessage = (message: MessageLike): EmitReportOutput | null => {
+  let latest: EmitReportOutput | null = null;
   for (const part of message.parts ?? []) {
     if (
       part.type === EMIT_REPORT_PART &&
       part.state === 'output-available' &&
-      part.output != null
+      part.output != null &&
+      isEmitReportOutput(part.output)
     ) {
-      return isEmitReportOutput(part.output) ? part.output : null;
+      latest = part.output;
     }
   }
-  return null;
+  return latest;
 };
-
-const PENDING_REPORT_STATES = new Set(['input-streaming', 'input-available']);
-
-/**
- * True while an `emit_report` tool call is in flight (before its output settles), so the transcript can
- * show a "preparing report" affordance between the streamed prose and the finished chip.
- */
-export const isReportPending = (message: MessageLike): boolean =>
-  (message.parts ?? []).some(
-    (part) => part.type === EMIT_REPORT_PART && PENDING_REPORT_STATES.has(part.state ?? ''),
-  );
 
 const toNumber = (value: string | number | null): number | null => {
   if (value == null) return null;

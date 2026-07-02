@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
-import { useChat } from '@ai-sdk/react';
+import { useEffect, useState } from 'react';
+import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { classifyHttpError, networkError } from './errors';
+import { isPhasePart, type AssistantPhase } from '../assistant-contract/stream';
 import { loadTranscript, saveTranscript, trimMessages } from './storage';
 
 const ENDPOINT = '/assistant/chat';
@@ -52,10 +53,20 @@ const transport = new DefaultChatTransport<UIMessage>({
 });
 
 /** useChat wired to /assistant/chat, with the transcript restored from / persisted to localStorage. */
-export const useAssistantChat = () => {
+export const useAssistantChat = (): UseChatHelpers<UIMessage> & {
+  phase: AssistantPhase | null;
+} => {
+  // The ephemeral turn phase, delivered as a transient data part via onData (never in messages).
+  const [phase, setPhase] = useState<AssistantPhase | null>(null);
   // Throttle streamed token updates so the dock re-renders ~20×/s instead of once per token (the SDK's
   // intended knob for this); the final message still renders in full once the stream settles.
-  const chat = useChat({ transport, experimental_throttle: 50 });
+  const chat = useChat({
+    transport,
+    experimental_throttle: 50,
+    onData: (part) => {
+      if (isPhasePart(part)) setPhase(part.data.phase);
+    },
+  });
   const { messages, status, setMessages } = chat;
 
   // Restore the saved transcript once, after mount (localStorage is client-only → SSR-safe).
@@ -70,5 +81,11 @@ export const useAssistantChat = () => {
     if (status === 'ready' && messages.length > 0) saveTranscript(messages);
   }, [messages, status]);
 
-  return chat;
+  // The phase line is ephemeral: clear it when the turn settles, and on submit so a stale phase from
+  // the previous turn can't flash before the first onData of the next one arrives.
+  useEffect(() => {
+    if (status === 'submitted' || status === 'ready' || status === 'error') setPhase(null);
+  }, [status]);
+
+  return { ...chat, phase };
 };
