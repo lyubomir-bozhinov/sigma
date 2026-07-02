@@ -15,6 +15,7 @@ import type { UIMessage } from 'ai';
 const isToolResponseEcho = (text: string): boolean =>
   text.trimStart().startsWith('<tool_response>');
 
+// Also reused by condense.ts — the recap bullets share the same notion of "visible prose".
 export const messageText = (message: UIMessage): string => {
   const parts = message.parts ?? [];
 
