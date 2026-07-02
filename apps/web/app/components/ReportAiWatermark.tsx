@@ -7,14 +7,18 @@
  */
 export function ReportAiWatermark() {
   return (
-    <div className="report-watermark" role="note" aria-label="Предупреждение за AI съдържание">
+    <div
+      className="report-watermark"
+      role="note"
+      aria-label="Справката е генерирана с изкуствен интелект"
+    >
       <span className="report-watermark__badge" aria-hidden="true">
         AI
       </span>
       <p className="report-watermark__text">
-        <strong>AI-генерирано, неофициално</strong> — справката е съставена автоматично от езиков
-        модел върху данните на СИГМА. Не е официален документ. Проверявайте критични числа от
-        първичен источник.
+        <strong>Генерирано с изкуствен интелект</strong> — тази справка е изготвена автоматично от
+        AI модел. Изкуственият интелект може да допуска грешки. Проверявайте важни данни от първичен
+        източник.
       </p>
     </div>
   );

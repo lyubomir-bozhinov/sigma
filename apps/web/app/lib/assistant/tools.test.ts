@@ -135,23 +135,19 @@ describe('run_sql default-filter gate (E3, Unit 3)', () => {
     );
     expect(out).toMatch(/^Заявката е отхвърлена/);
     expect(c.results).toHaveLength(0);
-    expect(c.appliedFilterCallout ?? []).toHaveLength(0);
   });
 
-  it('executes a base-contracts query carrying both defaults and records the applied-filter callout', async () => {
+  it('executes a base-contracts query carrying both defaults and stores a result handle', async () => {
     const c = ctx([{ total_eur: 2124567 }]);
     const out = await runTool('run_sql', { sql: CONTRACTS_WITH_DEFAULTS }, c);
     expect(out).toContain('R1');
     expect(c.results).toHaveLength(1);
-    expect(c.appliedFilterCallout).toBeDefined();
-    expect(c.appliedFilterCallout!.length).toBeGreaterThan(0);
   });
 
-  it('leaves a rollup-only query unaffected by the gate (no callout)', async () => {
+  it('leaves a rollup-only query unaffected by the gate', async () => {
     const c = ctx([{ n: 5 }]);
     const out = await runTool('run_sql', { sql: ROLLUP_QUERY }, c);
     expect(out).toContain('R1');
-    expect(c.appliedFilterCallout ?? []).toHaveLength(0);
   });
 });
 
@@ -295,25 +291,6 @@ describe('finalizeReport', () => {
       ctx(),
     );
     expect(out.ok).toBe(false);
-  });
-
-  it('prepends a default-filters callout block when filters were applied this turn (Unit 4)', () => {
-    const c = ctx();
-    c.appliedFilterCallout = ['ред А', 'ред Б'];
-    c.results.push({ handle: 'R1', columns: ['total_eur'], rows: [[1]] });
-    const out = finalizeReport(
-      { title: 't', question: 'q', blocks: [{ type: 'text', md: 'ок' }] },
-      c,
-    );
-    expect(out.ok).toBe(true);
-    if (out.ok) {
-      expect(out.report.blocks[0]).toEqual({
-        type: 'callout',
-        title: 'Приложени филтри по подразбиране',
-        md: 'ред А ред Б',
-      });
-      expect(out.report.blocks).toHaveLength(2); // callout prepended in front of the text block
-    }
   });
 
   it('leaves the report unchanged when no default filters were applied (Unit 4)', () => {
