@@ -74,6 +74,9 @@ export interface ToolContext {
   // run_sql sets it from assertDefaultFilters; finalizeReport prepends them as a callout block so the
   // reader always sees which safe defaults shaped the figures. Empty for rollup-only / non-contracts turns.
   appliedFilterCallout?: string[];
+  // Set true by emit_report once a VALID (ok:true) report is produced this turn. Read by the agent loop's
+  // step planner (chooseToolChoice) so it stops force-finalizing once a report exists.
+  reportEmitted?: boolean;
 }
 
 export interface AssistantTool {
