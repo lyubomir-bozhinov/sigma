@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import reportFixture from './__fixtures__/report.fixture.json';
 import type { CellFormat, ResolvedReport } from './contract';
-import { isReportPending, projectChip, reportOutputFromMessage } from './report-projection';
+import {
+  isReportPending,
+  isToolTurnWithoutReport,
+  projectChip,
+  reportOutputFromMessage,
+} from './report-projection';
 
 // Mock the site formatters so we assert WHICH formatter is applied to WHICH value — not @sigma/shared's
 // own output (that has its own tests). Each returns an identifiable string.
@@ -141,5 +146,34 @@ describe('isReportPending', () => {
 
   it('is not pending for a prose-only message', () => {
     expect(isReportPending({ parts: [{ type: 'text' }] })).toBe(false);
+  });
+});
+
+describe('isToolTurnWithoutReport', () => {
+  it('is true when a run_sql call happened but no report part exists (out-of-steps turn)', () => {
+    expect(
+      isToolTurnWithoutReport({
+        parts: [{ type: 'tool-run_sql', state: 'output-available', output: 'R1 …' }],
+      }),
+    ).toBe(true);
+  });
+
+  it('is false once an emit_report part exists (any state)', () => {
+    expect(
+      isToolTurnWithoutReport({
+        parts: [
+          { type: 'tool-run_sql', state: 'output-available' },
+          {
+            type: 'tool-emit_report',
+            state: 'output-available',
+            output: { ok: false, errors: [] },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it('is false for a prose-only message (no tool calls at all)', () => {
+    expect(isToolTurnWithoutReport({ parts: [{ type: 'text' }] })).toBe(false);
   });
 });
