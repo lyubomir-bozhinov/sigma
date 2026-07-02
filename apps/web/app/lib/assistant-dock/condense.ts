@@ -3,7 +3,7 @@
 // the wire copy is condensed in useAssistantChat's prepareSendMessagesRequest.
 
 import type { UIMessage } from 'ai';
-import { textOf } from './AssistantMessage';
+import { messageText } from './AssistantMessage';
 import { projectChip, reportOutputFromMessage } from './report-projection';
 
 /** Below/at this many messages the history goes out verbatim — short chats carry no condensation risk. */
@@ -28,10 +28,10 @@ const ROLE_LABEL: Record<string, string> = {
 /** Each bullet gist is capped so no single verbose turn dominates the recap. */
 export const GIST_MAX_CHARS = 200;
 
-// The message's visible prose (textOf: pre-tool preamble and <tool_response> echoes already excluded),
-// reduced to its first line and capped — a one-line gist of the turn.
+// The message's visible prose (messageText: pre-tool preamble and <tool_response> echoes already
+// excluded), reduced to its first line and capped — a one-line gist of the turn.
 const firstLineOf = (message: UIMessage): string => {
-  const line = textOf(message).split('\n', 1)[0].trim();
+  const line = messageText(message).split('\n', 1)[0].trim();
   return line.length > GIST_MAX_CHARS ? `${line.slice(0, GIST_MAX_CHARS).trimEnd()}…` : line;
 };
 

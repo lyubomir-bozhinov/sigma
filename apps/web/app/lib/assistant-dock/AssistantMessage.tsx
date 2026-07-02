@@ -15,8 +15,8 @@ import type { UIMessage } from 'ai';
 const isToolResponseEcho = (text: string): boolean =>
   text.trimStart().startsWith('<tool_response>');
 
-// Exported for reuse by condense.ts — the recap bullets share the same notion of "visible prose".
-export const textOf = (message: UIMessage): string => {
+// Also reused by condense.ts — the recap bullets share the same notion of "visible prose".
+export const messageText = (message: UIMessage): string => {
   const parts = message.parts ?? [];
 
   // Index of the last non-text, non-step-start part (i.e. any tool invocation / tool result).
@@ -47,7 +47,7 @@ export const textOf = (message: UIMessage): string => {
  * `dangerouslySetInnerHTML`). Report cards are rendered separately by the transcript.
  */
 export const AssistantMessage = ({ message }: { message: UIMessage }) => {
-  const text = textOf(message);
+  const text = messageText(message);
   if (text === '') return null;
   return (
     <div

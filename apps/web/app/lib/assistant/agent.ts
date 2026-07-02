@@ -21,6 +21,7 @@ import {
 import { buildSystemPrompt } from './system-prompt';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
+import type { TemporalContext } from './temporal';
 
 export interface AgentEnv {
   /** Provider API key (OpenRouter today). SECRET — `wrangler secret put ASSISTANT_API_KEY`. */
@@ -54,6 +55,43 @@ export function resolveMaxSteps(raw: string | undefined): number {
   return Math.min(Math.floor(n), MAX_STEPS_CAP);
 }
 
+/** Per-step tool-choice, as accepted by the SDK's `prepareStep` (a specific-tool force is an object). */
+export type StepToolChoice = 'auto' | 'required' | { type: 'tool'; toolName: 'emit_report' };
+
+export interface ToolChoiceInput {
+  stepNumber: number; // 0-based index of the step about to run
+  maxSteps: number; // the hard step budget for this turn (stepCountIs)
+  hasResults: boolean; // this turn's run_sql produced ≥1 bindable result handle
+  reportEmitted: boolean; // a prior step already produced a valid (ok:true) report
+  lastStepFailedEmit: boolean; // the previous step's emit_report returned ok:false (shape errors)
+}
+
+/**
+ * Decide the tool-choice for the step about to run. Pure so the policy is unit-testable without the SDK.
+ *
+ * The load-bearing rule for weak models: DON'T let the turn end silently. A 27–31B model tends to burn
+ * the whole step budget re-querying the same data (different date syntax, reformatting, double-checking)
+ * and then run out BEFORE calling emit_report — so the user sees nothing. When the budget is nearly spent
+ * (the final two steps) and we already hold bindable data but no report yet, FORCE emit_report so the turn
+ * finalizes from what it has. The client then always renders either the report or the "couldn't compose"
+ * affordance — never a blank turn. (Ordering + step-0 forcing rationale below.)
+ */
+export function chooseToolChoice(input: ToolChoiceInput): StepToolChoice {
+  const { stepNumber, maxSteps, hasResults, reportEmitted, lastStepFailedEmit } = input;
+  // Force a real tool call on the FIRST step so a weak model can't narrate the call as prose (```sql).
+  if (stepNumber === 0) return 'required';
+  // Near the budget with gathered data but no report → force finalization from what we have, instead of
+  // spending the last steps exploring and returning nothing. Checked before the failed-emit retry because
+  // forcing the specific tool is strictly stronger than a bare 'required'.
+  if (!reportEmitted && hasResults && stepNumber >= maxSteps - 2) {
+    return { type: 'tool', toolName: 'emit_report' };
+  }
+  // A failed emit_report (shape errors returned to the model) → force a retry rather than let it drop to
+  // prose.
+  if (lastStepFailedEmit) return 'required';
+  return 'auto';
+}
+
 // `.chat()` forces the chat-completions endpoint (not the OpenAI Responses API), which is what the
 // gateway upstream (OpenRouter/BgGPT/etc.) speaks.
 //
@@ -74,16 +112,15 @@ function buildModel(env: AgentEnv) {
 
 // System-prompt version string used in StoredReport provenance for regression tracing.
 // Bump this whenever system-prompt.ts changes semantically.
-const PROMPT_VERSION = '2026-06-28';
+const PROMPT_VERSION = '2026-07-02'; // + deterministic temporal-context block (temporal.ts)
 
 /** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
 function randomReportId(): string {
   return `r_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
-// Whitelist of source values the UI knows how to label (ReportMethodologyCallout SOURCE_LABELS).
-// Rows with any other source value (e.g. 'other', future additions) are silently dropped rather
-// than leaking an internal bucket name to the public methodology callout.
+// Whitelist of recognised source values stored in provenance freshness rows.
+// Rows with any other value are silently dropped rather than leaking an internal bucket name.
 const KNOWN_FRESHNESS_SOURCES = new Set(['admin', 'ocds', 'eop'] as const);
 
 async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: string }[]> {
@@ -156,6 +193,9 @@ function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
     execute: async (input: unknown) => {
       const r = finalizeReport(input, ctx);
       if (!r.ok) return { ok: false as const, errors: r.errors };
+      // Record that a valid report exists this turn, so chooseToolChoice stops force-finalizing on the
+      // remaining steps (a legitimate multi-query flow that already emitted must not be re-forced).
+      ctx.reportEmitted = true;
       const storedId = await persistReport(ctx, r, modelId);
       return { ok: true as const, report: r.report, ...(storedId ? { storedId } : {}) };
     },
@@ -169,6 +209,9 @@ export interface RunAssistantOptions {
   messages: UIMessage[];
   schemaContext?: string[];
   freshness?: string;
+  // Deterministic, server-resolved temporal context for this turn (temporal.ts). Threaded into the system
+  // prompt so the model uses absolute dates instead of guessing relative periods from its stale prior.
+  temporal?: TemporalContext;
   abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the model loop (review #80)
 }
 
@@ -183,7 +226,11 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
   const result = streamText({
     model: buildModel(opts.env),
-    system: buildSystemPrompt({ schemaContext: opts.schemaContext, freshness: opts.freshness }),
+    system: buildSystemPrompt({
+      schemaContext: opts.schemaContext,
+      freshness: opts.freshness,
+      temporal: opts.temporal,
+    }),
     messages,
     tools: buildToolSet(opts.ctx, modelId),
     stopWhen: stepCountIs(maxSteps),
@@ -200,12 +247,19 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // returned to the model), force `required` again so the model retries the tool call rather than
     // falling back to prose. Without this the model answers in text then emits `ok:false` and stops.
     prepareStep: ({ stepNumber, steps }) => {
-      if (stepNumber === 0) return { toolChoice: 'required' };
       const lastStep = steps[steps.length - 1];
-      const hadFailedReport = lastStep?.toolResults.some(
-        (tr) => tr.toolName === 'emit_report' && (tr.output as { ok: boolean }).ok === false,
+      const lastStepFailedEmit = !!lastStep?.toolResults.some(
+        (tr) => tr.toolName === 'emit_report' && (tr.output as { ok?: boolean }).ok === false,
       );
-      return { toolChoice: hadFailedReport ? 'required' : 'auto' };
+      return {
+        toolChoice: chooseToolChoice({
+          stepNumber,
+          maxSteps,
+          hasResults: opts.ctx.results.length > 0,
+          reportEmitted: opts.ctx.reportEmitted === true,
+          lastStepFailedEmit,
+        }),
+      };
     },
     // Bound worst-case resource use (review #80): cancel on client disconnect; one explicit retry
     // (the SDK default of 2 silently multiplies the per-step call count beyond the visible step cap);

@@ -80,9 +80,13 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'Goto',
   'Halt',
   'IdxDelete', // ephemeral/auto-index entry removal during DISTINCT/UNION dedup — read-only (gated by OpenWrite)
+  'IdxGE', // index range-seek `>=` — read-only; D1's planner emits it for a range filter on an indexed
+  // column (e.g. `signed_at >= …`). node:sqlite chose other opcodes for the harvest corpus, so it was
+  // missing and false-denied real range reads on D1 (observed in production, 2026-07-02; PR #22 follow-up).
   'IdxGT',
   'IdxInsert', // ephemeral/auto index build during DISTINCT/UNION/IN — read-only
   'IdxLE',
+  'IdxLT', // index range-seek `<` mirror of IdxLE/IdxGT — read-only (see IdxGE note)
   'If',
   'IfEmpty',
   'IfNot',
@@ -114,6 +118,9 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'OpenEphemeral',
   'OpenPseudo',
   'OpenRead',
+  'Prev', // reverse cursor iteration for `ORDER BY … DESC` (mirror of the allowed `Next`) — read-only.
+  // D1 emits it for descending scans (e.g. the contracts list sorted by signed_at DESC); node:sqlite did
+  // not in the harvest corpus, so it false-denied ordered reads on D1 (observed 2026-07-02).
   'Real',
   'RealAffinity',
   'Remainder',
@@ -125,6 +132,10 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'SCopy',
   'SeekGE',
   'SeekGT',
+  'SeekLE', // table/index range-seek `<=` — read-only mirror of the allowed SeekGE/SeekGT.
+  'SeekLT', // table/index range-seek `<` — read-only. D1 emits SeekLT/SeekLE for a bounded range on an
+  // indexed column (e.g. `signed_at >= a AND signed_at < b`); missing from the node:sqlite harvest, so it
+  // false-denied the exact range shape the temporal template produces (observed in production 2026-07-02).
   'Sequence',
   'Sort',
   'SorterData',

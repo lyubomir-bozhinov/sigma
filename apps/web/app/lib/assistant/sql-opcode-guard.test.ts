@@ -188,6 +188,30 @@ describe('guardOpcodes — real plans', () => {
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) expect(verdict.reason).toMatch(/non-read-only opcode in plan: Frobnicate/);
   });
+
+  // Regression lock (production incident 2026-07-02): D1's planner emits these read-only range-seek /
+  // reverse-scan opcodes for a bounded range + `ORDER BY … DESC` on the indexed `signed_at` column — the
+  // exact shape the temporal template produces. They were absent from the node:sqlite-harvested allowlist,
+  // so run_sql false-denied every such query and the model burned its whole step budget on rewrites,
+  // returning nothing. They must stay allowed.
+  it('accepts D1 range-seek / reverse-scan read opcodes (SeekLT/SeekLE/IdxGE/IdxLT/Prev)', () => {
+    const plan = [
+      { opcode: 'Init' },
+      { opcode: 'OpenRead' },
+      { opcode: 'SeekGE' },
+      { opcode: 'IdxGE' },
+      { opcode: 'SeekLT' },
+      { opcode: 'SeekLE' },
+      { opcode: 'IdxLT' },
+      { opcode: 'Prev' },
+      { opcode: 'ResultRow' },
+      { opcode: 'Halt' },
+    ];
+    expect(guardOpcodes(plan)).toEqual({ ok: true, sql: '' });
+    for (const op of ['SeekLT', 'SeekLE', 'IdxGE', 'IdxLT', 'Prev']) {
+      expect(READ_ONLY_OPCODES.has(op), op).toBe(true);
+    }
+  });
 });
 
 describe('allowlist invariants', () => {
