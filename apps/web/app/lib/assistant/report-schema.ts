@@ -66,6 +66,7 @@ export interface EmitBar {
   resultId: string;
   labelCol: string;
   valueCol: string;
+  format?: CellFormat;
 }
 export interface EmitFlows {
   type: 'flows';
@@ -79,6 +80,7 @@ export interface EmitTimeseries {
   resultId: string;
   periodCol: string;
   valueCol: string;
+  format?: CellFormat;
 }
 export type EmitBlock =
   | EmitText
@@ -121,7 +123,12 @@ export type ResolvedBlock =
       rows: ResolvedRow[];
       truncated?: boolean;
     }
-  | { type: 'bar'; points: { label: string | number | null; value: number }[]; truncated?: boolean }
+  | {
+      type: 'bar';
+      points: { label: string | number | null; value: number }[];
+      truncated?: boolean;
+      format?: CellFormat;
+    }
   | {
       type: 'flows';
       edges: { from: string; to: string; valueEur: number }[];
@@ -131,6 +138,7 @@ export type ResolvedBlock =
       type: 'timeseries';
       points: { period: string | number | null; value: number }[];
       truncated?: boolean;
+      format?: CellFormat;
     };
 
 export interface ResolvedReport {
@@ -226,7 +234,12 @@ const PROSE_NUMBER_PATTERNS: RegExp[] = [
   /(?:€|eur)\s*\d[\d.,\s]{0,40}/giu, // €1234, EUR 1 234 (currency-first)
   /\d[\d.,\s]{0,40}(?:€|лв\.?|eur|евро|лева)/giu, // 1 234 лв, 1234 евро
   /\d[\d.,\s]{0,40}(?:млн|млрд|хил)\.?/giu, // 12 млрд, 1,2 млн
-  /\d{1,3}(?:[.,\s'’٫٬]\d{3})+/gu, // grouped: 1 234, 1,234,567, 12'000'000, 2٬500٬000 (Arabic sep)
+  // Grouped thousands: 1 234, 1,234,567, 12'000'000, 2٬500٬000 (Arabic sep). The trailing `(?!\d)`
+  // requires each group to be EXACTLY three digits — so a four-digit run is not read as a group. Without
+  // it a `MM.YYYY` / `DD.MM.YYYY` date (`01.2026`, `01.02.2026`) false-matched as "01.202" (`01` + the
+  // first three digits of the year) and rejected legitimate freshness/period prose (date notation is not
+  // a material number). A real grouped amount always ends on a 3-digit group, so nothing valid is lost.
+  /\d{1,3}(?:[.,\s'’٫٬]\d{3})+(?!\d)/gu,
   /\d(?:[.,]\d+)?[eE][+-]?\d+/gu, // scientific notation: 1.2e10, 12E9
   /\d{5,}/gu, // 10000+ (years are ≤4 digits)
   // Spelled-out magnitudes / percentages / ratios bypassed the digit-only patterns above — a model could
@@ -235,7 +248,11 @@ const PROSE_NUMBER_PATTERNS: RegExp[] = [
   // NB: no `\b` adjacent to Cyrillic — JS `\b` is ASCII-`\w`-only, so `\bмилиард` never matches after a
   // space. Match the distinctive stem (covers all inflections: милиард/милиарда/милиарди, …).
   /милиард|милион|хиляд/giu, // spelled magnitudes (incl. word-only "два милиарда", "триста хиляди")
-  /%|процент|(?<!\p{L})на\s+сто/giu, // percentages (%, процент-stem, or the phrase "на сто")
+  // Percentages: %, процент-stem, or the idiom "на сто" (= per hundred). The trailing `(?!\p{L})` pins
+  // "сто" as a STANDALONE word — without it "на сто" matched the whole "сто" word-family and rejected
+  // ordinary procurement prose: "на стойност" (to the value of — ubiquitous), the entity "Столична
+  // община", "на стотици". Those are not percentages; "12 на сто" / "на сто%" still match.
+  /%|процент|(?<!\p{L})на\s+сто(?!\p{L})/giu,
   /\d[\d.,]*\s*пъти/giu, // numeric ratios (3,5 пъти)
   // Non-€/лв currency units the suffix pattern above omits — a sub-5-digit dollar amount ("5000 долара",
   // "9999 USD", "$1 000") otherwise slips every digit pattern (review #80, follow-up).
@@ -510,7 +527,7 @@ export function bindReport(
             const value = asNumber(vals[i] ?? null);
             if (value !== null) points.push({ label: sanitizeCell(labels[i] ?? null), value });
           }
-          blocks.push({ type: 'bar', points, truncated: r.truncated ?? false });
+          blocks.push({ type: 'bar', points, truncated: r.truncated ?? false, format: b.format });
         }
         break;
       }
@@ -544,7 +561,12 @@ export function bindReport(
             const value = asNumber(vals[i] ?? null);
             if (value !== null) points.push({ period: sanitizeCell(period[i] ?? null), value });
           }
-          blocks.push({ type: 'timeseries', points, truncated: r.truncated ?? false });
+          blocks.push({
+            type: 'timeseries',
+            points,
+            truncated: r.truncated ?? false,
+            format: b.format,
+          });
         }
         break;
       }

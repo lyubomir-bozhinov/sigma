@@ -5,8 +5,9 @@
 // `wrangler deploy` needs the real IDs — this script substitutes them from env vars and
 // writes a sibling `wrangler.deploy.<ext>` that the package `deploy` script passes via
 // `--config`. Optional deploy-time name env vars (`SIGMA_WEB_NAME`, `SIGMA_ETL_NAME`,
-// `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`, `SIGMA_CSV_CACHE_NAME`) explicitly override resource
-// names for alternate environments while leaving committed names unchanged when unset.
+// `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`, `SIGMA_CSV_CACHE_NAME`, `SIGMA_REPORTS_NAME`) explicitly
+// override resource names for alternate environments while leaving committed names unchanged when
+// unset.
 //
 // usage: node scripts/wrangler-render.mjs <path/to/wrangler.toml|jsonc>
 
@@ -64,8 +65,9 @@ if (ext === '.json' || ext === '.jsonc') {
     webName: process.env.SIGMA_WEB_NAME || '',
     d1Name: process.env.SIGMA_D1_NAME || '',
     csvCacheName: process.env.SIGMA_CSV_CACHE_NAME || '',
+    reportsName: process.env.SIGMA_REPORTS_NAME || '',
   };
-  if (names.webName || names.d1Name || names.csvCacheName) {
+  if (names.webName || names.d1Name || names.csvCacheName || names.reportsName) {
     out = renderJson(out, names);
   }
   // Most rate limiters fail OPEN at runtime (apps/web/workers/rate-limit.ts), so a missing binding or a
@@ -88,9 +90,15 @@ const outPath = join(dirname(input), basename(input).replace(/^wrangler\./, 'wra
 writeFileSync(outPath, out);
 console.log(`wrangler-render: ${input} → ${outPath}`);
 
+// wrangler.jsonc is JSONC: strip full-line comments AND trailing commas before JSON.parse. Both
+// renderJson and assertRateLimiters must use this — a plain JSON.parse throws on the committed file's
+// trailing commas (this previously crashed renderJson on every renamed-resource deploy).
+function parseJsonc(text) {
+  return JSON.parse(stripJsonLineComments(text).replace(/,(\s*[}\]])/g, '$1'));
+}
+
 function assertRateLimiters(text, source) {
-  // wrangler.jsonc is JSONC: strip line comments and trailing commas before JSON.parse.
-  const obj = JSON.parse(stripJsonLineComments(text).replace(/,(\s*[}\]])/g, '$1'));
+  const obj = parseJsonc(text);
   const limiters = (obj.unsafe?.bindings ?? []).filter((b) => b?.type === 'ratelimit');
   const errors = [];
 
@@ -120,16 +128,24 @@ function assertRateLimiters(text, source) {
 }
 
 function renderJson(text, names) {
-  const obj = JSON.parse(stripJsonLineComments(text));
+  const obj = parseJsonc(text);
   if (names.webName) obj.name = names.webName;
   if (names.d1Name && Array.isArray(obj.d1_databases)) {
     for (const db of obj.d1_databases) {
       if (db && typeof db === 'object') db.database_name = names.d1Name;
     }
   }
-  if (names.csvCacheName && Array.isArray(obj.r2_buckets)) {
+  // Rename R2 buckets by BINDING, not position. The web worker now binds two buckets (CSV_CACHE +
+  // REPORTS); a blanket loop over r2_buckets would rename BOTH to the CSV value, collapsing REPORTS
+  // onto the cache bucket and silently breaking report snapshots. Match each binding to its own env
+  // var; an unset var leaves that bucket's committed name untouched (e.g. dev renames CSV_CACHE to
+  // sigma-csv-cache-dev but shares the single sigma-reports bucket, so SIGMA_REPORTS_NAME stays unset).
+  if ((names.csvCacheName || names.reportsName) && Array.isArray(obj.r2_buckets)) {
     for (const bucket of obj.r2_buckets) {
-      if (bucket && typeof bucket === 'object') bucket.bucket_name = names.csvCacheName;
+      if (!bucket || typeof bucket !== 'object') continue;
+      if (names.csvCacheName && bucket.binding === 'CSV_CACHE')
+        bucket.bucket_name = names.csvCacheName;
+      if (names.reportsName && bucket.binding === 'REPORTS') bucket.bucket_name = names.reportsName;
     }
   }
   return `${JSON.stringify(obj, null, 2)}\n`;

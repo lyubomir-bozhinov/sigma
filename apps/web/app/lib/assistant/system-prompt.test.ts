@@ -4,8 +4,12 @@ import {
   DATA_TRUST_RULE,
   EDITORIAL_SKELETON,
   EMIT_REPORT_POLICY,
+  RECONCILE_RULE,
   VALUES_BY_REFERENCE_RULE,
 } from './system-prompt';
+import { resolveTemporalContext } from './temporal';
+
+const JUL_2 = new Date('2026-07-02T09:00:00Z'); // → Sofia 2026-07-02
 
 describe('buildSystemPrompt', () => {
   it('always carries the runtime policies (emit-report, values-by-reference, data-trust)', () => {
@@ -13,6 +17,10 @@ describe('buildSystemPrompt', () => {
     expect(p).toContain(EMIT_REPORT_POLICY);
     expect(p).toContain(VALUES_BY_REFERENCE_RULE);
     expect(p).toContain(DATA_TRUST_RULE);
+  });
+
+  it('carries the reconcile-with-rollup rule (E4): reconcile a count/sum before stating it', () => {
+    expect(buildSystemPrompt()).toContain(RECONCILE_RULE);
   });
 
   it('hardens the prompt-injection boundary: embedded "instructions" in data are framed as data to ignore', () => {
@@ -50,5 +58,51 @@ describe('buildSystemPrompt', () => {
     // not told to cite a value it lacks — which previously invited a fabricated date.
     expect(EDITORIAL_SKELETON).not.toContain('свежест');
     expect(buildSystemPrompt()).not.toContain('цитирай я в callout');
+  });
+
+  // --- Deterministic temporal context (temporal.ts) ---
+
+  it('injects the resolved period as literal signed_at bounds the model must copy verbatim', () => {
+    const temporal = resolveTemporalContext('поръчките за тази година', JUL_2)!;
+    const p = buildSystemPrompt({ temporal });
+    // authoritative today + the exact half-open bounds for „тази година" at the injected clock
+    expect(p).toContain('Днес е 2026-07-02');
+    // primary „тази година" resolves to 2026 (the bug: the model used its stale 2025 prior)
+    expect(p).toContain('„тази година" (2026)');
+    expect(p).toContain("c.signed_at >= '2026-01-01' AND c.signed_at < '2026-07-03'"); // clamped to-date
+    // the comparison counterpart is pre-resolved in the table (full settled prior year)
+    expect(p).toContain("c.signed_at >= '2025-01-01' AND c.signed_at < '2026-01-01'");
+    expect(p).toContain('Използвай ТОЧНО тези граници');
+    // never presents „this year" as the stale 2025 the model used to guess
+    expect(p).not.toContain('„тази година" (2025)');
+  });
+
+  it('carries the full compliant template inside the temporal block (JOIN + both mandatory filters)', () => {
+    // Under RAG the default-filter trap chunk may not be retrieved for a temporal question; the block must
+    // itself remind the model of the mandatory filters + JOIN so the authored query passes the guards.
+    const temporal = resolveTemporalContext('този месец', JUL_2)!;
+    const p = buildSystemPrompt({ temporal });
+    expect(p).toContain('FROM contracts c JOIN tenders t ON t.id = c.tender_id');
+    expect(p).toContain('c.amount_eur IS NOT NULL');
+    expect(p).toContain("t.procedure_type != 'неизвестна'");
+    expect(p).toContain("substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"); // well-formedness guard kept
+    expect(p).toContain("НЕ ползвай date('now')");
+  });
+
+  it('surfaces the freshness caveat for a recent period (empty ≠ no procurement)', () => {
+    const temporal = resolveTemporalContext('този месец', JUL_2)!;
+    expect(buildSystemPrompt({ temporal })).toContain('ВНИМАНИЕ (свежест)');
+  });
+
+  it('omits the caveat for a fully-settled prior period', () => {
+    const temporal = resolveTemporalContext('миналата година', JUL_2)!; // 2025 — settled
+    expect(buildSystemPrompt({ temporal })).not.toContain('ВНИМАНИЕ (свежест)');
+  });
+
+  it('injects NO temporal block — and no date literal — when the question has no period phrase', () => {
+    // The anti-regression that guarantees a fabricated date is NEVER injected for a pure-aggregate turn.
+    const p = buildSystemPrompt({ schemaContext: ['СУМИРАЙ САМО amount_eur'] });
+    expect(p).not.toContain('ВРЕМЕВИ КОНТЕКСТ');
+    expect(p).not.toMatch(/signed_at >= '20\d\d/);
   });
 });
