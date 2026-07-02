@@ -164,8 +164,14 @@ interface Anchor {
   m: number; // 1-12
 }
 
-/** Clamp a period end to „to date" (tomorrow) — so current periods show data until now. */
-const clampEnd = (untilIso: string, a: Anchor): string => minIso(untilIso, a.tomorrowIso);
+/**
+ * Clamp a period end to „to date" (tomorrow) — so current periods show data until now. A period that
+ * starts in the FUTURE (e.g. explicit „през 2027") keeps its real span: clamping its end down to
+ * tomorrow would invert the range (since > until) and always return empty. Only already-started periods
+ * are clamped, per the „show data until now" product decision.
+ */
+const clampEnd = (untilIso: string, sinceIso: string, a: Anchor): string =>
+  sinceIso >= a.tomorrowIso ? untilIso : minIso(untilIso, a.tomorrowIso);
 
 /** A period gets the freshness caveat when its (exclusive) end is within the ingest-lag window of today. */
 const isRecent = (untilIso: string, a: Anchor): boolean => untilIso > a.lagThresholdIso;
@@ -179,7 +185,7 @@ function period(
   grain: TemporalGrain,
   a: Anchor,
 ): ResolvedPeriod {
-  const untilIso = clampEnd(untilRawIso, a);
+  const untilIso = clampEnd(untilRawIso, sinceIso, a);
   return { key, phrase, label, sinceIso, untilIso, grain, recencyCaveat: isRecent(untilIso, a) };
 }
 
@@ -320,12 +326,14 @@ function detectPrimary(q: string, a: Anchor, common: ResolvedPeriod[]): Resolved
   if (/(?:тази|таз|настоящ[а-я]*|текущ[а-я]*|тазгодишн[а-я]*)\s+година/.test(q))
     return byKey('this-year');
 
-  // 5. Relative quarter. „последното/това/текущото тримесечие" = current quarter to date (product
-  //    decision); „миналото/предходното/изминалото тримесечие" = previous quarter.
-  if (/тримесечи/.test(q)) {
-    if (/(?:мина|предход|изминал)[а-я]*\s+тримесечи/.test(q)) return byKey('last-quarter');
+  // 5. Relative quarter. „последното/това/текущото/настоящото тримесечие" = current quarter to date
+  //    (product decision); „миналото/предходното/изминалото тримесечие" = previous quarter. A bare
+  //    „тримесечие"/„тримесечия" with NO modifier (e.g. the breakdown „разход по тримесечия") is NOT a
+  //    period filter — it must fall through so no block is injected, exactly like the month/week/year
+  //    branches, which all require a modifier. (review: ydimitrof)
+  if (/(?:мина|предход|изминал)[а-я]*\s+тримесечи/.test(q)) return byKey('last-quarter');
+  if (/(?:това|настоящ[а-я]*|текущ[а-я]*|последн[а-я]*)\s+тримесечи/.test(q))
     return byKey('this-quarter');
-  }
 
   // 6. Relative month.
   if (/(?:мина|предход|изминал)[а-я]*\s+месец/.test(q)) return byKey('last-month');
@@ -355,8 +363,10 @@ function detectPrimary(q: string, a: Anchor, common: ResolvedPeriod[]): Resolved
   }
 
   // 9. Explicit calendar year: „през 2023", „за 2024", or a bare 4-digit year — LAST, so a relative
-  //    phrase is never shadowed by a stray year token.
-  const year = q.match(/\b((?:19|20)\d{2})\b/);
+  //    phrase is never shadowed by a stray year token. The year must not be adjacent to a digit or a
+  //    hyphen, so a 4-digit run inside a procurement id („00087-2020-0027") never injects a filter.
+  //    (review: ydimitrof)
+  const year = q.match(/(?<![\d-])((?:19|20)\d{2})(?![\d-])/);
   if (year) {
     const y = Number(year[1]);
     return period('explicit-year', `${y}`, `${y}`, yearStartIso(y), yearStartIso(y + 1), 'year', a);

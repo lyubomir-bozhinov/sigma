@@ -117,6 +117,14 @@ describe('resolveTemporalContext — primary period bounds (injected clock)', ()
       { since: '2023-01-01', until: '2024-01-01', label: '2023' },
     ],
     ['bare year 2019', 'разходите 2019', JUL_2, { since: '2019-01-01', until: '2020-01-01' }],
+    // explicit FUTURE year keeps its real span — must NOT invert to an always-empty range
+    // (`>= 2027-01-01 AND < tomorrow`); the to-date clamp only applies to already-started periods.
+    [
+      'future year 2027 (no clamp/inversion)',
+      'поръчки през 2027',
+      JUL_2,
+      { since: '2027-01-01', until: '2028-01-01', label: '2027' },
+    ],
     [
       'между 2021 и 2023 (inclusive upper)',
       'между 2021 и 2023',
@@ -147,6 +155,13 @@ describe('resolveTemporalContext — negative (no spurious filter)', () => {
     ['top authorities, no period', 'най-големите възложители по похарчено'],
     ['single-offer share, no period', 'дял на договорите с една оферта'],
     ['empty question', ''],
+    // breakdown „по тримесечия" is NOT a period — a bare, modifier-less тримесечи must not inject a
+    // this-quarter filter (else the report silently shows only Q3-to-date). (review: ydimitrof)
+    ['quarter breakdown, no modifier', 'разход по тримесечия'],
+    ['quarters over time, no modifier', 'договори по тримесечия за периода'],
+    // a 4-digit run inside a procurement id must not be read as an explicit year → no filter.
+    ['year token inside procurement id', 'кой спечели поръчка 00087-2020-0027'],
+    ['year token inside a longer number', 'договор на стойност 12026 лева'],
   ];
   it.each(nulls)('%s → null', (_name, question) => {
     expect(resolveTemporalContext(question, JUL_2)).toBeNull();
