@@ -87,6 +87,31 @@ describe('buildFallbackReport — server-side last-resort finalizer', () => {
     }
   });
 
+  it('downgrades a share-named column to a number when its value is not a 0..1 ratio', () => {
+    // guessFormat picks 'percent' from a „share/дял" column name; if the single-row value is actually a
+    // raw sum (not a 0..1 ratio) it must not render as an absurd „…%".
+    const results: QueryResult[] = [
+      { handle: 'R1', columns: ['share'], rows: [[1342360573264.6]] },
+    ];
+    const out = buildFallbackReport(results, 'дял с една оферта');
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]!.type === 'totals') {
+      expect(out.report.blocks[0].items[0]!.format).toBe('number');
+      expect(out.report.blocks[0].items[0]!.value).toBe(1342360573264.6);
+    }
+  });
+
+  it('keeps percent format for a genuine 0..1 share value', () => {
+    const results: QueryResult[] = [
+      { handle: 'R1', columns: ['single_offer_share'], rows: [[0.318]] },
+    ];
+    const out = buildFallbackReport(results, 'дял с една оферта');
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]!.type === 'totals') {
+      expect(out.report.blocks[0].items[0]!.format).toBe('percent');
+    }
+  });
+
   it('returns ok:false when there is nothing to summarise (no rows anywhere)', () => {
     expect(buildFallbackReport([], 'q').ok).toBe(false);
     expect(buildFallbackReport([{ handle: 'R1', columns: ['a'], rows: [] }], 'q').ok).toBe(false);

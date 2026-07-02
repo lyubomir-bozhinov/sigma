@@ -73,6 +73,37 @@ describe('AssistantTranscript', () => {
     expect(screen.getByText('Подготвям справка…')).toBeInTheDocument();
   });
 
+  it('clears the preparing indicator once the turn settles (busy=false)', () => {
+    // A fallback-finalized turn leaves the model's emit_report part orphaned at input-available; without
+    // the busy gate the spinner would render forever after the stream settled.
+    render(<AssistantTranscript messages={[pendingMessage('4b')]} busy={false} />);
+
+    expect(screen.queryByText('Подготвям справка…')).not.toBeInTheDocument();
+  });
+
+  it('shows the chip but no spinner for a fallback report with an orphaned emit_report part', () => {
+    const stuck = message('4c', 'assistant', [
+      { type: 'tool-emit_report', state: 'input-available' }, // model's original call, never settled
+      {
+        type: 'tool-emit_report',
+        state: 'output-available',
+        output: {
+          ok: true,
+          report: {
+            title: 'Справка по наличните данни',
+            question: 'q',
+            watermark: 'ai-generated',
+            blocks: [{ type: 'totals', items: [{ label: 'Сума', value: 100, format: 'money' }] }],
+          },
+        },
+      },
+    ]);
+    render(<AssistantTranscript messages={[stuck]} busy={false} />);
+
+    expect(screen.getByText('Справка по наличните данни')).toBeInTheDocument();
+    expect(screen.queryByText('Подготвям справка…')).not.toBeInTheDocument();
+  });
+
   it('shows a failure line when the report could not be composed', () => {
     render(<AssistantTranscript messages={[failedReportMessage('5')]} busy={false} />);
 

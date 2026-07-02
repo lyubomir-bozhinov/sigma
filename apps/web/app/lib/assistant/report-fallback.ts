@@ -13,6 +13,7 @@
 
 import {
   bindReport,
+  isImplausibleRatio,
   type BindResult,
   type CellFormat,
   type EmitBlock,
@@ -97,7 +98,13 @@ export function buildFallbackReport(results: QueryResult[], question: string): B
                 {
                   label: humanizeColumn(col),
                   ref: { resultId: last.handle, row: 0, col },
-                  format: guessFormat(col),
+                  // guessFormat picks 'percent' from the column NAME (share/дял); if the single-row value
+                  // is actually a raw sum/count (not a 0..1 ratio) that would render as an absurd „…%".
+                  // Downgrade to a plain number so the reader still sees the real figure.
+                  format:
+                    guessFormat(col) === 'percent' && isImplausibleRatio(last.rows[0][i])
+                      ? ('number' as CellFormat)
+                      : guessFormat(col),
                 },
               ]
             : [],

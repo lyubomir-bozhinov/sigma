@@ -113,9 +113,16 @@ function buildModel(env: AgentEnv) {
   return provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
 }
 
+// Shown when the model returns a completely empty turn — no report, no run_sql data to synthesize from,
+// and no prose (an empty completion / finishReason 'other'). Guarantees the dock never renders a blank
+// turn in that case. Mirrors the client-side NO_ANSWER_FALLBACK wording (AssistantTranscript.tsx).
+const EMPTY_COMPLETION_MESSAGE =
+  'Не успях да съставя справка за този въпрос. Опитайте отново или го формулирайте по-конкретно — ' +
+  'напр. посочете възложител, период или сектор.';
+
 // System-prompt version string used in StoredReport provenance for regression tracing.
 // Bump this whenever system-prompt.ts changes semantically.
-const PROMPT_VERSION = '2026-07-02'; // + deterministic temporal-context block (temporal.ts)
+const PROMPT_VERSION = '2026-07-03'; // + percent-is-a-0..1-ratio block guidance (system-prompt.ts)
 
 /** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
 function randomReportId(): string {
@@ -237,9 +244,19 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     resolveModelFinished = resolve;
   });
   let modelErrored = false;
+  // Captured from the model's finish so the wrapper can tell an EMPTY completion (weak model returns 0
+  // tokens / finishReason 'other' under the gateway — reproducibly seen on some question shapes) from a
+  // legitimate prose-only turn. Without this an empty completion with no run_sql dead-ends on a BLANK turn:
+  // the fallback finalizer needs rows, so it can't fire, and nothing is ever written to the stream.
+  let modelFinishReason: string | undefined;
+  let modelProducedText = false;
 
   const result = streamText({
-    onFinish: () => resolveModelFinished(),
+    onFinish: (event) => {
+      modelFinishReason = event.finishReason;
+      modelProducedText = typeof event.text === 'string' && event.text.trim().length > 0;
+      resolveModelFinished();
+    },
     onError: () => {
       modelErrored = true;
       resolveModelFinished();
@@ -305,9 +322,25 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     execute: async ({ writer }) => {
       writer.merge(result.toUIMessageStream());
       await modelFinished;
-      // Skip the fallback when the model finalized, gathered no data, or errored (a provider failure
-      // already surfaced its own message — don't paste a report over it).
-      if (modelErrored || opts.ctx.reportEmitted || opts.ctx.results.length === 0) return;
+      // Skip the fallback when the model finalized its own report, or errored (a provider failure already
+      // surfaced its own message — don't paste a report over it).
+      if (modelErrored || opts.ctx.reportEmitted) return;
+      // No bindable data this turn → the fallback finalizer has nothing to synthesize from. If the model
+      // also produced no prose, the turn would otherwise be BLANK (empty completion). Write an explicit
+      // affordance so the dock shows guidance instead of an empty transcript. A legit prose-only answer
+      // (produced text, e.g. a clarifying reply) is left untouched.
+      if (opts.ctx.results.length === 0) {
+        if (!modelProducedText) {
+          console.warn('[assistant] empty completion — no report, no data, no prose', {
+            finishReason: modelFinishReason,
+          });
+          const textId = `empty_${randomReportId()}`;
+          writer.write({ type: 'text-start', id: textId });
+          writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
+          writer.write({ type: 'text-end', id: textId });
+        }
+        return;
+      }
       try {
         const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
         if (!built.ok) return;

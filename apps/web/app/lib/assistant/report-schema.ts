@@ -362,6 +362,18 @@ export function asNumber(v: string | number | null): number | null {
   return null;
 }
 
+// A `percent`-formatted cell is a 0..1 ratio by site convention (render-format.formatCell → pct()). A weak
+// model sometimes binds a raw euro SUM or a COUNT into a percent-tagged slot (e.g. „Дял по стойност" bound
+// to the single-offer euro total instead of its share of the whole), which renders as an absurd
+// „1342360573264,6%". This is the SHARED magnitude threshold the binder (reject → model retries) and the
+// renderer (safe em-dash) both use, so the two layers can't drift. Generous (10000%) so a legitimate large
+// percentage *change* isn't rejected — only values that cannot possibly be a ratio.
+export const MAX_RATIO_MAGNITUDE = 100;
+export function isImplausibleRatio(v: string | number | null): boolean {
+  const n = asNumber(v);
+  return n !== null && Math.abs(n) > MAX_RATIO_MAGNITUDE;
+}
+
 /**
  * Re-bind a model-emitted report against the server's own result sets. Every number on the page is
  * sourced here from `results`; the model's blocks only select/label/shape. Returns validation
@@ -448,9 +460,17 @@ export function bindReport(
               `${at}: material number in totals label — put it in a value slot`,
               errors,
             );
+            const value = sanitizeCell(cell(it.ref, at));
+            // A percent slot must reference a 0..1 ratio column, not a raw euro sum/count. Reject an
+            // impossible magnitude so the model retries with a real share column (or format 'number').
+            if (it.format === 'percent' && isImplausibleRatio(value)) {
+              errors.push(
+                `${at}: totals item "${it.label}" is format 'percent' but its value (${value}) is not a 0..1 ratio — reference a share column or use format 'number'`,
+              );
+            }
             return {
               label: sanitizeProse(it.label),
-              value: sanitizeCell(cell(it.ref, at)),
+              value,
               format: it.format,
             };
           }),

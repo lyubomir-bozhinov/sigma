@@ -51,7 +51,9 @@ export const VALUES_BY_REFERENCE_RULE =
 // the EXACT shape of every block type + the `format` enum so it lands valid on the first try.
 export const EMIT_REPORT_BLOCKS_GUIDE =
   'ФОРМАТ НА БЛОКОВЕТЕ (emit_report) — попълвай ТОЧНО тези полета. `format` е едно от ' +
-  '{money, number, percent, date, text} (НЕ "eur"/"bgn"). Полетата col/key/labelCol/valueCol/… са ' +
+  '{money, number, percent, date, text} (НЕ "eur"/"bgn"). `percent` реферира колона с ДЯЛ 0..1 ' +
+  '(напр. single_offer_share), НИКОГА сума в евро или брой — за суми ползвай "money", за броеве "number". ' +
+  'Полетата col/key/labelCol/valueCol/… са ' +
   'ИМЕНА на колони от резултата (напр. R1). Числата идват само през реферирани хендъли:\n' +
   '- text: {"type":"text","md":"…"}\n' +
   '- callout: {"type":"callout","title":"…","md":"…"}\n' +

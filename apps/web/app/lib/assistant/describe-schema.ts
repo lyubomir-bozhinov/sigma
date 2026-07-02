@@ -131,12 +131,13 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
     sql: 'SELECT b.name, b.id AS bidder_id, t.won_eur\nFROM company_totals t JOIN bidders b ON b.id = t.bidder_id\nORDER BY t.won_eur DESC LIMIT 20;',
   },
   {
-    intent: 'Разход по година (timeseries) — само чисти EUR редове',
-    sql: 'SELECT substr(c.signed_at, 1, 4) AS year, SUM(c.amount_eur) AS total_eur\nFROM contracts c\nWHERE c.amount_eur IS NOT NULL AND c.signed_at IS NOT NULL\nGROUP BY year ORDER BY year;',
+    intent: 'Разход по година (timeseries) — само валидно датирани, чисти EUR редове',
+    sql: "SELECT substr(c.signed_at, 1, 4) AS year, SUM(c.amount_eur) AS total_eur\nFROM contracts c\nWHERE c.amount_eur IS NOT NULL AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'\n  AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')\nGROUP BY year ORDER BY year;",
   },
   {
-    intent: 'Дял на договорите с една оферта',
-    sql: 'SELECT\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) AS single_offer_eur,\n  SUM(c.amount_eur) AS total_eur\nFROM contracts c WHERE c.amount_eur IS NOT NULL;',
+    intent:
+      'Дял на договорите с една оферта (по стойност) — включи и готовия дял (0..1), не само сумите',
+    sql: 'SELECT\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) AS single_offer_eur,\n  SUM(c.amount_eur) AS total_eur,\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) * 1.0 / SUM(c.amount_eur) AS single_offer_share\nFROM contracts c WHERE c.amount_eur IS NOT NULL;',
   },
   {
     intent: 'Разход по CPV сектор',

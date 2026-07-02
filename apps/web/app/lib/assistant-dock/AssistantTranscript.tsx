@@ -103,7 +103,11 @@ export const AssistantTranscript = ({ messages, busy }: AssistantTranscriptProps
             {report && !report.ok ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
             ) : null}
-            {isReportPending(message) ? (
+            {/* Gate on `busy` + last turn: a fallback-finalized report (server delivers a fresh
+                emit_report part) leaves the model's ORIGINAL emit_report part orphaned at
+                `input-available`, so isReportPending stays true forever. Once the stream settles
+                (status → 'ready' → !busy) the spinner clears; the rendered chip is what remains. */}
+            {busy && index === messages.length - 1 && isReportPending(message) ? (
               <p className="assistant-transcript__pending">Подготвям справка…</p>
             ) : null}
             {showNoAnswer ? (
