@@ -35,13 +35,20 @@ const COLUMN_LABELS: [RegExp, string][] = [
   [/^year$|^година$|годин/, 'Година'],
   [/(spent|похарчен|разход)/, 'Общо похарчено (€)'],
   [/(won|спечелен)/, 'Спечелено (€)'],
-  [/(amount|sum|total|value|стойност|сума)/, 'Обща стойност (€)'],
+  // The „(€)" value label needs a real currency token (amount/value/стойност/сума), or a bare `total`/`sum`
+  // that is NOT count-shaped — otherwise a tally like total_count/total_bids/sum_offers would render under
+  // „Обща стойност (€)" (e.g. total_count = 293 → „Обща стойност (€): 293"). Mirrors guessFormat's guard.
+  [
+    /(amount|value|стойност|сума)|(?:sum|total)(?!.*(?:count|contracts|number|броя|договор|бр_|оферт|bids|offers))/,
+    'Обща стойност (€)',
+  ],
   [/(single.?offer|една.?оферта).*(share|дял)|(share|дял).*(single|оферта)/, 'Дял с една оферта'],
   [/(share|дял|percent|процент)/, 'Дял'],
   [
     /(contract|договор).*(count|брой|number|num|_n\b)|(count|брой).*(contract|договор)|^contracts?$|^договори$/,
     'Брой договори',
   ],
+  [/оферт|bids|offers/, 'Брой оферти'],
   [/count|брой|number$|^n$|^n_/, 'Брой'],
   [/authorit|възложител/, 'Възложител'],
   [/bidder|contractor|company|изпълнител|компани|фирма/, 'Изпълнител'],
@@ -66,12 +73,15 @@ export function humanizeColumn(col: string): string {
 export function guessFormat(col: string): CellFormat {
   const c = col.toLowerCase();
   // A tally reads as a plain number even when its name also carries a GENERIC aggregate word like „total"
-  // (e.g. total_count, total_contracts) — check the count shape BEFORE the broad money pattern, but only
-  // when there's no HARD currency token (eur/amount/spent/сума/…) that would make it a real sum.
+  // (e.g. total_count, total_contracts, total_bids) — check the count shape BEFORE the broad money pattern,
+  // but only when there's no HARD currency token (eur/amount/spent/сума/…) that would make it a real sum.
+  // „bids/offers/оферт" are counts too (a bid tally aliased total_bids/sum_offers must NOT read as euros).
   const hasCurrencyToken = /(eur|amount|spent|paid|стойност|похарчен|сума|разход)/.test(c);
-  const isCountShape = /(count|contracts|number|броя?|договор|бр_)/.test(c);
+  const isCountShape = /(count|contracts|number|броя?|договор|бр_|оферт|bids|offers)/.test(c);
   if (isCountShape && !hasCurrencyToken) return 'number';
-  if (/(eur|amount|sum|spent|won|total|paid|стойност|похарчен|сума|разход)/.test(c)) return 'money';
+  // Money needs a HARD currency token, or a bare aggregate word (sum/total/won) that is NOT count-shaped —
+  // so `total_bids` / `sum_offers` can never fall through to euros just because they carry „total"/„sum".
+  if (hasCurrencyToken || (/(sum|total|won)/.test(c) && !isCountShape)) return 'money';
   if (/(share|ratio|dial|дял|percent|процент|pct)/.test(c)) return 'percent';
   if (isCountShape) return 'number';
   if (/(date|signed|period|year|month|дата|период|година|месец)/.test(c)) return 'date';

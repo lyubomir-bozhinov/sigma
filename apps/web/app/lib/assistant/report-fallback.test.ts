@@ -143,6 +143,21 @@ describe('buildFallbackReport — server-side last-resort finalizer', () => {
     expect(out.ok).toBe(true);
     if (out.ok) expect(out.report.title).toBe(FALLBACK_TITLE);
   });
+
+  it('renders a bid/offer COUNT as a plain number, never as euros (value-basis defect)', () => {
+    // A bid/offer tally aliased total_bids/sum_offers has no currency token — the bare „total"/„sum" must
+    // not steal it into money. 5 bids must read as „5" under a count label, not „5,00 €".
+    const results: QueryResult[] = [{ handle: 'R1', columns: ['total_bids'], rows: [[5]] }];
+    const out = buildFallbackReport(results, 'общо оферти');
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]!.type === 'totals') {
+      expect(out.report.blocks[0].items[0]).toEqual({
+        label: 'Брой оферти',
+        value: 5,
+        format: 'number',
+      });
+    }
+  });
 });
 
 describe('guessFormat', () => {
@@ -163,6 +178,16 @@ describe('guessFormat', () => {
     expect(guessFormat('total_spent_eur')).toBe('money');
     expect(guessFormat('won_eur')).toBe('money');
   });
+
+  it('reads a bid/offer count as a number even under a generic „total"/„sum" aggregate', () => {
+    // total_bids / sum_offers are TALLIES with no currency token — they must not fall through to money.
+    expect(guessFormat('total_bids')).toBe('number');
+    expect(guessFormat('sum_offers')).toBe('number');
+    expect(guessFormat('оферти')).toBe('number');
+    // a real sum/total with a currency token still wins as money
+    expect(guessFormat('total_amount_eur')).toBe('money');
+    expect(guessFormat('sum_value_eur')).toBe('money');
+  });
 });
 
 describe('humanizeColumn', () => {
@@ -177,6 +202,16 @@ describe('humanizeColumn', () => {
     expect(humanizeColumn('single_offer_share')).toBe('Дял с една оферта');
     expect(humanizeColumn('period')).toBe('Период');
     expect(humanizeColumn('year')).toBe('Година');
+  });
+
+  it('labels a bid/offer count as a count, not „Обща стойност (€)"', () => {
+    // The over-broad „total"/„sum" must not put a tally under a euro label.
+    expect(humanizeColumn('total_bids')).toBe('Брой оферти');
+    expect(humanizeColumn('sum_offers')).toBe('Брой оферти');
+    expect(humanizeColumn('total_count')).toBe('Брой');
+    // genuine value columns keep the euro label
+    expect(humanizeColumn('total_value_eur')).toBe('Обща стойност (€)');
+    expect(humanizeColumn('sum_amount')).toBe('Обща стойност (€)');
   });
 
   it('degrades an unmapped column to a de-snaked, capitalised label — never the raw identifier', () => {
