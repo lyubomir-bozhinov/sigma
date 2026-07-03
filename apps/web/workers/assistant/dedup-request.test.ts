@@ -17,7 +17,16 @@ describe('hasUnresolvedRelativeDate', () => {
 
   it('is true when a period word is present but nothing resolved', () => {
     // The resolver failed to pin these to absolute bounds → L1 keying on the text alone is unsafe (#97).
-    for (const q of ['преди няколко месеца', 'ланшната година', 'тази седмица май', 'днес-утре']) {
+    // 'последните сто дни' is the strict-review repro: temporal.ts matches the rolling-days shape but
+    // parseBgCount('сто') is null → returns null → the `дни` stem must still flag it unsafe.
+    for (const q of [
+      'преди няколко месеца',
+      'ланшната година',
+      'тази седмица май',
+      'днес-утре',
+      'последните сто дни',
+      'резултати за днешния ден',
+    ]) {
       expect(hasUnresolvedRelativeDate(q, false)).toBe(true);
     }
   });
@@ -137,6 +146,24 @@ describe('buildDedupRequest', () => {
       freshness: FRESH,
     });
     expect(a.doName).toBe(b.doName);
+  });
+
+  it('DO key normalises the filterContext too, so whitespace-variant filters collapse', () => {
+    const withDoubleSpace = buildDedupRequest({
+      prompt: 'разходи',
+      temporalResolved: true,
+      period: JULY,
+      filterContext: 'сектор  =  строителство',
+      freshness: FRESH,
+    });
+    const withSingleSpace = buildDedupRequest({
+      prompt: 'разходи',
+      temporalResolved: true,
+      period: JULY,
+      filterContext: 'сектор = строителство',
+      freshness: FRESH,
+    });
+    expect(withDoubleSpace.doName).toBe(withSingleSpace.doName);
   });
 
   it('folds an FE filterContext into L1 alongside the period', () => {

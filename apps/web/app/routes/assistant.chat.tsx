@@ -201,19 +201,23 @@ export async function action({ request, context }: Route.ActionArgs) {
   let freshness = '';
   if (env.DEDUP_KV && flightNs && question) {
     // Reuse csv-export's exact derivation of `home_totals.refreshed_at` so both caches invalidate in
-    // lockstep (never empty — `freshnessVersion` falls back to `v0`).
-    freshness = freshnessToken({
-      refreshedAt: await freshnessVersion(env.DB),
-      buildId: env.BUILD_ID ?? 'dev',
-    });
-    dedup = buildDedupRequest({
-      clientRequestId,
-      prompt: question,
-      temporalResolved: temporal !== undefined,
-      period: temporal?.primary,
-      filterContext,
-      freshness,
-    });
+    // lockstep. `freshnessVersion` returns the sentinel 'v0' when the data version is UNKNOWN (home_totals
+    // absent / unrefreshed — a bootstrap or ETL-gap window). Under a fixed epoch a report cached now would
+    // still validate after the data changes but before refreshed_at updates → a stale serve (strict
+    // review). So when the version is unknown we DON'T dedup: every request generates (fail toward
+    // regeneration) until a real refreshed_at lands.
+    const dataVersion = await freshnessVersion(env.DB);
+    if (dataVersion !== 'v0') {
+      freshness = freshnessToken({ refreshedAt: dataVersion, buildId: env.BUILD_ID ?? 'dev' });
+      dedup = buildDedupRequest({
+        clientRequestId,
+        prompt: question,
+        temporalResolved: temporal !== undefined,
+        period: temporal?.primary,
+        filterContext,
+        freshness,
+      });
+    }
   }
 
   const cfCtx = context.cloudflare.ctx;
@@ -224,10 +228,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       const stub = flightNs.get(flightNs.idFromName(dedup.doName));
       const claim = await stub.claimAndWait(dedup.signals, freshness);
       if (claim.kind === 'hit' || claim.kind === 'ready') {
-        // 'ready' = a concurrent driver just generated it; tag the served layer as L1 (the collapse key).
+        // 'ready' = a concurrent driver just generated it; attribute it to the layer the DO collapsed on
+        // (the doName prefix — L0 when L1 was unsafe), for accurate telemetry, not a hardcoded 'L1'.
         // A cache hit is FREE — it never consults the global breaker (else a viral report link would trip
         // the DoW cap on requests that cost nothing to serve, defeating this whole dedup lane).
-        const layer = claim.kind === 'hit' ? claim.layer : 'L1';
+        const layer =
+          claim.kind === 'hit' ? claim.layer : dedup.doName.startsWith('L0|') ? 'L0' : 'L1';
         return dedupResponse({ reportId: claim.reportId, createdAt: claim.createdAt, layer });
       }
       // This branch generates (paid) → consult the account-wide breaker BEFORE the model call (#135).

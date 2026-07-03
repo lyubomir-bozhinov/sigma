@@ -15,7 +15,9 @@ export interface PeriodBounds {
 // bounds, L1 caching (keyed on prompt text) is unsafe: the same wording asked across a period boundary
 // within ONE data-freshness epoch could serve the wrong period (#97). We then skip L1 (keep L0). Broad by
 // intent — a false positive only costs a dedup miss (regenerate), never a wrong answer (fail toward regen).
-const RELATIVE_HINT = /седмиц|месец|тримесеч|годин|днес|вчера/i;
+// MUST cover every unit temporal.ts can match-but-fail-to-resolve — including rolling days (`последните сто
+// дни`, an uncounted word → temporal returns null): the `дни|ден` stems close that gap (strict review).
+const RELATIVE_HINT = /седмиц|месец|тримесеч|годин|дни|ден|дена|днес|вчера/i;
 
 /** True when the question looks time-relative yet no absolute period was resolved — L1 is then unsafe. */
 export function hasUnresolvedRelativeDate(question: string, temporalResolved: boolean): boolean {
@@ -90,7 +92,9 @@ export function buildDedupRequest(input: DedupRequestInput): DedupRequest {
   // concurrent identical questions; else L0 (submission idempotency); else no safe key → skip dedup.
   let doName: string | null = null;
   if (l1Safe) {
-    doName = `L1|${input.freshness}|${normalizeText(input.prompt)}|${filterContext}`;
+    // normalizeText the filterContext too, matching dedupKey's canonicalFields — else trivially-different
+    // whitespace routes identical requests to different DO instances (missed collapse; a cost blip only).
+    doName = `L1|${input.freshness}|${normalizeText(input.prompt)}|${normalizeText(filterContext)}`;
   } else if (input.clientRequestId) {
     doName = `L0|${input.freshness}|${input.clientRequestId}`;
   }

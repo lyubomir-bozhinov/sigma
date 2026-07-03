@@ -79,14 +79,17 @@ export class ReportSingleFlight extends DurableObject<ReportSingleFlightEnv> {
     freshness: string,
     result: GeneratorResult,
   ): Promise<void> {
-    await this.ctx.storage.deleteAlarm();
+    // Wake waiters FIRST so a transient deleteAlarm() failure can't leave them blocked until the 130s crash
+    // alarm. After flight.complete()'s reset() the waiter set is empty, so a stray alarm firing later is a
+    // no-op fail() over zero waiters — disarming is a best-effort cleanup, not a correctness dependency.
     await this.flight.complete(recordAs, freshness, result);
+    await this.ctx.storage.deleteAlarm().catch(() => {});
   }
 
   /** Driver failed/aborted: release waiters to regenerate, disarm the alarm. */
   async fail(): Promise<void> {
-    await this.ctx.storage.deleteAlarm();
     this.flight.fail();
+    await this.ctx.storage.deleteAlarm().catch(() => {});
   }
 
   /** Crash safety: a driver that never settled → release waiters so the next request regenerates. */
