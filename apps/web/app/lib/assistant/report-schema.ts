@@ -425,8 +425,8 @@ export function bindReport(
     return r ?? null;
   };
 
-  // Reports missing columns as warnings (not errors) so the block still renders with null values
-  // rather than failing the whole report. Returns true so callers always proceed to build the block.
+  // Table display columns: warn on missing so the block still renders with null cells rather than
+  // blocking the whole report. Returns true so the table is always built when called.
   const requireCols = (r: QueryResult, cols: string[], where: string): true => {
     for (const c of cols) {
       if (!r.columns.includes(c)) {
@@ -434,6 +434,19 @@ export function bindReport(
       }
     }
     return true;
+  };
+
+  // Chart columns (bar, flows, timeseries): a missing valueCol produces all-null coercions →
+  // zero points → an empty chart that shows nothing useful. Force a model retry instead.
+  const requireChartCols = (r: QueryResult, cols: string[], where: string): boolean => {
+    let ok = true;
+    for (const c of cols) {
+      if (!r.columns.includes(c)) {
+        errors.push(`${where}: result "${r.handle}" has no column "${c}"`);
+        ok = false;
+      }
+    }
+    return ok;
   };
 
   const colValues = (r: QueryResult, col: string) => {
@@ -565,7 +578,7 @@ export function bindReport(
       }
       case 'bar': {
         const r = requireResult(b.resultId, at);
-        if (r && (r.rows.length === 0 || requireCols(r, [b.labelCol, b.valueCol], at))) {
+        if (r && (r.rows.length === 0 || requireChartCols(r, [b.labelCol, b.valueCol], at))) {
           const labels = colValues(r, b.labelCol);
           const vals = colValues(r, b.valueCol);
           const points: { label: string | number | null; value: number }[] = [];
@@ -579,7 +592,10 @@ export function bindReport(
       }
       case 'flows': {
         const r = requireResult(b.resultId, at);
-        if (r && (r.rows.length === 0 || requireCols(r, [b.fromCol, b.toCol, b.valueCol], at))) {
+        if (
+          r &&
+          (r.rows.length === 0 || requireChartCols(r, [b.fromCol, b.toCol, b.valueCol], at))
+        ) {
           const from = colValues(r, b.fromCol);
           const to = colValues(r, b.toCol);
           const val = colValues(r, b.valueCol);
@@ -599,7 +615,7 @@ export function bindReport(
       }
       case 'timeseries': {
         const r = requireResult(b.resultId, at);
-        if (r && (r.rows.length === 0 || requireCols(r, [b.periodCol, b.valueCol], at))) {
+        if (r && (r.rows.length === 0 || requireChartCols(r, [b.periodCol, b.valueCol], at))) {
           const period = colValues(r, b.periodCol);
           const vals = colValues(r, b.valueCol);
           const points: { period: string | number | null; value: number }[] = [];
