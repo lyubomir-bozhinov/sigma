@@ -113,7 +113,9 @@ export function buildFallbackReport(results: QueryResult[], question: string): B
           // actually a raw sum/count (not a 0..1 ratio) that would render as an absurd „…%". Downgrade to
           // a plain number so the reader still sees the real figure.
           format:
-            fmt === 'percent' && isImplausibleRatio(last.rows[0][i]) ? ('number' as CellFormat) : fmt,
+            fmt === 'percent' && isImplausibleRatio(last.rows[0][i])
+              ? ('number' as CellFormat)
+              : fmt,
         };
       })
     : [];

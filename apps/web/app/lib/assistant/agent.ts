@@ -351,9 +351,12 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       ]);
       if (backstopTimer) clearTimeout(backstopTimer);
       if (!settledCleanly) {
-        console.error('[assistant] model stream did not settle within backstop — skipping fallback', {
-          backstopMs: SETTLE_BACKSTOP_MS,
-        });
+        console.error(
+          '[assistant] model stream did not settle within backstop — skipping fallback',
+          {
+            backstopMs: SETTLE_BACKSTOP_MS,
+          },
+        );
         return;
       }
       // Skip the fallback when the model finalized its own report, or errored (a provider failure already
