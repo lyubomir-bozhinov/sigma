@@ -6,7 +6,8 @@
 - **Delivers (confirmed):** a **conflict-of-interest** foundation — officials' *declared* company stakes vs public contracts.
 - **Contingently unblocks:** #128 checkbox 1 (споделени собственици) and #60, **only if** the unproven TR source (§3.3) clears Phase-0.
 - **Continues:** #34 (closed) — but the *external-observer subset* of it, not the full vision (see §1).
-- **Depends on:** the ETL pipeline + integrity gate; and **hard-blocks on #173 + #184** for any public natural-person output (§8).
+- **Depends on:** the ETL pipeline + integrity gate; and **hard-blocks on #173** for any public natural-person output (§8).
+- **Publish bar:** **certainty (1.0)** — nothing is auto-published; **human ЕИК-verification is the sole publish gate** (§5). Order: **Phase 0 (feasibility) first.**
 
 ## 1. Why this exists — and what it honestly is
 
@@ -80,7 +81,7 @@ New domain tables, built by `normalize-raw.sql` from persistent staging; `intere
 | `declared_interests` | one holding row | CACBG | `kind`, `stake_pct`, `company_name_raw`, `company_town`, `value`, `holder_relation` (self/spouse/child), `acquisition_mode`, `acquired_hint` |
 | `party_donations` | one donation | ЕРИК | `donor_name`, `donor_kind`, `donor_eik` (**nullable, usually NULL**), `party_name`, `amount`, `date`, `source_url` |
 | `company_owners` | one owner/manager record | TR targeted | `company_eik`, `person_name`, `role`, `stake_pct?`, `source_url`, `fetched_at`. No ЕГН stored. |
-| `interest_links` | one **resolved** edge | JS resolver | `subject_person_id`, `company_eik`, `bidder_id`, `contract_id?`, `authority_id?`, `link_kind`, `match_method`, `confidence`, `provenance`, **`matcher_version`, `first_asserted_at`, `superseded_at`** (reproducible/auditable over time). |
+| `interest_links` | one candidate/verified edge | JS resolver + human review | `subject_person_id`, `company_eik`, `bidder_id`, `contract_id?`, `authority_id?`, `link_kind`, `match_method`, `confidence`, `provenance`, `matcher_version`, `first_asserted_at`, `superseded_at`, **`status`** (candidate/verified/rejected), **`verified_by`, `verified_at`**. Only `status='verified'` is public (certainty bar, §5). |
 | `link_suppressions` | one correction/takedown | appeals | survives re-import (§8); a suppressed `(subject, company, source_row)` is never re-asserted. |
 
 **Person identity** has no ЕГН and no birthdate → it is the **weakest** join, not a safe one. The `list.xml` hierarchy binds Person→Position→Institution within a register-year; use that. Homonyms (Георги Иванов) are pervasive → a bare name key would silently merge two distinct officials (false-accusation vector). Therefore per-declaration nodes + cautious, corroborated, review-gated cross-linking only.
@@ -93,16 +94,20 @@ New domain tables, built by `normalize-raw.sql` from persistent staging; `intere
 
 **Prerequisite — settlement backfill (Phase-0 blocker).** `bidders.settlement` is populated **only** from OCDS parties (`normalize-raw.sql`), which cover **2026+** entities → it is largely **NULL for the 2020–2025 corpus**. The town gate therefore has no data for most bidders, and "TR fills settlement" is **circular** (TR is keyed by the ЕИК the match is trying to find). Phase-0 must (a) **measure** actual settlement coverage on the bidder set, and (b) backfill it **independently** of the match (bulk ЕКАТТЕ/NUTS, or per-ЕИК TR on the bidder's *own* ЕИК where `eik_valid=1`) — or Tier A must be redefined to not need town and proven empirically.
 
-**Confidence tiers:**
-- **Tier A (auto-assert)** — `bidder.eik_valid = 1` **AND** strong calibrated name match **AND** (town agreement where settlement exists). Never Tier A for `name:`-keyed bidders/consortia (NULL ЕИК) — those cap at Tier B.
-- **Tier B** — name match but town/form partial, multiple candidates, or name-keyed bidder → **human-review queue**, not asserted.
-- **Tier C** — weak/ambiguous → held, never surfaced.
+**Certainty bar = 1.0 → nothing auto-publishes.** A libel/slander-safe tool cannot publish a probabilistic guess that a *named* official is connected to a company. Name-only matching **cannot be certain by construction** (BG trade names aren't unique; no ЕГН; CACBG carries no ЕИК). Therefore the matcher never asserts a public link. It is a **triage/lead tool**: it produces *candidate* links; **publication requires human ЕИК-verification** (§ below). `confidence` is a reviewer-ranking aid only — never a publish gate.
 
-**Provenance (every link):** `source_url`, raw declared strings, matched `bidder_id`, `match_method`, `confidence`, `matcher_version`. UI shows the receipts inline.
+**Candidate tiers (drive the review queue, not publication):**
+- **Auto-proposed** — `bidder.eik_valid = 1` + strong name match (+ town agreement where settlement exists) → top of the review queue. Name-keyed/consortium bidders (NULL ЕИК) can never be auto-proposed as certain — they carry no ЕИК to verify against.
+- **Weak candidate** — partial/ambiguous → lower in the queue.
+- **Held** — below a floor → not surfaced even to reviewers.
+
+**Publish gate — human ЕИК-verification (the only path to an asserted link):** a reviewer confirms *"declared `company name + town` = this exact ЕИК"* against TR (unique name+seat) **and** the source declaration, then signs off. Only human-verified links get `verified_by` + `verified_at` and become public. The declared-company→ЕИК resolution is the sole uncertain step; once a human fixes the ЕИК, everything downstream (owners, contracts, institution overlap) is deterministic. Volume is bounded — only companies that appear in *both* a declaration/donation *and* the winner set need review (expected small). If a deterministic-certain class exists (e.g. a declared row that itself contains an ЕИК, or a provably unique TR name+seat), it may auto-verify — but is treated as review-gated until Phase 0 proves such a class exists at all.
+
+**Provenance (every candidate + link):** `source_url`, raw declared strings, matched `bidder_id`, `match_method`, `confidence`, `matcher_version`, and (once verified) `verified_by`/`verified_at`. UI shows the full receipt chain inline.
 
 **Known recall holes (enumerate on methodology page):** `search_index` is built from `company_totals`, so bidders whose only contracts are FX-rateless (`amount_eur` NULL) are **absent from FTS** and unmatchable; renamed companies; town-changed companies; ownership via HoldCo. Acceptable under false-negatives-over-false-accusations, but stated up front.
 
-**Headline metric:** count of ЛЗВПД holding a *declared* stake in a company that won public contracts, and the subset winning **from the official's own institution** with temporal overlap (§ below). Framed as declared leads, never "all conflicts."
+**Headline metric:** count of **human-verified** ЛЗВПД holding a *declared* stake in a company that won public contracts, and the subset winning **from the official's own institution** with temporal overlap (§ below). A verified floor, framed as declared leads — never "all conflicts," never an algorithmic estimate.
 
 **Temporal logic:** a declaration is a **point-in-time snapshot**, not an interval. A stake acquired late-year vs a contract won early-year is a **false overlap**; a stake sold mid-year still shows in the prior declaration; entrants/leavers file nothing for years out of office. Use `Year` with an **uncertainty band** + `acquisition_mode/acquired_hint` to bound the holding start. **Verify the ЗОП-signatory category's filing cadence** (annual vs event-triggered) before relying on annual re-filing.
 
@@ -110,19 +115,22 @@ New domain tables, built by `normalize-raw.sql` from persistent staging; `intere
 
 ### Phase 0 — Feasibility spike (kill-criteria; do this before committing to the build)
 - **Settlement coverage:** measure `bidders.settlement` fill-rate on the 2020–2025 bidder set; prototype a backfill; decide if the town gate is viable or Tier A must drop town.
-- **Ground truth:** hand-label a **stratified pair set** — true matches + **hard negatives** (same-name/diff-town, same-core/diff-form, homonym companies, name-keyed bidders). Without this there is no measurable gate.
+- **Ground truth:** hand-label a **stratified pair set** — true matches + **hard negatives** (same-name/diff-town, same-core/diff-form, homonym companies, name-keyed bidders). Used to measure matcher *recall* and candidate-set tightness, not to license auto-publish.
+- **Review volume:** estimate how many declared/donor companies intersect the winner set (the actual human-verification workload). If it's thousands, the queue is tractable; if tens of thousands, the review model needs rethinking. This is a primary Phase-0 output.
+- **Certain-class probe:** determine whether ANY deterministic-certain match class exists (declared row with an ЕИК; provably unique TR name+seat). If none, confirm that **100% of public links must be human-verified** — and design accordingly.
 - **TR:** confirm per-ЕИК endpoint, fields, rate limits, ToS.
 - **ЕРИК:** confirm parse shape, donor-ЕИК presence, retention/Wayback for 2020–2026.
 - **Cadence:** verify ЗОП-category filing cadence for the temporal model.
-- **Gate:** can Tier-A precision be *measured* at all (given no ЕГН)? If not, that is the **no-go** — surface it, don't paper over it.
+- **Gate:** is the human-verified pipeline *viable at this volume* — reviewable candidate set, tractable workload, matcher recall high enough that true links aren't missed? If the intersection is unreviewably large or recall is too low to trust the queue, that is the **no-go** — surface it, don't paper over it.
 
 ### Phase 1 — CACBG ingestion (the confirmed MVP; independent of Phase 0's TR/ЕРИК)
 Resumable crawler + raw-XML cache (`control_hash` key) → parser → `persons/declarations/declared_interests`.
 - **Gate:** ≥ (stated N, e.g. all 2020–2026 folders, ≥95% of `Sent=True` declarations parsed) ingested; **idempotent** re-import (re-run yields zero drift; natural key = `xml_file`+`control_hash`); staging survives the full `normalize` rebuild; adversarial parser tests (malformed XML, empty holdings, missing town, TLS quirk).
 
-### Phase 2 — Matching (the go/no-go)
-JS resolver → `interest_links`.
-- **Gate:** **Tier-A precision ≥ 0.98** (target; tune with lb) on the Phase-0 labelled set of N ≥ 200 with a reported confidence interval; **recall reported separately** and explicitly accepted as known incompleteness; the headline conflict count with worked examples. "Match rate" is **not** a headline. If precision can't clear the bar, stop before any UI.
+### Phase 2 — Matching + review pipeline (the go/no-go)
+JS resolver → candidate `interest_links` → **human-verification queue** → verified links.
+- **Publish rule = certainty (1.0):** nothing is published as a link without human ЕИК-verification (§5). The matcher's job is recall + tight candidates, never auto-assertion.
+- **Gate:** matcher **recall** on the Phase-0 labelled set high enough that reviewers aren't missing true links (target with lb, e.g. ≥0.95 recall into the candidate set); candidate-set precision good enough that reviewer load is tractable (report it, not as a publish gate); a working review UI/workflow that records `verified_by`/`verified_at`; and a **verified** headline count with worked, fully-sourced examples. If humans can't verify the volume, or recall is too low to trust the queue, stop before public UI.
 
 ### Phase 3 — Integration (hard-gated on privacy)
 - **HARD BLOCKER:** **#173 must land first** — natural-person masking proven on `.json`/`.csv` **and the `.data` twin** (#184's rate-limit fix is merged, but that closed the *limiter* bypass, not the *mask*; the `.data` surface must be re-verified against the masking policy, per the .data under-protection pattern). **Family-relation rows (`holder_relation ≠ self`) stay INTERNAL-only for v1** — the §5 metric is the official's own holdings; do not publish third-party data over surfaces known to leak.
@@ -148,16 +156,28 @@ Domain tables + rollups ride the existing pipeline (`normalize-raw.sql` → `pre
 - **TR:** bounded per-ЕИК only, never bulk (DPA-hostile), never store ЕГН.
 
 **Accuracy (project rule — accuracy blocks merge):**
-- Numeric, falsifiable gate (Phase 2) on a labelled set with hard negatives; nothing auto-asserted below Tier A / `eik_valid=1`; resolver gets adversarial self-tests.
+- **Certainty bar (1.0): nothing is auto-asserted — human ЕИК-verification is the sole publish gate** (§5). The Phase-2 gate measures matcher *recall* + reviewer tractability on a labelled set with hard negatives, not an auto-publish precision threshold. Resolver **and** review workflow get adversarial self-tests.
 - Present links as „модел за проверка, не обвинение" (#34); the tool shows declared/derivable links, never claims completeness.
 
 **Corrections & lifecycle (defamation-sensitive):**
 - **Appeal/correction/takedown workflow** with an intake contact and a resolution SLA — designed, not just named. Corrections land in `link_suppressions` and **survive re-import** (idempotency must not re-assert a removed link).
 - **Refresh cadence + source reconciliation:** re-scrape on a stated cadence; handle **withdrawn/amended** declarations and officials leaving office — a stale `interest_link` implies a *current* conflict that has ended (= accuracy defect on live prod).
 
-## 9. Open questions / risks (ranked)
+## 9. Public methodology page (clear and explicit — a hard requirement)
 
-1. **Match accuracy (name-only) — THE go/no-go.** Every source is ЕГН-less/often ЕИК-less; the thesis rests on the §5 matcher clearing a defensible precision bar. Phase-2 gate; may be un-measurable without ground truth (Phase 0).
+The public site MUST carry a plain-language methodology page. It is part of the libel defence: a reader must see exactly how a link was made and be able to re-derive it. It states, explicitly:
+1. **Sources + legal basis** — CACBG declarations (ЗСП чл. 75, Сметна палата); ЕРИК (Изборен кодекс); targeted TR per-ЕИК (public company facts). Each with a direct source link.
+2. **What is shown and what is not** — officials' own declared holdings; **family holdings are NOT published** (v1); addresses/ЕГН never shown.
+3. **The matching rule, verbatim** — declared `company name + town` → candidate bidder ЕИК → **a human verifies the ЕИК identity against TR + the declaration before any link is published**. No algorithm publishes a link. Every link shows its evidence chain and the reviewer sign-off.
+4. **Certainty & framing** — only human-verified links appear; each is a „**модел за проверка, не обвинение**"; the tool shows *declared* links only and **does not claim to find hidden ownership** (it is a floor, not the full picture).
+5. **Temporal meaning** — a declaration is a point-in-time snapshot; how overlap with a contract date is (and isn't) interpreted.
+6. **Known gaps** — the recall holes (§5), self-reporting limits, sources it cannot see.
+7. **Corrections & appeal** — how to contest a link, the contact, the SLA, and that a corrected link stays removed across refreshes (§8).
+8. **Retention & freshness** — refresh cadence; how withdrawn/amended declarations are handled.
+
+## 10. Open questions / risks (ranked)
+
+1. **Human-verification volume + matcher recall — THE go/no-go.** Under the 1.0 bar the risk is no longer "can the algorithm be precise" but "is the human-verified pipeline viable": is the declared∩winner intersection small enough to review, and does the matcher surface true links into the queue (recall) without drowning reviewers? Resolved in Phase 0/2.
 2. **Family-data masking** — highest *legal* risk; only mitigated if #173 masking is proven on every format incl. `.data`. v1 keeps family rows internal.
 3. **Settlement backfill** — the town gate is inert pre-2026 until this is solved (Phase 0).
 4. **ЕРИК format/retention** — HTML-only, no donor ЕИК, election-scoped retention may drop older cycles → may shrink §3.2.
