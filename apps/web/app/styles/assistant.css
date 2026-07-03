@@ -188,6 +188,47 @@ html.assistant-ready .assistant-dock--panel {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Markdown block forms (assistant prose via MarkdownBlock). The user echo is a bare <p> with no
+   child block elements, so these child selectors only ever match assistant messages. */
+.assistant-message__text > p {
+  margin: 0 0 var(--s-2);
+}
+.assistant-message__text > p:last-child {
+  margin-bottom: 0;
+}
+.assistant-message__text ul,
+.assistant-message__text ol {
+  margin: 0 0 var(--s-2);
+  padding-left: var(--s-4);
+}
+.assistant-message__text li {
+  margin: 0 0 var(--s-1);
+}
+.assistant-message__text hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: var(--s-2) 0;
+}
+/* Wide tables scroll horizontally rather than break the narrow dock. Styled plainly so a chat table
+   does not read as a vetted report card. */
+.assistant-message__text table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 var(--s-2);
+  font-size: 0.9em;
+}
+.assistant-message__text th,
+.assistant-message__text td {
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--rule);
+  text-align: left;
+  white-space: nowrap;
+}
+.assistant-message__text th {
+  font-weight: 600;
+  background: var(--paper-warm);
+}
 .assistant-message--user {
   align-self: flex-end;
   max-width: 85%;
