@@ -88,7 +88,12 @@ export const AssistantPanel = ({
         {messages.length === 0 ? (
           <AssistantEmptyState prompts={prompts} onPick={onPick} />
         ) : (
-          <AssistantTranscript messages={messages} phase={phase} busy={busy} onOpenReport={onOpenReport} />
+          <AssistantTranscript
+            messages={messages}
+            phase={phase}
+            busy={busy}
+            onOpenReport={onOpenReport}
+          />
         )}
       </div>
 

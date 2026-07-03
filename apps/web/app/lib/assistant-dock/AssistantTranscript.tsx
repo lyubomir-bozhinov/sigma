@@ -36,7 +36,12 @@ const STICK_THRESHOLD_PX = 40;
  * content in view while streaming, but only while the reader is already near the bottom — so scrolling
  * up to read history isn't interrupted.
  */
-export const AssistantTranscript = ({ messages, phase, busy, onOpenReport }: AssistantTranscriptProps) => {
+export const AssistantTranscript = ({
+  messages,
+  phase,
+  busy,
+  onOpenReport,
+}: AssistantTranscriptProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 

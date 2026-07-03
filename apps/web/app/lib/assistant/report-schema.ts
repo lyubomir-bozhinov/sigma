@@ -401,17 +401,15 @@ export function bindReport(
     }
     const colIdx = r.columns.indexOf(ref.col);
     if (colIdx < 0) {
-      warnings.push(
-        `${where}: result "${ref.resultId}" has no column "${ref.col}" — rendered as null`,
-      );
+      errors.push(`${where}: result "${ref.resultId}" has no column "${ref.col}"`);
       return null;
     }
     // Self-defend against a non-integer row (`1.5`): `1.5 >= length` can be false, then `rows[1.5]` is
     // undefined and the slot would silently bind null. Don't rely on validateEmitShape running first
     // (review #80, ydimitrof).
     if (!Number.isInteger(ref.row) || ref.row < 0 || ref.row >= r.rows.length) {
-      warnings.push(
-        `${where}: result "${ref.resultId}" row ${ref.row} out of range (0..${r.rows.length - 1}) — rendered as null`,
+      errors.push(
+        `${where}: result "${ref.resultId}" row ${ref.row} out of range (0..${r.rows.length - 1})`,
       );
       return null;
     }
@@ -532,13 +530,16 @@ export function bindReport(
             // (a legitimate "no results" answer; review #80).
             blocks.push({ type: 'table', columns, rows: [], truncated: r.truncated ?? false });
           } else {
-            // Require both the display columns AND the link id columns to exist — without the latter an
-            // immutable report could not reconstruct its entity links.
-            const needed = [
-              ...b.columns.map((c) => c.key),
-              ...b.columns.flatMap((c) => (c.link ? [c.link.idCol] : [])),
-            ];
-            if (requireCols(r, needed, at)) {
+            // Link id columns are structural — an immutable report needs them to reconstruct
+            // entity links (spec §4). Missing → hard error so the model retries with the right name.
+            const linkIdCols = b.columns.flatMap((c) => (c.link ? [c.link.idCol] : []));
+            const missingLinks = linkIdCols.filter((c) => !r.columns.includes(c));
+            for (const c of missingLinks)
+              errors.push(`${at}: result "${r.handle}" has no column "${c}"`);
+            if (missingLinks.length === 0) {
+              // Display columns: warn if missing (renders null in that slot) so a partially-missing
+              // result still produces a viewable report instead of forcing a retry.
+              requireCols(r, b.columns.map((c) => c.key), at);
               const idx = b.columns.map((c) => r.columns.indexOf(c.key));
               const linkIdx = b.columns.map((c) => (c.link ? r.columns.indexOf(c.link.idCol) : -1));
               blocks.push({
