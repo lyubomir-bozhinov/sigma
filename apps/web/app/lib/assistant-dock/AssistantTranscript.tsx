@@ -102,7 +102,12 @@ export const AssistantTranscript = ({ messages, phase, busy }: AssistantTranscri
                 href={report.storedId ? `/reports/${report.storedId}` : undefined}
               />
             ) : null}
-            {report && !report.ok ? (
+            {/* Suppress the failure line while the last turn is still in flight: a first emit that
+                returns ok:false is normally RETRIED (the loop re-forces emit_report) and then
+                succeeds, so flashing „не можа да бъде съставена" mid-retry contradicts the report
+                that lands a moment later. Only show it once the turn has settled (or for an earlier
+                turn that genuinely ended on ok:false). While busy the pending indicator shows instead. */}
+            {report && !report.ok && !(busy && index === messages.length - 1) ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
             ) : null}
             {showNoAnswer ? (

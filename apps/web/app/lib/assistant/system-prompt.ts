@@ -51,11 +51,17 @@ export const VALUES_BY_REFERENCE_RULE =
 // the EXACT shape of every block type + the `format` enum so it lands valid on the first try.
 export const EMIT_REPORT_BLOCKS_GUIDE =
   'ФОРМАТ НА БЛОКОВЕТЕ (emit_report) — попълвай ТОЧНО тези полета. `format` е едно от ' +
-  '{money, number, percent, date, text} (НЕ "eur"/"bgn"). Полетата col/key/labelCol/valueCol/… са ' +
+  '{money, number, percent, date, text} (НЕ "eur"/"bgn"). `percent` реферира колона с ДЯЛ 0..1 ' +
+  '(напр. single_offer_share), НИКОГА сума в евро или брой — за суми ползвай "money", за броеве "number". ' +
+  'Полетата col/key/labelCol/valueCol/… са ' +
   'ИМЕНА на колони от резултата (напр. R1). Числата идват само през реферирани хендъли:\n' +
   '- text: {"type":"text","md":"…"}\n' +
   '- callout: {"type":"callout","title":"…","md":"…"}\n' +
   '- totals: {"type":"totals","items":[{"label":"…","ref":{"resultId":"R1","row":0,"col":"spent_eur"},"format":"money"}]}\n' +
+  '  ВАЖНО: `totals` е ЕДНО обобщено число (общ сбор/брой) и ТРЯБВА да реферира резултат с ЕДИН ред ' +
+  '(отделна заявка `SELECT SUM(...)/COUNT(*)`). НЕ реферирай ред от многоредова серия (напр. ред 0 на ' +
+  '„разход по година") като „общ" — това показва един ред вместо целия сбор. За серия ползвай ' +
+  '`timeseries`/`table`; ако искаш и общ сбор, изпълни отделна обобщаваща заявка.\n' +
   '- facts: {"type":"facts","items":[{"term":"…","ref":{"resultId":"R1","row":0,"col":"…"}}]}\n' +
   '- table: {"type":"table","resultId":"R1","columns":[{"key":"name","header":"Възложител","format":"text","link":{"kind":"authority","idCol":"authority_id"}},{"key":"spent_eur","header":"Похарчено","format":"money"}]}\n' +
   '- bar: {"type":"bar","resultId":"R1","labelCol":"name","valueCol":"spent_eur"}\n' +
@@ -91,6 +97,16 @@ export const RECONCILE_RULE =
 export const EDITORIAL_SKELETON =
   'ФОРМА НА СПРАВКАТА: заглавие → едноредов отговор (`text`) → водещи `totals` → поддържащи ' +
   '`table`/`bar`/`flows`/`timeseries` → `callout`, който цитира източниците.';
+
+export const HEADLINE_TOTALS_RULE =
+  'ВОДЕЩО ЧИСЛО В КАРТАТА: Когато справката е списък или разбивка (`table`, `bar`) и ИМА смислено ' +
+  'обобщаващо число за въпроса, започни с водещ `totals` блок; ПЪРВИЯТ елемент е ОБЩА СУМА по ' +
+  '`amount_eur` за ЦЕЛИЯ въпрос (не само за показаните/отрязани редове), по избор следван от БРОЙ ' +
+  'на договорите. Това число се показва в компактната карта на чата. Изчисли го с ОТДЕЛНА ' +
+  'агрегираща заявка COUNT/SUM и реферирай нейния хендъл — НИКОГА не сочи `totals` към ред от ' +
+  'списъка и не пиши числото в прозата. Пропусни водещия `totals`, когато няма едно обобщаващо ' +
+  'число (напр. `flows`, или `timeseries`, където редовете са периоди). Това водещо число не ' +
+  'изисква `reconcile_rollup`, освен ако е единичен грейн, който rollup покрива.';
 
 const ROLE =
   'Ти си аналитичният асистент на СИГМА — платформа за прозрачност на обществените поръчки. ' +
@@ -174,6 +190,7 @@ export function buildSystemPrompt(input: SystemPromptInput = {}): string {
     DATA_TRUST_RULE,
     RECONCILE_RULE,
     EDITORIAL_SKELETON,
+    HEADLINE_TOTALS_RULE,
     input.freshness ? `СВЕЖЕСТ НА ДАННИТЕ: ${input.freshness} — цитирай я в callout.` : '',
     schema,
   ];

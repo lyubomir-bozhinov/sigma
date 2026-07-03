@@ -99,9 +99,56 @@ describe('AssistantTranscript', () => {
     expect(screen.queryByText('Справката не можа да бъде съставена.')).not.toBeInTheDocument();
   });
 
+  // #31 fallback: the model's original emit_report is orphaned at input-available; the settled turn
+  // still renders the chip from the output-available part, and #24's filter tags it via the phase line.
+  it('renders the chip for a fallback report with an orphaned emit_report part', () => {
+    const stuck = message('4c', 'assistant', [
+      { type: 'tool-emit_report', state: 'input-available' },
+      {
+        type: 'tool-emit_report',
+        state: 'output-available',
+        output: {
+          ok: true,
+          report: {
+            title: 'Справка по наличните данни',
+            question: 'q',
+            watermark: 'ai-generated',
+            blocks: [{ type: 'totals', items: [{ label: 'Сума', value: 100, format: 'money' }] }],
+          },
+        },
+      },
+    ]);
+    render(<AssistantTranscript messages={[stuck]} phase={null} busy={false} />);
+
+    expect(screen.getByText('Справка по наличните данни')).toBeInTheDocument();
+  });
+
   it('shows the failed report result once the turn settles', () => {
     render(
       <AssistantTranscript messages={[failedReportMessage('10')]} phase={null} busy={false} />,
+    );
+
+    expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
+  });
+
+  it('does NOT flash the failure line for an ok:false on the last turn while still busy (retry pending)', () => {
+    // A first emit returns ok:false and the loop retries; the failure line must not flash before the
+    // successful retry lands. While busy the phase line carries the state instead.
+    render(
+      <AssistantTranscript messages={[failedReportMessage('5b')]} phase="composing" busy={true} />,
+    );
+
+    expect(screen.queryByText('Справката не можа да бъде съставена.')).not.toBeInTheDocument();
+  });
+
+  it('still shows the failure line for an earlier settled turn while a new turn streams', () => {
+    // An earlier turn that genuinely ended ok:false keeps its failure line even though a later turn is busy.
+    render(
+      <AssistantTranscript
+        messages={[failedReportMessage('5c'), userMessage('5d', 'нов въпрос')]}
+        phase="thinking"
+        busy={true}
+      />,
     );
 
     expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();

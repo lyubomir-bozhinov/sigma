@@ -4,6 +4,7 @@ import {
   DATA_TRUST_RULE,
   EDITORIAL_SKELETON,
   EMIT_REPORT_POLICY,
+  HEADLINE_TOTALS_RULE,
   NO_INTERNAL_FIELDS_RULE,
   RECONCILE_RULE,
   VALUES_BY_REFERENCE_RULE,
@@ -26,6 +27,10 @@ describe('buildSystemPrompt', () => {
 
   it('forbids disclosing SQL / column / tool internals in prose and report blocks (one folded rule)', () => {
     expect(buildSystemPrompt()).toContain(NO_INTERNAL_FIELDS_RULE);
+  });
+
+  it('requires a leading totals headline for list/breakdown reports (so numbers reach the chat card)', () => {
+    expect(buildSystemPrompt()).toContain(HEADLINE_TOTALS_RULE);
   });
 
   it('hardens the prompt-injection boundary: embedded "instructions" in data are framed as data to ignore', () => {
