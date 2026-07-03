@@ -54,6 +54,11 @@
     // returned, and LIMIT caps only returned rows; once a chat turn's cumulative rows_read crosses
     // this, further run_sql calls are refused. Tune to a few × the largest scannable table.
     "D1_ROWS_READ_BUDGET": "5000000",
+    // Turnstile widget site key (PUBLIC — safe in source; the client reads it to render the invisible
+    // widget). Empty until provisioned. The matching TURNSTILE_SECRET is a SECRET (wrangler secret put,
+    // never here); while it is unset the edge gate (turnstile.ts) is a no-op — dev/preview/staging run
+    // without it, and it only activates once the secret is set (launch gate, spec §7/§8).
+    "TURNSTILE_SITE_KEY": "",
   },
   "unsafe": {
     "bindings": [
