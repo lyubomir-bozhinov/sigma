@@ -144,6 +144,10 @@ const runSqlTool: AssistantTool = {
     // Three-layer read-only guard (spec §9.4): a cheap structural check (L1), a fail-closed AST parse
     // that also enforces the table allowlist, rejects cross-joins/recursion and bounds the outer LIMIT
     // (L2), then an EXPLAIN-opcode check on the live binding that the COMPILED plan is read-only (L3).
+    // Read-only gate #134: the CODE side is these three layers (L3 inspects the compiled VDBE plan and
+    // fails closed on any write opcode — physical, not parser-trust). A physically read-only D1 BINDING is
+    // not expressible in wrangler (D1 has no per-binding permission scope), so the residual defence — a
+    // read-only D1 credential — is an INFRA provisioning step, tracked on #134, not code.
     const guard = assertReadOnlySelect(str(args.sql));
     if (!guard.ok) return `Заявката е отхвърлена: ${guard.reason}.`;
     const scoped = guardSelect(guard.sql);
