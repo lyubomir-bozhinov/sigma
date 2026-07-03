@@ -21,6 +21,8 @@ import {
   type UIMessage,
 } from 'ai';
 import { buildSystemPrompt } from './system-prompt';
+import { createPhaseFilter } from './stream-phase';
+import { EMIT_REPORT_TOOL } from '../assistant-contract/stream';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
 import { buildFallbackReport } from './report-fallback';
@@ -206,7 +208,7 @@ function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
   }
   // Terminal tool — finalizes the report by binding values from THIS turn's server-executed results
   // (never client-supplied). Returns validation errors for the model to retry against (§4, §9.1).
-  set.emit_report = tool({
+  set[EMIT_REPORT_TOOL] = tool({
     description:
       'Финализира справка. Блоковете реферират резултатни хендъли (R1…); сървърът свързва числата. ' +
       'Извикай го за всеки отговор с число, класация, сравнение или разбивка (виж системните правила).',
@@ -331,7 +333,8 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   // renders a normal report chip; values are bound through bindReport (server-owned, never model-written).
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
-      writer.merge(result.toUIMessageStream());
+      // Drop reasoning/sources at source too — defense-in-depth with the phase filter downstream.
+      writer.merge(result.toUIMessageStream({ sendReasoning: false, sendSources: false }));
       // Wait for the model loop to settle before the last-resort finalizer, but never indefinitely.
       // onFinish/onError resolve `modelFinished` and in practice one always fires (incl. on abort), so
       // this timer is pure defense-in-depth: if the SDK ever failed to settle, the wrapper would keep the
@@ -418,5 +421,7 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       return 'Асистентът временно не е достъпен. Опитай отново след малко.';
     },
   });
-  return createUIMessageStreamResponse({ stream });
+  // Only phases + prose + the resolved report reach the dock — the wrapped stream (model loop + any
+  // synthesized fallback report) runs through the allowlist filter; internals never leave the Worker.
+  return createUIMessageStreamResponse({ stream: stream.pipeThrough(createPhaseFilter()) });
 }

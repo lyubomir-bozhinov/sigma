@@ -1,18 +1,18 @@
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
-import {
-  isReportPending,
-  isToolTurnWithoutReport,
-  projectChip,
-  reportOutputFromMessage,
-} from './report-projection';
+import { isToolTurnWithoutReport, projectChip, reportOutputFromMessage } from './report-projection';
 import { addToReportIndex } from './storage';
 import { AssistantMessage, messageText } from './AssistantMessage';
+import { AssistantPhaseLine } from './AssistantPhaseLine';
 import { ReportChip } from './ReportChip';
+import type { AssistantPhase } from '../assistant-contract/stream';
 
 interface AssistantTranscriptProps {
   messages: UIMessage[];
-  /** A turn is still in flight (status 'submitted' | 'streaming') — suppress the settled-turn fallback. */
+  /** The ephemeral turn phase, rendered as a status line inside this log region. */
+  phase: AssistantPhase | null;
+  /** A turn is in flight. While busy, the streaming message's report result is withheld (mid-turn it
+   *  may still change on retry) and the settled-turn no-answer fallback is suppressed. */
   busy: boolean;
 }
 
@@ -34,7 +34,7 @@ const STICK_THRESHOLD_PX = 40;
  * content in view while streaming, but only while the reader is already near the bottom — so scrolling
  * up to read history isn't interrupted.
  */
-export const AssistantTranscript = ({ messages, busy }: AssistantTranscriptProps) => {
+export const AssistantTranscript = ({ messages, phase, busy }: AssistantTranscriptProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -80,15 +80,17 @@ export const AssistantTranscript = ({ messages, busy }: AssistantTranscriptProps
       aria-label="Разговор с асистента"
     >
       {messages.map((message, index) => {
-        const report = reportOutputFromMessage(message);
-        // Only the LAST turn, once settled (not busy), can be the no-answer case — an earlier turn always
-        // has a following user message, and a mid-stream turn legitimately has tool calls but no report yet.
+        // Withhold the result for the still-streaming (last) message: its emit_report can settle
+        // {ok:false} mid-turn and flip to a chip on retry. Show chip/failure only once the turn settles.
+        const streaming = busy && index === messages.length - 1;
+        const report = streaming ? null : reportOutputFromMessage(message);
+        // A settled last turn that made tool calls but produced neither a report nor prose — the
+        // no-answer safety net (afc93d8). `!busy` already implies the report tool isn't mid-flight.
         const showNoAnswer =
           !busy &&
           index === messages.length - 1 &&
           message.role === 'assistant' &&
           !report &&
-          !isReportPending(message) &&
           isToolTurnWithoutReport(message) &&
           messageText(message) === '';
         return (
@@ -108,19 +110,13 @@ export const AssistantTranscript = ({ messages, busy }: AssistantTranscriptProps
             {report && !report.ok && !(busy && index === messages.length - 1) ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
             ) : null}
-            {/* Gate on `busy` + last turn: a fallback-finalized report (server delivers a fresh
-                emit_report part) leaves the model's ORIGINAL emit_report part orphaned at
-                `input-available`, so isReportPending stays true forever. Once the stream settles
-                (status → 'ready' → !busy) the spinner clears; the rendered chip is what remains. */}
-            {busy && index === messages.length - 1 && isReportPending(message) ? (
-              <p className="assistant-transcript__pending">Подготвям справка…</p>
-            ) : null}
             {showNoAnswer ? (
               <p className="assistant-transcript__error">{NO_ANSWER_FALLBACK}</p>
             ) : null}
           </div>
         );
       })}
+      <AssistantPhaseLine phase={phase} />
     </div>
   );
 };
