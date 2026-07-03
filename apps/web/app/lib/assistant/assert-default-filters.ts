@@ -88,6 +88,78 @@ function matchesSyntheticExclusion(conjunct: unknown): boolean {
   return false;
 }
 
+// --- Conditional guard: a time-series that BUCKETS by signed_at (по година/месец) must bracket the date
+// range. An UNBOUNDED year/month rollup lets stray out-of-coverage rows — source data-quality errors with
+// a signed_at outside 2020..today (e.g. 2016, 2029) — fall into their own period buckets, so a
+// „Разход по години" table (or the model's prose) shows years that aren't in the stated coverage. This
+// fires ONLY when the query derives a period from signed_at in the projection/GROUP BY; plain non-temporal
+// aggregates (totals, top-N) don't, so the totals⇄rollup reconciliation basis is untouched. Mirrors the
+// site's own trend query (packages/db/src/queries/trend.ts): a series is bounded to
+// `signed_at >= <start> AND signed_at <= date('now')`.
+const DATE_BOUND_LABEL =
+  "времеви обхват при серия по signed_at (напр. c.signed_at >= '2020-01-01' AND c.signed_at <= date('now'))";
+
+// True if a `signed_at` column_ref appears anywhere in `node`, WITHOUT descending into a nested sub-select
+// (its signed_at is its own scope, visited separately by forEachSelectScope).
+function subtreeReferencesSignedAt(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(subtreeReferencesSignedAt);
+  if (!isObj(node)) return false;
+  if (node.type === 'select') return false;
+  if (isColumnRef(node, 'signed_at')) return true;
+  return Object.keys(node).some((k) => subtreeReferencesSignedAt(node[k]));
+}
+
+// A query „buckets by" signed_at when it derives a period from it in the PROJECTION (`substr(signed_at…)
+// AS year`) or GROUP BY — the timeseries shape. signed_at used only in the WHERE is a plain date FILTER
+// (already a range) and is not a bucket.
+function bucketsBySignedAt(sel: LooseSelect): boolean {
+  const node = sel as unknown as Record<string, unknown>;
+  return subtreeReferencesSignedAt(node.columns) || subtreeReferencesSignedAt(node.groupby);
+}
+
+const UPPER_OPS = new Set(['<', '<=']);
+const LOWER_OPS = new Set(['>', '>=']);
+
+// Does `conjunct` bound signed_at at `end`? Accepts both operand orders (`signed_at <= x` and
+// `x >= signed_at`) and BETWEEN (bounds both ends). The RHS value is NOT constrained — the canonical /
+// temporal forms supply it (`date('now')`, an ISO literal); the gate only ensures the range is bracketed.
+function boundsSignedAt(conjunct: unknown, end: 'upper' | 'lower'): boolean {
+  if (!isObj(conjunct) || conjunct.type !== 'binary_expr') return false;
+  const op = typeof conjunct.operator === 'string' ? conjunct.operator : '';
+  const leftIsDate = isColumnRef(conjunct.left, 'signed_at');
+  const rightIsDate = isColumnRef(conjunct.right, 'signed_at');
+  if (!leftIsDate && !rightIsDate) return false;
+  if (op.toUpperCase() === 'BETWEEN') return leftIsDate; // signed_at BETWEEN a AND b brackets both ends
+  const want = end === 'upper' ? UPPER_OPS : LOWER_OPS;
+  const flipped = end === 'upper' ? LOWER_OPS : UPPER_OPS; // reversed operands flip the sense
+  return leftIsDate ? want.has(op) : flipped.has(op);
+}
+
+// A predicate that PINS signed_at (or its derived period `substr(signed_at,…)`) to a finite set — an
+// equality, IN-list or BETWEEN — brackets both ends by construction (e.g. `substr(c.signed_at,1,4)='2023'`
+// or `signed_at BETWEEN a AND b`). Excludes `IS NOT NULL` and the `GLOB '[0-9]…'` well-formedness check,
+// which constrain shape, not the date value. NULL/`IS` operators and boolean joiners are not in the set.
+const PIN_OPS = new Set(['=', 'IN', 'BETWEEN']);
+function pinsSignedAtPeriod(conjunct: unknown): boolean {
+  if (!isObj(conjunct) || conjunct.type !== 'binary_expr') return false;
+  const op = typeof conjunct.operator === 'string' ? conjunct.operator.toUpperCase() : '';
+  if (!PIN_OPS.has(op)) return false;
+  // One side must reference signed_at directly or through substr/strftime; a sub-select's signed_at is
+  // its own scope (subtreeReferencesSignedAt does not descend into it).
+  return subtreeReferencesSignedAt(conjunct.left) || subtreeReferencesSignedAt(conjunct.right);
+}
+
+// A signed_at-bucketed series is adequately date-bounded when it carries EITHER a raw-column range that
+// brackets both ends, OR a pinning equality/IN/BETWEEN on signed_at (raw or derived). Anything less (only
+// `IS NOT NULL`, only a `GLOB` well-formedness check, or a single open-ended `>=`/`<=`) lets stray
+// out-of-coverage rows leak into their own buckets.
+function seriesIsDateBounded(conjuncts: unknown[]): boolean {
+  if (conjuncts.some(pinsSignedAtPeriod)) return true;
+  const hasUpper = conjuncts.some((c) => boundsSignedAt(c, 'upper'));
+  const hasLower = conjuncts.some((c) => boundsSignedAt(c, 'lower'));
+  return hasUpper && hasLower;
+}
+
 interface RequiredPredicate {
   /** Does this conjunct satisfy the required default? */
   matches: (conjunct: unknown) => boolean;
@@ -178,6 +250,11 @@ export function assertDefaultFilters(sql: string): DefaultFiltersResult {
     flattenAndConjuncts(sel.where, conjuncts);
     for (const req of REQUIRED) {
       if (!conjuncts.some((c) => req.matches(c))) missing.add(req.label);
+    }
+    // A signed_at-bucketed series must bracket the date range, else stray out-of-coverage rows leak into
+    // their own period buckets. Conditional — non-temporal reads bypass.
+    if (bucketsBySignedAt(sel) && !seriesIsDateBounded(conjuncts)) {
+      missing.add(DATE_BOUND_LABEL);
     }
   });
 

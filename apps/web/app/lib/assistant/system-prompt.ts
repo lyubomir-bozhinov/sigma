@@ -51,11 +51,17 @@ export const VALUES_BY_REFERENCE_RULE =
 // the EXACT shape of every block type + the `format` enum so it lands valid on the first try.
 export const EMIT_REPORT_BLOCKS_GUIDE =
   'ФОРМАТ НА БЛОКОВЕТЕ (emit_report) — попълвай ТОЧНО тези полета. `format` е едно от ' +
-  '{money, number, percent, date, text} (НЕ "eur"/"bgn"). Полетата col/key/labelCol/valueCol/… са ' +
+  '{money, number, percent, date, text} (НЕ "eur"/"bgn"). `percent` реферира колона с ДЯЛ 0..1 ' +
+  '(напр. single_offer_share), НИКОГА сума в евро или брой — за суми ползвай "money", за броеве "number". ' +
+  'Полетата col/key/labelCol/valueCol/… са ' +
   'ИМЕНА на колони от резултата (напр. R1). Числата идват само през реферирани хендъли:\n' +
   '- text: {"type":"text","md":"…"}\n' +
   '- callout: {"type":"callout","title":"…","md":"…"}\n' +
   '- totals: {"type":"totals","items":[{"label":"…","ref":{"resultId":"R1","row":0,"col":"spent_eur"},"format":"money"}]}\n' +
+  '  ВАЖНО: `totals` е ЕДНО обобщено число (общ сбор/брой) и ТРЯБВА да реферира резултат с ЕДИН ред ' +
+  '(отделна заявка `SELECT SUM(...)/COUNT(*)`). НЕ реферирай ред от многоредова серия (напр. ред 0 на ' +
+  '„разход по година") като „общ" — това показва един ред вместо целия сбор. За серия ползвай ' +
+  '`timeseries`/`table`; ако искаш и общ сбор, изпълни отделна обобщаваща заявка.\n' +
   '- facts: {"type":"facts","items":[{"term":"…","ref":{"resultId":"R1","row":0,"col":"…"}}]}\n' +
   '- table: {"type":"table","resultId":"R1","columns":[{"key":"name","header":"Възложител","format":"text","link":{"kind":"authority","idCol":"authority_id"}},{"key":"spent_eur","header":"Похарчено","format":"money"}]}\n' +
   '- bar: {"type":"bar","resultId":"R1","labelCol":"name","valueCol":"spent_eur"}\n' +

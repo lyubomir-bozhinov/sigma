@@ -5,6 +5,10 @@ questions, run against the ephemeral PR preview. Primary goal: verify the determ
 resolution and the opcode-guard fix (PR #22) hold across real question shapes, and characterise any
 remaining failure modes.
 
+> **Update (2026-07-02, post-sweep):** every remaining failure mode below has since been fixed or
+> backstopped, and a new Cyrillic entity-lookup bug was found and fixed during re-verification. See
+> [Resolution — follow-ups landed](#resolution--follow-ups-landed-updated-2026-07-02) at the bottom.
+
 ## Environment
 
 | | |
@@ -132,3 +136,78 @@ remaining failure modes.
 3. **Cache-invalidation on deploy** — the SSR homepage HTML is edge-cached (`s-maxage=3600`) and briefly
    references purged asset hashes after a redeploy, breaking the client dock on `/` until the cache expires.
    Separate ticket.
+
+---
+
+## Resolution — follow-ups landed (updated 2026-07-02)
+
+The remaining failure modes were deep-dived against the ephemeral previews and fixed. A **new**
+bug — silent Cyrillic entity-lookup failure — surfaced during re-verification and was fixed too.
+
+### 1. `emit_report` shape reliability → two root causes fixed + a server-side backstop
+
+The „nondeterministic `ok:false`" was only partly weak-model noise. Two concrete, **deterministic**
+false positives in the `PROSE_NUMBER_PATTERNS` material-number gate (`report-schema.ts`) were rejecting
+legitimate prose (fixed in **PR #27**):
+
+- **`на\s+сто`** (the „12 на сто" = per-cent idiom) also matched the whole **„сто" word-family** —
+  `на стойност` (ubiquitous in procurement), the entity `Столична община` (via „на **Сто**лична"),
+  `на стотици`. → pinned to a standalone word with `(?!\p{L})`.
+- **grouped-thousands `\d{1,3}(?:[.,\s]\d{3})+`** matched **`MM.YYYY` / `DD.MM.YYYY` dates** —
+  `01.2026` read as `01.202` (the first three digits of the year), aggravated by the temporal block
+  echoing dates into freshness prose. → appended `(?!\d)` so a 4-digit run isn't a thousands group.
+
+This is why **Q18** failed *deterministically* (its natural title „…на **Сто**лична община…" tripped the
+title gate on the first attempt *and* the retry) — not a concurrency artifact.
+
+For everything that is genuinely weak-model (malformed block shape, a real number written into prose,
+step-budget exhaustion), a **server-side last-resort finalizer** (`report-fallback.ts`, **PR #31**) now
+runs after the model loop: if the model gathered `run_sql` results but produced no valid report, the
+server synthesizes a minimal one from the actual data (a `totals` block for a single-number answer, a
+`table` otherwise), bound through the same `bindReport` path (values stay server-owned), with humanized
+Bulgarian labels. The turn **never dead-ends on „Справката не можа да бъде съставена" when real data
+exists.**
+
+### 2. Model stops without emitting (`finishReason: other`) → backstopped + the signal debunked
+
+- The **server-side finalizer above** also covers this — it fires after the loop regardless of *when* the
+  model stopped, so an early stop with data now still renders a report.
+- **`finishReason: other` is a provider quirk, not a failure signal.** Re-verification showed Q19 (flows)
+  finishing `other` **and succeeding** (persisted report). The batch's „`other` = failed" correlation was
+  spurious; OpenRouter/Gemma just returns a non-standard finish reason.
+- The **Q17–Q19 „empty/other" cluster was concurrency-aggravated**, as the sweep's own caveat predicted:
+  under sequential single-user load Q19 succeeds cleanly.
+
+### 3. NEW bug found in re-verification — silent Cyrillic entity-lookup failure (fixed, PR #27)
+
+Q18 exposed a bug the sweep hadn't isolated: the assistant answered *„no organization found"* for
+**Столична община**, which plainly exists (`/authorities/000696327`). Root cause: **SQLite folds case for
+ASCII only** — Cyrillic `=`/`LIKE`/`upper()`/`lower()` are case-sensitive. Authority names are stored
+UPPERCASE (`СТОЛИЧНА ОБЩИНА`), so the model's title-case `LIKE '%Столична община%'` returned 0 rows, and
+`semantic_search` (vector) missed it too.
+
+Fix: a **`find_entity`** tool that resolves a name → exact join id via the site's FTS5 `search_index`
+(`unicode61` folds case + diacritics for Cyrillic), reusing the website's ranked prefix-AND query. The
+data dictionary now steers the model to it and warns against `LIKE` on names.
+
+### Live re-verification (single-user, `sigma-pr-27/30/31`)
+
+| Question | Before | After |
+|---|---|---|
+| **Q18** Столична община 2023 | terminal failure (`на Сто` title gate) → then „no match" | resolves the authority via `find_entity`, returns **250 264 972,88 € / 293 договора** — via the model directly (most runs) or the server fallback (`Справка по наличните данни`) |
+| **Q2** топ 10 за тази година | emit `ok:false` (`01.202` callout) then retry | prose-gate false positives gone; date → **2026**, first-try emit |
+| **Q19** flows | ❌ in the 4-way batch | ✅ single-user (concurrency artifact confirmed) |
+
+### Follow-up status
+
+- ✅ **Improve `emit_report` shape reliability** — prose-gate false positives fixed (PR #27) + server-side
+  finalizer (PR #31).
+- ✅ **Empty / `finishReason: other` completions** — backstopped by the finalizer (fires on early stop
+  too); `other` confirmed a benign provider quirk. Provider-capacity retry/backoff remains a nice-to-have.
+- ⏳ **Cache-invalidation on deploy** — still open (separate ticket).
+
+### PRs
+
+- **#27** — prose-gate false positives + `find_entity` Cyrillic-safe entity lookup.
+- **#31** — server-side last-resort report finalizer + humanized fallback labels.
+- **#30** — repo-wide prettier formatting (base lint unblock).

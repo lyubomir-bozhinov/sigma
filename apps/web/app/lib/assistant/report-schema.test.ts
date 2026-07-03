@@ -50,6 +50,78 @@ describe('bindReport — server owns the values', () => {
     }
   });
 
+  it('rejects a percent totals item bound to a value that cannot be a 0..1 ratio (Q8 mistag)', () => {
+    // The weak model bound a raw euro sum (R2.total_eur) into a percent slot → „…%" garbage. The binder
+    // must reject so the model retries with a real share column.
+    const out = bindReport(
+      emit([
+        {
+          type: 'totals',
+          items: [
+            {
+              label: 'Дял по стойност',
+              ref: { resultId: 'R2', row: 0, col: 'total_eur' },
+              format: 'percent',
+            },
+          ],
+        },
+      ]),
+      results,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.some((e) => /not a 0\.\.1 ratio/.test(e))).toBe(true);
+  });
+
+  it('accepts a percent totals item bound to a genuine 0..1 ratio', () => {
+    const withShare: QueryResult[] = [
+      { handle: 'R3', columns: ['single_offer_share'], rows: [[0.318]] },
+    ];
+    const out = bindReport(
+      emit([
+        {
+          type: 'totals',
+          items: [
+            {
+              label: 'Дял по стойност',
+              ref: { resultId: 'R3', row: 0, col: 'single_offer_share' },
+              format: 'percent',
+            },
+          ],
+        },
+      ]),
+      withShare,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok)
+      expect(out.report.blocks[0]).toEqual({
+        type: 'totals',
+        items: [{ label: 'Дял по стойност', value: 0.318, format: 'percent' }],
+      });
+  });
+
+  it('rejects a totals item bound to a row of a MULTI-row result (the „762 млн." year-series mislabel)', () => {
+    // R1 has 2 rows; binding a „total" to its row 0 presents ONE row as the grand total — the live
+    // „Разход по години" bug where „Общ разход 2020–2026" showed only the 2020 row, ~61× below the sum.
+    // A totals figure must come from a single-row aggregate (SELECT SUM/COUNT); the model must retry.
+    const out = bindReport(
+      emit([
+        {
+          type: 'totals',
+          items: [
+            {
+              label: 'Общ разход',
+              ref: { resultId: 'R1', row: 0, col: 'spent_eur' },
+              format: 'money',
+            },
+          ],
+        },
+      ]),
+      results,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.some((e) => /single-row aggregate/.test(e))).toBe(true);
+  });
+
   it('takes table rows wholesale from the referenced result (model cannot inject rows)', () => {
     const out = bindReport(
       emit([
