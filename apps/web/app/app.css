@@ -3731,7 +3731,7 @@ html.assistant-ready .assistant-dock--panel {
   flex-direction: column;
   gap: var(--s-2);
 }
-.assistant-transcript__pending {
+.assistant-transcript__phase {
   margin: 0;
   color: var(--ink-soft);
   font-style: italic;

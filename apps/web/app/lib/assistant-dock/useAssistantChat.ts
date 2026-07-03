@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
-import { useChat } from '@ai-sdk/react';
+import { useEffect, useRef, useState } from 'react';
+import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { classifyHttpError, networkError } from './errors';
+import { isPhasePart, type AssistantPhase } from '../assistant-contract/stream';
 import { condenseForPost } from './condense';
 import { clearTranscript, loadTranscript, saveTranscript, trimMessages } from './storage';
 
@@ -61,10 +62,21 @@ const transport = new DefaultChatTransport<UIMessage>({
 });
 
 /** useChat wired to /assistant/chat, with the transcript restored from / persisted to localStorage. */
-export const useAssistantChat = (): ReturnType<typeof useChat> & { reset: () => void } => {
+export const useAssistantChat = (): UseChatHelpers<UIMessage> & {
+  phase: AssistantPhase | null;
+  reset: () => void;
+} => {
+  // The ephemeral turn phase, delivered as a transient data part via onData (never in messages).
+  const [phase, setPhase] = useState<AssistantPhase | null>(null);
   // Throttle streamed token updates so the dock re-renders ~20×/s instead of once per token (the SDK's
   // intended knob for this); the final message still renders in full once the stream settles.
-  const chat = useChat({ transport, experimental_throttle: 50 });
+  const chat = useChat({
+    transport,
+    experimental_throttle: 50,
+    onData: (part) => {
+      if (isPhasePart(part)) setPhase(part.data.phase);
+    },
+  });
   const { messages, status, setMessages } = chat;
 
   // stop() is fire-and-forget, so a late settle can re-trigger persist/re-render after reset(); this flag
@@ -91,6 +103,12 @@ export const useAssistantChat = (): ReturnType<typeof useChat> & { reset: () => 
     saveTranscript(messages);
   }, [messages, status, setMessages]);
 
+  // The phase line is ephemeral: clear it when the turn settles, and on submit so a stale phase from
+  // the previous turn can't flash before the first onData of the next one arrives.
+  useEffect(() => {
+    if (status === 'submitted' || status === 'ready' || status === 'error') setPhase(null);
+  }, [status]);
+
   // Start a fresh chat: abort any in-flight turn, drop the transcript (memory + storage), clear the error.
   const reset = () => {
     suppressPersist.current = true;
@@ -106,5 +124,5 @@ export const useAssistantChat = (): ReturnType<typeof useChat> & { reset: () => 
     return chat.sendMessage(...args);
   };
 
-  return { ...chat, sendMessage, reset };
+  return { ...chat, sendMessage, reset, phase };
 };
