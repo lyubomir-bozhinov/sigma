@@ -468,6 +468,19 @@ export function bindReport(
                 `${at}: totals item "${it.label}" is format 'percent' but its value (${value}) is not a 0..1 ratio — reference a share column or use format 'number'`,
               );
             }
+            // A `totals` item is a HEADLINE aggregate — one "big number". It MUST reference a single-row
+            // result (a one-row SUM/COUNT). Binding it to a row of a MULTI-row result silently presents one
+            // data point as the whole: the live „Разход по години" report showed „Общ разход 2020–2026:
+            // 762,1 млн. €", which was merely the 2020 row — ~61× below the real ~46,6 млрд. € sum. The value
+            // is a genuine cell, so no other gate catches it; reject here so the model runs a proper
+            // aggregate (SELECT SUM/COUNT …) or moves the figure to a table/timeseries. Highlighting a
+            // specific row of a series is what `facts` is for — that block is intentionally exempt.
+            const totalsResult = byHandle.get(it.ref.resultId);
+            if (totalsResult && totalsResult.rows.length > 1) {
+              errors.push(
+                `${at}: totals item "${it.label}" references row ${it.ref.row} of a ${totalsResult.rows.length}-row result — a totals figure must come from a single-row aggregate (run a SELECT SUM/COUNT), or present the series as a table/timeseries instead`,
+              );
+            }
             return {
               label: sanitizeProse(it.label),
               value,

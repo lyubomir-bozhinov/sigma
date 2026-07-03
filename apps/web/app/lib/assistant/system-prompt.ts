@@ -58,6 +58,10 @@ export const EMIT_REPORT_BLOCKS_GUIDE =
   '- text: {"type":"text","md":"…"}\n' +
   '- callout: {"type":"callout","title":"…","md":"…"}\n' +
   '- totals: {"type":"totals","items":[{"label":"…","ref":{"resultId":"R1","row":0,"col":"spent_eur"},"format":"money"}]}\n' +
+  '  ВАЖНО: `totals` е ЕДНО обобщено число (общ сбор/брой) и ТРЯБВА да реферира резултат с ЕДИН ред ' +
+  '(отделна заявка `SELECT SUM(...)/COUNT(*)`). НЕ реферирай ред от многоредова серия (напр. ред 0 на ' +
+  '„разход по година") като „общ" — това показва един ред вместо целия сбор. За серия ползвай ' +
+  '`timeseries`/`table`; ако искаш и общ сбор, изпълни отделна обобщаваща заявка.\n' +
   '- facts: {"type":"facts","items":[{"term":"…","ref":{"resultId":"R1","row":0,"col":"…"}}]}\n' +
   '- table: {"type":"table","resultId":"R1","columns":[{"key":"name","header":"Възложител","format":"text","link":{"kind":"authority","idCol":"authority_id"}},{"key":"spent_eur","header":"Похарчено","format":"money"}]}\n' +
   '- bar: {"type":"bar","resultId":"R1","labelCol":"name","valueCol":"spent_eur"}\n' +

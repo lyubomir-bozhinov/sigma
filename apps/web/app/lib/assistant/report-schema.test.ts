@@ -99,6 +99,29 @@ describe('bindReport — server owns the values', () => {
       });
   });
 
+  it('rejects a totals item bound to a row of a MULTI-row result (the „762 млн." year-series mislabel)', () => {
+    // R1 has 2 rows; binding a „total" to its row 0 presents ONE row as the grand total — the live
+    // „Разход по години" bug where „Общ разход 2020–2026" showed only the 2020 row, ~61× below the sum.
+    // A totals figure must come from a single-row aggregate (SELECT SUM/COUNT); the model must retry.
+    const out = bindReport(
+      emit([
+        {
+          type: 'totals',
+          items: [
+            {
+              label: 'Общ разход',
+              ref: { resultId: 'R1', row: 0, col: 'spent_eur' },
+              format: 'money',
+            },
+          ],
+        },
+      ]),
+      results,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.some((e) => /single-row aggregate/.test(e))).toBe(true);
+  });
+
   it('takes table rows wholesale from the referenced result (model cannot inject rows)', () => {
     const out = bindReport(
       emit([
