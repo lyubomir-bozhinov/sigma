@@ -47,13 +47,14 @@ export interface ProvenanceSource {
 // Role-④ (LLM Verifier) audit trail — what the risk-scaled verification pass decided for this report
 // (spec addendum §1/§2 defense 5). 'skipped' = deterministic gate found no ranking/risk claims (no LLM
 // call); 'verified' = verdicts applied; 'error' = the verifier call failed and the fail-closed strip
-// removed all extracted prose claims. Claim ids ("C0"…) are the verifier's stable numbering: title
+// removed all extracted prose claims except the structural „Как е изчислено" methodology callout
+// (guardrail D — kept + flagged). Claim ids ("C0"…) are the verifier's stable numbering: title
 // first, then text/callout blocks in report order (see ../assistant/verifier.ts extractClaims).
 export type ReportVerificationStatus = 'skipped' | 'verified' | 'error';
 export interface ReportVerification {
   status: ReportVerificationStatus;
   strippedClaimIds: string[]; // prose blocks removed from the published report
-  uncertainClaimIds: string[]; // kept-but-flagged (uncertain verdicts + an unsupported title)
+  uncertainClaimIds: string[]; // kept-but-flagged (uncertain verdicts + an unsupported title/methodology callout)
 }
 
 export interface ReportProvenance {
