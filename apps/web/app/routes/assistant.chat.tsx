@@ -20,6 +20,7 @@ import { selectClientMessages } from '../lib/assistant/chat-input';
 import { firstPartyRejection } from '../lib/assistant/request-guard';
 import { turnstileRejection } from '../lib/assistant/turnstile';
 import { resolveTemporalContext } from '../lib/assistant/temporal';
+import { assistantEnabled } from '../lib/assistant/enabled';
 import { freshnessVersion } from '../lib/csv-export';
 import { freshnessToken, type DedupHit } from '../../workers/assistant/dedup';
 import { buildDedupRequest, type DedupRequest } from '../../workers/assistant/dedup-request';
@@ -63,15 +64,6 @@ function parseFilterContext(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed && trimmed.length <= MAX_FILTER_CONTEXT_CHARS ? trimmed : undefined;
-}
-
-// Master launch gate (#83): the assistant stays dark unless ASSISTANT_ENABLED is explicitly truthy.
-// Independent of provisioning (API key / gateway), so a fully-provisioned deploy can be held dark until
-// go-live and killed instantly in an incident — a var flip, not a code redeploy. Opt-in by design: an
-// unset / absent var reads as OFF (fail dark), the safe default for a not-yet-launched paid endpoint.
-export function assistantEnabled(raw: string | undefined): boolean {
-  const v = raw?.trim().toLowerCase();
-  return v === 'true' || v === '1' || v === 'on';
 }
 
 // A standalone UI-message stream carrying ONLY the `data-dedup` part — served when an existing report
