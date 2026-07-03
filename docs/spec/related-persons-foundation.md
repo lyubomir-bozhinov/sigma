@@ -1,132 +1,166 @@
 # Спецификация: „Свързани лица" — data foundation (declared interests + ownership)
 
-- **Status:** draft for review
+- **Status:** draft v2 — revised after 3 independent critical passes (data-eng, architecture, legal/external research)
 - **Created:** 2026-07-03
 - **Owner:** lb
-- **Issues:** unblocks #60 (свързани лица), #128 (cartel heuristics), continues #34 (closed parent vision)
-- **Depends on:** the ETL pipeline (`normalize-raw.sql` → `precompute.sql` → `ship-domain`) and the integrity gate
+- **Delivers (confirmed):** a **conflict-of-interest** foundation — officials' *declared* company stakes vs public contracts.
+- **Contingently unblocks:** #128 checkbox 1 (споделени собственици) and #60, **only if** the unproven TR source (§3.3) clears Phase-0.
+- **Continues:** #34 (closed) — but the *external-observer subset* of it, not the full vision (see §1).
+- **Depends on:** the ETL pipeline + integrity gate; and **hard-blocks on #173 + #184** for any public natural-person output (§8).
 
-## 1. Why this exists
+## 1. Why this exists — and what it honestly is
 
-Sigma today models **one leg** of public money: spending. `authorities → contracts → bidders`, keyed by ЕИК. It is blind to **who is behind a bidder ЕИК** and **whether those people are connected to the officials who direct the spend**. That blindness is exactly what #34 named as the core corruption question and what #60/#128 stalled on.
+Sigma models **one leg** of public money: spending (`authorities → contracts → bidders`, keyed by ЕИК). It is blind to who is behind a bidder and whether they connect to the officials who direct the spend.
 
-The block was always data, not code. The graph (#50), the flag primitives (#127), the provenance discipline, and the null placeholders (`ConsortiumParticipant.eik`/`resolvedSlug` in `packages/api-contract`, `details.ts:172`) are already in place, waiting on two data domains:
+**What this foundation confirmedly delivers:** the **conflict-of-interest** join — an official who *declares* a company stake, where that company won public contracts (§5 metric). The data for this (CACBG declarations) is confirmed and lawful to use (§3.1, §8).
 
-- **Ownership** (company → real people) — from Търговски регистър. Bulk access is not available to us; **public data only**.
-- **Interests / power** (officials → declared companies, family, assets) — from the CACBG declaration register (`register.cacbg.bg`), which **is** freely public.
+**What it does NOT deliver on its own:** #60 and #128's shared-owner checkbox are about **bidder ↔ bidder** hidden ownership ("скрито свързани изпълнители" / "споделени собственици между изпълнители"). CACBG only exposes **official ↔ company** links — it says nothing about two *bidders* sharing an owner unless an official owns both. Bidder↔bidder ownership requires TR ownership of **both** bidders (§3.3), which is **unconfirmed** and which the codebase itself defers (`source-link.ts:6`). So this spec does not "unblock #60/#128" — it delivers conflict-of-interest today and *may* unblock one #128 checkbox if §3.3 succeeds.
 
-This spec builds the foundation from **public data only** — the reproducibility is the point: anyone can re-derive it, which is what makes the linkage defensible rather than an accusation from privileged state data.
+**Honesty vs #34.** #34 argued only the **state** can fully do this — mandate owner disclosure, publish all offers, link by ЕИК; "външен наблюдател не може." We are an external observer on partial public data. This foundation delivers the **external-observer subset**: declared conflicts + bounded public ownership. It is a **lead generator over declared/derivable facts**, a floor — not a claim to have found all hidden ownership. The genuinely corrupt do not self-declare; nominee ownership stays invisible. State this on the methodology page.
 
 ## 2. Scope
 
-### In scope
-- Ingest **CACBG declarations** → officials, declared company stakes, declared family holdings.
-- Ingest **political-party financing / donations** (Сметна палата) — *source to be confirmed (Phase-1 discovery)*.
-- **Targeted TR owner enrichment** — per-ЕИК public lookups, run only for the bounded set of companies that already matter (bidders + resolved declared companies).
-- A **matching layer** resolving declared/donor company `name + town` → Sigma bidder ЕИК, with confidence tiers and provenance.
-- Wire the resolved data into existing surfaces (#60 placeholders, network graph, #128 shared-owner heuristic, a „Декларирани връзки" panel).
+### Confirmed, buildable now (the MVP)
+- **CACBG conflict-of-interest foundation** — ingest declarations → officials' declared company stakes → resolve to bidder ЕИК → surface stakes in contract-winning companies. Self-contained; no external dependency beyond CACBG.
 
-### Out of scope (documented as blocked, not forgotten)
-- **Loser-dependent cartel heuristics** — coordinated co-bidding, cover bidding, true winner-rotation. All need per-bidder offer lines (who bid and lost). No public source publishes them (`0000_init.sql`: "intentionally NO `bids` table"). Recovering them via OCR/LLM parsing of published комисия protocols is a **separate, later spike**, not part of this foundation.
-- **Регистър на действителните собственици** (ЗМИП/AML beneficial owners) — highest value for hidden ownership, but public access is restricted post-CJEU (2022). Parked until access is confirmed.
-- Full-corpus production hardening beyond what each phase's proof-gate requires.
+### Contingent (ships only if Phase-0 discovery + Phase-2 match rate pass)
+- **Bidder↔bidder shared ownership** (#60, #128 #1) — needs TR ownership of both bidders (§3.3, unconfirmed).
+- **Donor→bidder links** (party financing) — needs ЕРИК parse + name matching (§3.2).
 
-### Buildable on public data (what survives)
-Ownership links (via TR targeted + declared stakes), consortium co-participation (already in data), geographic market-splitting (winner + region), and weak **winner-only** rotation.
+### Standalone (ships regardless of the matcher outcome)
+- **#60's consortium-only graph** — who co-formed обединения, a *fact* from existing data, labelled „съучастие, не собственост". Needs **no** name-matching, so it is decoupled from the §5 matcher and must not die with it.
+
+### Independent of this foundation (buildable from existing data; noted, not owned here)
+- Geographic market-splitting; weak **winner-only** rotation — computable from `contracts`+`bidders`+regions without this spec.
+
+### Out of scope (blocked, documented — not forgotten)
+- **Co-bidding, cover bidding, true winner-rotation** — need per-bidder offer lines. No public source (`0000_init.sql:106` — "intentionally NO `bids` table"). OCR of комисия protocols is a separate later spike.
+- **Регистър на действителните собственици** (ЗМИП/AML BO) — parked. Post-CJEU (C-37/20, 2022) and a **June 2025** Bulgarian move to a "legitimate-interest" access model put the regime in flux; do **not** un-park without a fresh legal check.
+
+### Honest #128 accounting
+Of #128's five checkboxes: **1** (shared owners) contingently unblocked via §3.3; **2 & 5** (co-/cover-bidding) permanently blocked on non-public offer data; **3 & 4** (rotation, geo) independent of this spec.
 
 ## 3. Data sources
 
-### 3.1 CACBG declarations — CONFIRMED (inspected 2026-07-03)
+### 3.1 CACBG declarations — CONFIRMED (inspected + legally verified 2026-07-03)
 
-`register.cacbg.bg/<year>/` is a JS-driven register over static data:
+**Legal identity:** register operated by the **Сметна палата, дирекция „Публичен регистър"**; declarations filed/published **под чл. 75 ЗСП** (chain: ЗПКОНПИ repealed → ЗПК in force 6 Oct 2023 → ЗИД ЗСП transferred ЛЗВПД declaration publication to the Court of Audit). Publication is a **statutory obligation** → declared facts are public-by-law and republishable. No open-data licence and no explicit reuse restriction. Methodology page cites **ЗСП чл. 75**, not ЗПКОНПИ.
 
-- `index.html` (1.4 KB shell) + `../core2.js` (loads `<year>/list.xml`; a `/core.php` backend serves search).
-- **`list.xml`** (2025 ≈ 4.8 MB): hierarchy `root → MainCategory → Category[Name] → Institution[Name] → Person[Name] → Position[Name] → Declaration{Sent, xmlFile, Title}`. **15,925 persons / 34,862 declarations for 2025.** Historical years back to 2017.
-  - Categories are high-signal, e.g. `Народни представители`, `Министър-председател … министри и заместник-министри`, `Кметове …`, and critically **„Лицата, упълномощени по реда на ЗОП … да организират и провеждат процедурите … и да сключват договорите"** — the people who run procurement and sign contracts.
-- Each `xmlFile` is an **individual declaration XML** (≈ 45 KB), table-based (`Table/Row/Cell`, ~21 tables), with metadata: `Name`, `Position`, `Address`, `Spouse`, `Children`, `Year`, `DeclarationType`, `ControlHash`. **`EGN` is present as a tag but stripped (empty) in the public export.**
-- **Company holdings** appear as rows in the holdings table(s). Confirmed shape (real row):
-  ```
-  1 | дружествени дялове | 100% | "ДЕМИР АГРО" ЕООД | Шумен | 100 | Айлин Нуридин Пехливанова | възмездно
-  # | type               | stake | company name (+form) | town  | value | holder            | mode
-  ```
-- **No ЕИК on companies.** Company identity is `name + town + legal-form` only. → the ЕИК mapping is the crux (§5).
+**Structure** (`register.cacbg.bg/<year>/`, JS-driven over static data):
+- `index.html` shell + `../core2.js` (loads `<year>/list.xml`; `/core.php` serves search).
+- **`list.xml`** (2025 ≈ 4.8 MB): `root → MainCategory → Category[Name] → Institution[Name] → Person[Name] → Position[Name] → Declaration{Sent, xmlFile}`. **15,925 persons / 34,862 declarations for 2025.** High-signal categories incl. **„Лицата, упълномощени по реда на ЗОП … да сключват договорите"** — procurement signatories.
+- Each `xmlFile` is an **individual declaration XML** (≈ 45 KB, `Table/Row/Cell`, ~21 tables). Metadata: `Name`, `Position`, `Address`, `Spouse`, `Children`, `Year`, `DeclarationType`, `ControlHash`. **`EGN` present as a tag but stripped (empty).** **No birthdate.**
+- **Company holdings** as rows (confirmed real row): `дружествени дялове | 100% | "ДЕМИР АГРО" ЕООД | Шумен | 100 | <holder> | възмездно` — `type, stake%, company name+form, town, value, holder, mode`. **No ЕИК on companies.**
+- **Folder-year vs declared-year offset:** register folder `N` holds declarations whose `Year` field is `N−1` (`/2025/` → `Year=2024`). Temporal joins use `Year`, not the folder.
 
-Extraction approach: fetch `list.xml` per year → iterate declaration xmlFiles → parse `Table/Row/Cell`. Structured, deterministic, **no OCR**. Cert note: the host serves a broken TLS chain — the loader must handle it explicitly (pinned CA / deliberate `-k`-equivalent), never a silent global TLS bypass.
+**Ingestion window:** match the contract data (2020–2026) → register folders `2020`…`2026` (declared years ≈ 2019–2025), whichever exist.
 
-### 3.2 Party financing / donations — DISCOVERY (Phase 1)
+**Do NOT store-for-publish:** `Address` (КЗЛД strips addresses on publication); `EGN` even if ever present; family names except behind masking (§8).
 
-Same publisher (Сметна палата), likely a comparable static-data register. **URL and shape unverified** — no assumption is baked into the schema until confirmed. Phase-1 task: locate the source, characterise its format, and confirm it carries `donor (name/ЕИК) → party → amount → date`.
+**Ingest = acknowledged NEW infra** (see §7): a **resumable crawler** over ~240k XML files (≈35k/yr × up to 7 yrs) at a polite rate, into a **persistent raw-XML cache keyed on `xml_file` + `ControlHash`** (natural key for idempotency and change detection), decoupled from `normalize`. Host-scoped explicit TLS handling (broken cert chain), never a global bypass.
 
-### 3.3 Targeted TR owner enrichment — DISCOVERY (Phase 1)
+### 3.2 Party financing — source RESOLVED (ЕРИК); parse shape = Phase-0
 
-Per-ЕИК public lookup on the Търговски регистър portal, run **only** for the bounded set (bidders + resolved declared companies) — thousands of lookups, not the full ~900k-company register. Rate-limited enrichment loop. Phase-1 task: confirm the per-company endpoint/format and the fields recoverable publicly (управители, съдружници, капитал). ЕГН of persons is expected masked → owner identity is name-based, same as CACBG.
+**Source:** **ЕРИК — Единен регистър по Изборния кодекс** (`erik.bulnao.government.bg`, Court of Audit), free/public; plus per-party public donor registers (чл. 29, ал. 2 ЗПП). Publishes donor names, donation type/amount/value, origin declarations.
+**Caveats to resolve in Phase-0:** (a) **donor ЕИК likely NOT a published field** → donor→bidder resolution falls back to the §5 name+town matcher; (b) likely **HTML-only, no bulk export**; (c) **election-scoped retention** ("до следващите избори") → older cycles in the 2020–2026 window may need archived/Wayback snapshots.
+
+### 3.3 Targeted TR owners — access CONFIRMED public; endpoint/limits = Phase-0
+
+**Per-ЕИК public lookup** (`portal.registryagency.bg`) is free, no fee. Recoverable per ЕИК: **управители, съдружници/собственици на капитала + stakes, капитал, legal form, seat.** **ЕГН masked** → owner identity name-based. Run **only** for the bounded set (bidders + resolved declared/donor companies) — thousands, not ~900k.
+**Hard constraints (DPA-verified):** **NEVER bulk-scrape TR** (КЗЛД ruled bulk provision unlawful; CJEU C-200/23 climate). **Never store scraped ЕГН**, even if leaked in a document image. Phase-0 confirms endpoint, fields, and rate limits.
 
 ## 4. Data model
 
-New domain tables, built by `normalize-raw.sql` from transient staging (`work-staging-schema.sql`), served alongside the existing domain. All node ids follow the repo's typed-prefix convention.
+New domain tables, built by `normalize-raw.sql` from persistent staging; `interest_links` written by a **JS resolver pass** (§5), NOT by fuzzy SQL.
 
-| Table | Grain (one row =) | Source | Key fields |
+| Table | Grain | Source | Notes |
 |---|---|---|---|
-| `persons` | one natural person | all | `id` (`p:` + normalized-name key), `full_name`, `name_normalized`, `birth_year?`, `first_seen` |
-| `declarations` | one CACBG declaration | CACBG | `id`, `person_id`, `year`, `position`, `institution`, `category`, `xml_file`, `control_hash`, `source_url`, `sent` |
-| `declared_interests` | one holding row | CACBG | `id`, `declaration_id`, `kind` (дялове/акции/…), `stake_pct`, `company_name_raw`, `company_town`, `value`, `holder_name`, `holder_relation` (self/spouse/child), `acquisition_mode` |
-| `party_donations` | one donation | party-fin | `id`, `donor_name`, `donor_kind` (person/company), `donor_eik?`, `party_name`, `amount`, `date`, `source_url` |
-| `company_owners` | one owner/manager record | TR targeted | `company_eik`, `person_name`, `role` (owner/manager/BO), `stake_pct?`, `source_url`, `fetched_at` |
-| `interest_links` | one **resolved** edge | Phase-2 matcher | `subject_person_id`, `company_eik`, `bidder_id`, `contract_id?`, `authority_id?`, `link_kind`, `match_method`, `confidence`, `provenance` (json) |
+| `persons` | one person **per declaration** | all | id anchored on `(register_year, institution, position, name_normalized)` — **never a bare name key**. **No `birth_year`** (not in data). Cross-institution/cross-year linking is a *review-gated* corroboration step, never automatic. |
+| `declarations` | one CACBG declaration | CACBG | `person_id`, `year`, `position`, `institution`, `category`, `xml_file`, `control_hash`, `source_url`, `sent`. Address NOT stored-for-publish. |
+| `declared_interests` | one holding row | CACBG | `kind`, `stake_pct`, `company_name_raw`, `company_town`, `value`, `holder_relation` (self/spouse/child), `acquisition_mode`, `acquired_hint` |
+| `party_donations` | one donation | ЕРИК | `donor_name`, `donor_kind`, `donor_eik` (**nullable, usually NULL**), `party_name`, `amount`, `date`, `source_url` |
+| `company_owners` | one owner/manager record | TR targeted | `company_eik`, `person_name`, `role`, `stake_pct?`, `source_url`, `fetched_at`. No ЕГН stored. |
+| `interest_links` | one **resolved** edge | JS resolver | `subject_person_id`, `company_eik`, `bidder_id`, `contract_id?`, `authority_id?`, `link_kind`, `match_method`, `confidence`, `provenance`, **`matcher_version`, `first_asserted_at`, `superseded_at`** (reproducible/auditable over time). |
+| `link_suppressions` | one correction/takedown | appeals | survives re-import (§8); a suppressed `(subject, company, source_row)` is never re-asserted. |
 
-**Person identity:** no ЕГН, so `persons` keys on normalized name (+ `birth_year` when derivable). Merge **conservatively** — homonyms are flagged for review, never silently unified. The conflict join lives on the *company* side, which is the strong (ЕИК-resolvable) side; person ambiguity does not corrupt it.
+**Person identity** has no ЕГН and no birthdate → it is the **weakest** join, not a safe one. The `list.xml` hierarchy binds Person→Position→Institution within a register-year; use that. Homonyms (Георги Иванов) are pervasive → a bare name key would silently merge two distinct officials (false-accusation vector). Therefore per-declaration nodes + cautious, corroborated, review-gated cross-linking only.
 
-**`interest_links` is a precomputed rollup** (built in `precompute.sql`, like `flow_pairs`), not a request-time join — D1 meters rows read, and this is the table the graph/panels/#128 consume.
+## 5. Matching layer (the crux) — a JS resolver pass
 
-## 5. Matching layer (the crux)
+**Placement:** D1/SQLite has only FTS5 `MATCH` + BM25 `rank` — **no** Levenshtein/trigram/similarity, and **BM25 rank ≠ a confidence score**. So resolution is a **JS pass**: query `search_index` for candidates → score/tier in code → write resolved rows to staging → `precompute` only rolls up. (Correct §4/§7 accordingly.)
 
-Resolve declared/donor `company name + town` → Sigma `bidders` (which carry `name`, `settlement`, `eik_normalized`, plus the accent/case-folded Cyrillic FTS index). We only ever resolve against the bidder set (companies that won public money), not the full register — that bounds the false-positive surface.
+**Method:** normalize the declared `company_name_raw` (canonicalize quotes, extract legal-form token) → FTS candidate set → score by calibrated name similarity, `company_town == bidder.settlement` **when settlement exists**, and legal-form agreement **as a tie-breaker only** (form flips ЕООД↔ООД on ownership change; never reject on form mismatch alone).
 
-**Method:** normalize the raw name (strip/canonicalize quotes + legal-form token `ЕООД/ООД/АД/ЕТ/ДЗЗД`), FTS-match the core name, then score candidates by name similarity + `town == settlement` + legal-form agreement.
+**Prerequisite — settlement backfill (Phase-0 blocker).** `bidders.settlement` is populated **only** from OCDS parties (`normalize-raw.sql`), which cover **2026+** entities → it is largely **NULL for the 2020–2025 corpus**. The town gate therefore has no data for most bidders, and "TR fills settlement" is **circular** (TR is keyed by the ЕИК the match is trying to find). Phase-0 must (a) **measure** actual settlement coverage on the bidder set, and (b) backfill it **independently** of the match (bulk ЕКАТТЕ/NUTS, or per-ЕИК TR on the bidder's *own* ЕИК where `eik_valid=1`) — or Tier A must be redefined to not need town and proven empirically.
 
 **Confidence tiers:**
-- **Tier A** — normalized core name + town + legal form align on a single candidate → asserted link.
-- **Tier B** — name matches but town/form partial, or multiple candidates → **human-review queue**, not asserted.
-- **Tier C** — weak/ambiguous → held, never surfaced as a claim.
+- **Tier A (auto-assert)** — `bidder.eik_valid = 1` **AND** strong calibrated name match **AND** (town agreement where settlement exists). Never Tier A for `name:`-keyed bidders/consortia (NULL ЕИК) — those cap at Tier B.
+- **Tier B** — name match but town/form partial, multiple candidates, or name-keyed bidder → **human-review queue**, not asserted.
+- **Tier C** — weak/ambiguous → held, never surfaced.
 
-**Provenance (every link):** `source_url` (declaration xmlFile / donation record), the raw declared strings, matched `bidder_id`, `match_method`, `confidence`. The UI shows the receipts inline so a reader verifies in one click and draws their own conclusion.
+**Provenance (every link):** `source_url`, raw declared strings, matched `bidder_id`, `match_method`, `confidence`, `matcher_version`. UI shows the receipts inline.
 
-**Headline metric (Phase-2 gate):** count of ЛЗВПД holding a declared stake in a company that won public contracts — and the subset where the company won **from the official's own institution** with **temporal overlap** (declaration `year` vs `contract.signed_at`).
+**Known recall holes (enumerate on methodology page):** `search_index` is built from `company_totals`, so bidders whose only contracts are FX-rateless (`amount_eur` NULL) are **absent from FTS** and unmatchable; renamed companies; town-changed companies; ownership via HoldCo. Acceptable under false-negatives-over-false-accusations, but stated up front.
 
-## 6. Phases and proof-gates
+**Headline metric:** count of ЛЗВПД holding a *declared* stake in a company that won public contracts, and the subset winning **from the official's own institution** with temporal overlap (§ below). Framed as declared leads, never "all conflicts."
 
-### Phase 1 — Ingestion proof
-Scrapers + parsers for the three sources → staging → the `persons/declarations/declared_interests/party_donations/company_owners` tables.
-- **Gate:** N records ingested across sources; schema validated; **idempotent re-import** (natural-keyed, re-run yields no drift). Party-financing + TR source shapes confirmed. Loaders have real tests (adversarial: malformed XML, empty holdings, missing town, TLS quirk).
+**Temporal logic:** a declaration is a **point-in-time snapshot**, not an interval. A stake acquired late-year vs a contract won early-year is a **false overlap**; a stake sold mid-year still shows in the prior declaration; entrants/leavers file nothing for years out of office. Use `Year` with an **uncertainty band** + `acquisition_mode/acquired_hint` to bound the holding start. **Verify the ЗОП-signatory category's filing cadence** (annual vs event-triggered) before relying on annual re-filing.
 
-### Phase 2 — Matching proof
-The resolver → `interest_links`.
-- **Gate:** measured **match rate** and a **false-positive audit** on a hand-labelled sample; the headline conflict count (§5) with worked examples; the resolver at 100% coverage with sensitivity tests. This is the **go/no-go** for the whole thesis — if resolution is too noisy to be defensible, we stop here before building UI.
+## 6. Phases and proof-gates (numeric, falsifiable)
 
-### Phase 3 — Integration proof
-Wire the data into what already exists, in the fork worktree, cherry-picking any in-flight commit we need to build against (e.g. #144's force-directed graph), verified on the **fork's ephemeral deployed env**.
-- Fill `ConsortiumParticipant.eik`/`resolvedSlug` (#60); extend `NetworkNode.kind` to `'person'` + typed edges; feed #128's shared-owner heuristic; add a „Декларирани връзки" panel on company/authority/contract profiles.
-- **Gate:** the graph/#60/#128 consume the new data correctly on a live ephemeral deploy; privacy masking holds on all output formats (incl. `.json`/`.csv`/`.data`).
+### Phase 0 — Feasibility spike (kill-criteria; do this before committing to the build)
+- **Settlement coverage:** measure `bidders.settlement` fill-rate on the 2020–2025 bidder set; prototype a backfill; decide if the town gate is viable or Tier A must drop town.
+- **Ground truth:** hand-label a **stratified pair set** — true matches + **hard negatives** (same-name/diff-town, same-core/diff-form, homonym companies, name-keyed bidders). Without this there is no measurable gate.
+- **TR:** confirm per-ЕИК endpoint, fields, rate limits, ToS.
+- **ЕРИК:** confirm parse shape, donor-ЕИК presence, retention/Wayback for 2020–2026.
+- **Cadence:** verify ЗОП-category filing cadence for the temporal model.
+- **Gate:** can Tier-A precision be *measured* at all (given no ЕГН)? If not, that is the **no-go** — surface it, don't paper over it.
 
-## 7. Architecture fit
+### Phase 1 — CACBG ingestion (the confirmed MVP; independent of Phase 0's TR/ЕРИК)
+Resumable crawler + raw-XML cache (`control_hash` key) → parser → `persons/declarations/declared_interests`.
+- **Gate:** ≥ (stated N, e.g. all 2020–2026 folders, ≥95% of `Sent=True` declarations parsed) ingested; **idempotent** re-import (re-run yields zero drift; natural key = `xml_file`+`control_hash`); staging survives the full `normalize` rebuild; adversarial parser tests (malformed XML, empty holdings, missing town, TLS quirk).
 
-Rides the existing ETL exactly — no new infra:
-`load-cacbg.mjs` / `load-party-fin.mjs` / `enrich-tr-owners.mjs` → `work-staging-schema.sql` staging → `normalize-raw.sql` (domain tables) → `precompute.sql` (`interest_links` rollup) → `ship-domain` → **`assertIntegrity`**. A new source is precisely why the publication-boundary gate matters; this foundation should not go live on a path that writes before it validates.
+### Phase 2 — Matching (the go/no-go)
+JS resolver → `interest_links`.
+- **Gate:** **Tier-A precision ≥ 0.98** (target; tune with lb) on the Phase-0 labelled set of N ≥ 200 with a reported confidence interval; **recall reported separately** and explicitly accepted as known incompleteness; the headline conflict count with worked examples. "Match rate" is **not** a headline. If precision can't clear the bar, stop before any UI.
 
-**Workspace / delivery:** isolated fork worktree off synced `main`; cherry-pick specific upstream commits when needed; verify on the fork's ephemeral env. Product still lands upstream via PR when a phase is proven.
+### Phase 3 — Integration (hard-gated on privacy)
+- **HARD BLOCKER:** **#173 must land first** — natural-person masking proven on `.json`/`.csv` **and the `.data` twin** (#184's rate-limit fix is merged, but that closed the *limiter* bypass, not the *mask*; the `.data` surface must be re-verified against the masking policy, per the .data under-protection pattern). **Family-relation rows (`holder_relation ≠ self`) stay INTERNAL-only for v1** — the §5 metric is the official's own holdings; do not publish third-party data over surfaces known to leak.
+- Fill `ConsortiumParticipant.eik`/`resolvedSlug` (#60); extend `NetworkNode.kind` to `'person'`; add a „Декларирани връзки" panel; feed #128's shared-owner heuristic **iff** §3.3 delivered.
+- Build against **`main` after** the in-flight graph work (#140/#144) merges — do **not** cherry-pick unmerged stacked branches (merge-order hazard).
+- **#60 consortium-only graph may ship earlier**, independent of all of the above.
+- **Gate:** consumed correctly on the fork's ephemeral deploy; masking holds on every output format.
 
-## 8. Guardrails (non-negotiable)
+## 7. Architecture fit — honest about what's new
 
-- **Public-by-law facts vs inference.** Declarations are public by statute → restating a declared fact with a source link is defensible. The **link** (the inference) is tiered, hedged, appealable — „модел за проверка, не обвинение" (#34).
-- **Family data.** `holder_relation = spouse/child` are natural persons → apply Sigma's existing mask/noindex policy (#173) to non-official family names in public output, on **every** format (#184 `.data` lesson).
-- **Self-reported ≠ complete.** A *declared* absence is not proof of no conflict. The tool shows declared/derivable links, never claims completeness — stated on the methodology page.
-- **False positives are the risk.** Name-match is the failure mode → nothing auto-asserted above Tier A, Tier B goes to human review, resolver gets adversarial self-tests. Accuracy defects block merge.
-- **No silent TLS bypass.** The CACBG cert-chain issue is handled explicitly and scoped to that host.
+Domain tables + rollups ride the existing pipeline (`normalize-raw.sql` → `precompute.sql` → `ship-domain` → **`assertIntegrity`**). **New infrastructure this genuinely adds** (the "no new infra" claim was wrong): a **resumable, rate-limited, cached crawler** over three external gov registers (one broken-TLS, one rate-limited, one HTML-only); a **JS resolver pass**; a **suppression/correction store** surviving re-import; and **source-schema-drift monitoring** (the integrity gate covers re-import drift, not upstream schema/availability drift across 2020–2026 × annual).
 
-## 9. Open questions / risks
+**Workspace:** isolated fork worktree off synced `main`; verify on the fork's ephemeral env; product lands upstream via PR per proven phase.
 
-1. **Party-financing source** — existence/shape unknown (Phase-1 discovery). May not be structured; could reduce that source's scope.
-2. **TR public per-company data** — how much ownership is publicly recoverable per ЕИК, and at what rate limit.
-3. **Match rate unknown until Phase 2** — the whole thesis rests on the §5 number. Phase 2 is deliberately the gate before UI.
-4. **Person disambiguation across years/sources** — conservative merge may under-link (same person seen as two); acceptable for v1 (favors false-negatives over false-accusations).
-5. **Historical depth** — how many CACBG years to ingest (2017→2025) vs latest only; affects temporal-overlap coverage.
+## 8. Guardrails (non-negotiable — DPA-verified)
+
+**Legal / personal-data (КЗЛД- and CJEU-grounded):**
+- **Officials' declared facts** — lawful to republish with a source link (ЗСП publication obligation + GDPR 6(1)(c)/(f) + Art. 85 expression margin). Green-light.
+- **Third-party (spouse/child) data** — КЗЛД: publishable only to the extent the law explicitly provides; the declarant's consent does **not** extend to third persons; otherwise **anonymize**. → family-relation rows **internal-only for v1**; if ever surfaced, masked on **every** format, hard-gated on #173 (incl. the `.data` twin).
+- **Strip on publication:** address, ЕГН, ID-doc/bank numbers (КЗЛД list) — never store-for-publish.
+- **Storage-limitation:** no statutory online-retention window → indefinite republication conflicts with the DPA principle. Add a **retention/refresh statement** to the methodology page.
+- **DPIA / lawful-basis note** before any natural-person *aggregation* into a searchable index — apply the BO-register (CJEU C-37/20) "public-by-law ≠ unlimited re-publication" reasoning **symmetrically** to CACBG family/asset data, not only to the parked BO register.
+- **TR:** bounded per-ЕИК only, never bulk (DPA-hostile), never store ЕГН.
+
+**Accuracy (project rule — accuracy blocks merge):**
+- Numeric, falsifiable gate (Phase 2) on a labelled set with hard negatives; nothing auto-asserted below Tier A / `eik_valid=1`; resolver gets adversarial self-tests.
+- Present links as „модел за проверка, не обвинение" (#34); the tool shows declared/derivable links, never claims completeness.
+
+**Corrections & lifecycle (defamation-sensitive):**
+- **Appeal/correction/takedown workflow** with an intake contact and a resolution SLA — designed, not just named. Corrections land in `link_suppressions` and **survive re-import** (idempotency must not re-assert a removed link).
+- **Refresh cadence + source reconciliation:** re-scrape on a stated cadence; handle **withdrawn/amended** declarations and officials leaving office — a stale `interest_link` implies a *current* conflict that has ended (= accuracy defect on live prod).
+
+## 9. Open questions / risks (ranked)
+
+1. **Match accuracy (name-only) — THE go/no-go.** Every source is ЕГН-less/often ЕИК-less; the thesis rests on the §5 matcher clearing a defensible precision bar. Phase-2 gate; may be un-measurable without ground truth (Phase 0).
+2. **Family-data masking** — highest *legal* risk; only mitigated if #173 masking is proven on every format incl. `.data`. v1 keeps family rows internal.
+3. **Settlement backfill** — the town gate is inert pre-2026 until this is solved (Phase 0).
+4. **ЕРИК format/retention** — HTML-only, no donor ЕИК, election-scoped retention may drop older cycles → may shrink §3.2.
+5. **Person disambiguation without ЕГН** — conservative per-declaration nodes; cross-year identity may be unneeded for the headline; homonym merge is the failure to avoid.
+6. **CACBG storage-limitation** — add retention line (§8); low viability threat, real compliance gap.
+7. **BO register regime in flux** (June 2025 legitimate-interest) — stays parked; risk is scope-creep by treating BO as "still public."
