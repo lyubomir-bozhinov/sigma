@@ -7,4 +7,12 @@ interface Env {
   TURNSTILE_SECRET?: string;
   /** Turnstile widget site key (public) — read by the client dock to render the invisible widget. */
   TURNSTILE_SITE_KEY?: string;
+  /** AI-assistant report dedup cache (Lane F). Optional: a missing binding just disables dedup. */
+  DEDUP_KV?: KVNamespace;
+  /** One single-flight coordinator per freshness-folded dedup key (Lane F). Optional until provisioned. */
+  REPORT_SINGLE_FLIGHT?: DurableObjectNamespace<
+    import('./assistant/report-single-flight').ReportSingleFlight
+  >;
+  /** Build/config version for the dedup freshness token `c` (Lane F). */
+  BUILD_ID?: string;
 }

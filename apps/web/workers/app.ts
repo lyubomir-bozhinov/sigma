@@ -9,6 +9,10 @@ import { optionsResponse, redirectCleartextHttp, setAllowHeader } from './http';
 import { rateLimitSearchRoute } from './search-rate-limit';
 import { withRequestLog } from './request-log';
 
+// Durable Object for AI-assistant report dedup (Lane F). Must be a named export of the worker entry so
+// the `REPORT_SINGLE_FLIGHT` binding + migration in wrangler.jsonc resolve the class.
+export { ReportSingleFlight } from './assistant/report-single-flight';
+
 declare module 'react-router' {
   export interface AppLoadContext {
     cloudflare: {

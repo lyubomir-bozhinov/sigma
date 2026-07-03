@@ -34,6 +34,19 @@
   // assistant route degrades to a 503 rather than crashing.
   "ai": { "binding": "AI" },
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "sigma-assistant" }],
+  // AI assistant dedup (Lane F — docs/spec/ai-assistant-dedup.md).
+  //  • DEDUP_KV — freshness-validated report cache (L0/L1/L2/L2.5). ⚠️ DEPLOY GATE: the KV namespace must
+  //    exist before `wrangler deploy`; `id` is a local-dev placeholder, substituted per-env by
+  //    scripts/wrangler-render.mjs (same pattern as SIGMA_D1_ID). Until provisioned the assistant still
+  //    runs — a missing binding just disables dedup (every request generates).
+  //  • REPORT_SINGLE_FLIGHT — one coordinator per freshness-folded key so concurrent identical questions
+  //    collapse onto one generation (Option 2: the driver generates in-request, the DO brokers waiters).
+  //    SQLite-backed (uses storage alarms for driver-crash release).
+  "kv_namespaces": [{ "binding": "DEDUP_KV", "id": "00000000000000000000000000000000" }],
+  "durable_objects": {
+    "bindings": [{ "name": "REPORT_SINGLE_FLIGHT", "class_name": "ReportSingleFlight" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReportSingleFlight"] }],
   // Public config for the assistant. All model traffic is routed through the Cloudflare AI Gateway
   // (spec §9.5) — MANDATORY, fail closed: with AI_GATEWAY_BASE_URL empty the assistant returns 503
   // rather than calling the provider directly. Set it per-environment to the gateway's OpenAI-compatible
@@ -59,6 +72,9 @@
     // never here); while it is unset the edge gate (turnstile.ts) is a no-op — dev/preview/staging run
     // without it, and it only activates once the secret is set (launch gate, spec §7/§8).
     "TURNSTILE_SITE_KEY": "",
+    // Freshness `c` (code/config version) for the dedup token (Lane F) — busts the report cache when
+    // report shape / CPV taxonomy / FX logic ship without a data change. Deploy substitutes a real build id.
+    "BUILD_ID": "dev",
   },
   "unsafe": {
     "bindings": [
