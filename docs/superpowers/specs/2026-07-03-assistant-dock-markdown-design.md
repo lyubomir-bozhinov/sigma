@@ -83,7 +83,7 @@ their own input). So:
 
 ```tsx
 {message.role === 'assistant'
-  ? <MarkdownBlock md={sanitizeProse(text)} className="assistant-message__text" />
+  ? <MarkdownBlock md={text} className="assistant-message__text" />
   : <p className="assistant-message__text">{text}</p>}
 ```
 
@@ -91,11 +91,12 @@ their own input). So:
 still selects the visible prose and still returns a raw string (so `condense.ts`, which calls
 `messageText().split('\n')`, is unaffected); `MarkdownBlock` only changes how assistant prose is rendered.
 
-**Why the client `sanitizeProse` pass:** dock prose streams straight from the model and — unlike report
-text — never passed through server `sanitizeProse`. `MarkdownBlock` is already XSS-safe on raw input
-(React escaping + link gate), so this is defense-in-depth + parity with the report path, and it strips a
-stray raw `<script>` to readable text instead of showing literal tag syntax. `sanitizeProse` is a pure
-string function with no server-only imports → safe to call client-side.
+**No `sanitizeProse` on the dock path** (both review agents). It is not load-bearing for XSS — the
+authoritative barriers are `renderInline`'s React-escaping + the `sanitizeLinkHref` allowlist — and it is
+lossy on chat prose (`stripTags` eats `<ЕИК>`/`<име>` placeholders and angle-autolinks; rewrites a literal
+`javascript:` mention to `unsafe:`). Dropping it also avoids importing all of `report-schema.ts` into the
+client bundle. `MarkdownBlock` never emits raw HTML, so a raw `<script>`/`<img onerror>` in prose renders
+as inert escaped text.
 
 ### 3. Prompt nudge (seam reinforcement)
 
