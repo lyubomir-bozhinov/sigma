@@ -63,6 +63,25 @@ describe('buildFallbackReport — server-side last-resort finalizer', () => {
     if (out.ok) expect(out.report.blocks[0]!.type).toBe('table');
   });
 
+  it('renders a single row with a text label + number as a table (keeps the entity name)', () => {
+    // A single-row „who spent the most" answer must NOT collapse into a totals block — that would show
+    // „91,8 млн. €" and silently drop „СОФЕКОСТРОЙ ЕАД". A 1-row table preserves the label column.
+    const results: QueryResult[] = [
+      { handle: 'R1', columns: ['name', 'spent_eur'], rows: [['СОФЕКОСТРОЙ ЕАД', 91800000]] },
+    ];
+    const out = buildFallbackReport(results, 'кой похарчи най-много');
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      const block = out.report.blocks[0]!;
+      expect(block.type).toBe('table');
+      if (block.type === 'table') {
+        expect(block.columns.map((c) => c.key)).toEqual(['name', 'spent_eur']);
+        expect(block.rows).toHaveLength(1);
+        expect(block.rows[0]!.cells).toEqual(['СОФЕКОСТРОЙ ЕАД', 91800000]);
+      }
+    }
+  });
+
   it('picks the LAST non-empty result (the model’s final answer query)', () => {
     const results: QueryResult[] = [
       { handle: 'R1', columns: ['x'], rows: [[1]] },
@@ -134,6 +153,15 @@ describe('guessFormat', () => {
     expect(guessFormat('single_offer_share')).toBe('percent');
     expect(guessFormat('signed_at')).toBe('date');
     expect(guessFormat('authority_name')).toBe('text');
+  });
+
+  it('reads a count as a number even when its name carries a generic „total" aggregate', () => {
+    // total_count / total_contracts are TALLIES, not euro sums — the generic „total" must not steal them
+    // into the money format ahead of the count shape. A hard currency token still wins (total_spent_eur).
+    expect(guessFormat('total_count')).toBe('number');
+    expect(guessFormat('total_contracts')).toBe('number');
+    expect(guessFormat('total_spent_eur')).toBe('money');
+    expect(guessFormat('won_eur')).toBe('money');
   });
 });
 

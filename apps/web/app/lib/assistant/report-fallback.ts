@@ -65,9 +65,15 @@ export function humanizeColumn(col: string): string {
 // a normal report. Unknown → text (safe; the renderer shows the raw cell).
 export function guessFormat(col: string): CellFormat {
   const c = col.toLowerCase();
+  // A tally reads as a plain number even when its name also carries a GENERIC aggregate word like „total"
+  // (e.g. total_count, total_contracts) — check the count shape BEFORE the broad money pattern, but only
+  // when there's no HARD currency token (eur/amount/spent/сума/…) that would make it a real sum.
+  const hasCurrencyToken = /(eur|amount|spent|paid|стойност|похарчен|сума|разход)/.test(c);
+  const isCountShape = /(count|contracts|number|броя?|договор|бр_)/.test(c);
+  if (isCountShape && !hasCurrencyToken) return 'number';
   if (/(eur|amount|sum|spent|won|total|paid|стойност|похарчен|сума|разход)/.test(c)) return 'money';
   if (/(share|ratio|dial|дял|percent|процент|pct)/.test(c)) return 'percent';
-  if (/(count|contracts|number|броя?|договор|бр_)/.test(c)) return 'number';
+  if (isCountShape) return 'number';
   if (/(date|signed|period|year|month|дата|период|година|месец)/.test(c)) return 'date';
   return 'text';
 }
@@ -89,27 +95,27 @@ export function buildFallbackReport(results: QueryResult[], question: string): B
   const last = [...results].reverse().find((r) => r.rows.length > 0);
   if (!last) return { ok: false, errors: ['no results to summarise'] };
 
+  // A `totals` block is the „one number" answer — use it only when the single row is ENTIRELY numeric.
+  // A single row that also carries a text/label column (an entity name, a period) goes to a 1-row `table`
+  // instead, so that context is preserved; a totals block would show the figures with no idea WHICH entity
+  // they belong to (e.g. „91,8 млн. €" with „СОФЕКОСТРОЙ ЕАД" silently dropped).
+  const singleAllNumericRow =
+    last.rows.length === 1 && last.columns.every((_, i) => isNumericColumn(last, i));
+
   let blocks: EmitBlock[];
-  const totalsItems =
-    last.rows.length === 1
-      ? last.columns.flatMap((col, i) =>
-          isNumericColumn(last, i)
-            ? [
-                {
-                  label: humanizeColumn(col),
-                  ref: { resultId: last.handle, row: 0, col },
-                  // guessFormat picks 'percent' from the column NAME (share/дял); if the single-row value
-                  // is actually a raw sum/count (not a 0..1 ratio) that would render as an absurd „…%".
-                  // Downgrade to a plain number so the reader still sees the real figure.
-                  format:
-                    guessFormat(col) === 'percent' && isImplausibleRatio(last.rows[0][i])
-                      ? ('number' as CellFormat)
-                      : guessFormat(col),
-                },
-              ]
-            : [],
-        )
-      : [];
+  const totalsItems = singleAllNumericRow
+    ? last.columns.map((col, i) => ({
+        label: humanizeColumn(col),
+        ref: { resultId: last.handle, row: 0, col },
+        // guessFormat picks 'percent' from the column NAME (share/дял); if the single-row value is
+        // actually a raw sum/count (not a 0..1 ratio) that would render as an absurd „…%". Downgrade to a
+        // plain number so the reader still sees the real figure.
+        format:
+          guessFormat(col) === 'percent' && isImplausibleRatio(last.rows[0][i])
+            ? ('number' as CellFormat)
+            : guessFormat(col),
+      }))
+    : [];
 
   if (totalsItems.length > 0) {
     blocks = [{ type: 'totals', items: totalsItems }];

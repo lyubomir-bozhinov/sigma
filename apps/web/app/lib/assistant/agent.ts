@@ -343,7 +343,15 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       }
       try {
         const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
-        if (!built.ok) return;
+        if (!built.ok) {
+          // We had bindable data yet still couldn't synthesize a valid report (e.g. bindReport rejected
+          // the shape). Log it — otherwise this „had data, still no report" case fails invisibly.
+          console.warn('[assistant] fallback finalizer produced no valid report', {
+            errors: built.errors,
+            resultCount: opts.ctx.results.length,
+          });
+          return;
+        }
         const storedId = await persistReport(opts.ctx, built, modelId);
         const toolCallId = `fallback_${randomReportId()}`;
         writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
