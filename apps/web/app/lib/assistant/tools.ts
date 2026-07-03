@@ -74,6 +74,9 @@ export interface ToolContext {
   // Set true by emit_report once a VALID (ok:true) report is produced this turn. Read by the agent loop's
   // step planner (chooseToolChoice) so it stops force-finalizing once a report exists.
   reportEmitted?: boolean;
+  // Set by the persist path (emit_report or the fallback finalizer) to the report actually written to R2
+  // this turn. Read by runAssistant's onSettled to hand the dedup driver its {reportId, createdAt} (Lane F).
+  persistedReport?: { reportId: string; createdAt: string };
 }
 
 export interface AssistantTool {

@@ -1,0 +1,152 @@
+import { describe, it, expect } from 'vitest';
+import {
+  buildDedupRequest,
+  canonicalFilterContext,
+  hasUnresolvedRelativeDate,
+  type PeriodBounds,
+} from './dedup-request';
+
+const FRESH = 'd:2026070412|c:build9';
+const JULY: PeriodBounds = { sinceIso: '2026-07-01', untilIso: '2026-08-01' };
+const AUG: PeriodBounds = { sinceIso: '2026-08-01', untilIso: '2026-09-01' };
+
+describe('hasUnresolvedRelativeDate', () => {
+  it('is false when temporal resolved, regardless of wording', () => {
+    expect(hasUnresolvedRelativeDate('поръчките този месец', true)).toBe(false);
+  });
+
+  it('is true when a period word is present but nothing resolved', () => {
+    // The resolver failed to pin these to absolute bounds → L1 keying on the text alone is unsafe (#97).
+    for (const q of ['преди няколко месеца', 'ланшната година', 'тази седмица май', 'днес-утре']) {
+      expect(hasUnresolvedRelativeDate(q, false)).toBe(true);
+    }
+  });
+
+  it('is false for a non-temporal question with nothing resolved', () => {
+    for (const q of ['кой е този възложител', 'най-големите доставчици', 'разход по CPV']) {
+      expect(hasUnresolvedRelativeDate(q, false)).toBe(false);
+    }
+  });
+});
+
+describe('canonicalFilterContext', () => {
+  it('folds resolved period bounds (not the phrase)', () => {
+    expect(canonicalFilterContext(JULY, undefined)).toBe('p:2026-07-01..2026-08-01');
+  });
+
+  it('distinguishes two periods for the same question — the concrete #97 fix', () => {
+    expect(canonicalFilterContext(JULY, undefined)).not.toBe(
+      canonicalFilterContext(AUG, undefined),
+    );
+  });
+
+  it('appends and trims an FE filter', () => {
+    expect(canonicalFilterContext(JULY, '  възложител=Х ')).toBe(
+      'p:2026-07-01..2026-08-01|f:възложител=Х',
+    );
+    expect(canonicalFilterContext(undefined, 'сектор=строителство')).toBe('f:сектор=строителство');
+  });
+
+  it('is empty when neither is present', () => {
+    expect(canonicalFilterContext(undefined, undefined)).toBe('');
+    expect(canonicalFilterContext(undefined, '   ')).toBe('');
+  });
+});
+
+describe('buildDedupRequest', () => {
+  it('L0 only from clientRequestId when there is no prompt', () => {
+    const r = buildDedupRequest({
+      clientRequestId: 'req-abc_1',
+      prompt: '   ',
+      temporalResolved: false,
+      freshness: FRESH,
+    });
+    expect(r.signals).toEqual({ clientRequestId: 'req-abc_1' });
+    expect(r.payloads).toEqual([{ layer: 'L0', clientRequestId: 'req-abc_1' }]);
+    expect(r.doName).toBe(`L0|${FRESH}|req-abc_1`);
+  });
+
+  it('L1 folds the resolved bounds; signals + record payload agree; DO keyed on L1', () => {
+    const r = buildDedupRequest({
+      prompt: 'разходи този месец',
+      temporalResolved: true,
+      period: JULY,
+      freshness: FRESH,
+    });
+    expect(r.signals).toEqual({
+      prompt: 'разходи този месец',
+      filterContext: 'p:2026-07-01..2026-08-01',
+    });
+    expect(r.payloads).toEqual([
+      { layer: 'L1', prompt: 'разходи този месец', filterContext: 'p:2026-07-01..2026-08-01' },
+    ]);
+    expect(r.doName).toBe(`L1|${FRESH}|разходи този месец|p:2026-07-01..2026-08-01`);
+  });
+
+  it('carries both L0 and L1; DO prefers the stronger L1 key', () => {
+    const r = buildDedupRequest({
+      clientRequestId: 'req-1',
+      prompt: 'най-големите възложители',
+      temporalResolved: false, // non-temporal question → L1 safe with empty context
+      freshness: FRESH,
+    });
+    expect(r.payloads).toEqual([
+      { layer: 'L0', clientRequestId: 'req-1' },
+      { layer: 'L1', prompt: 'най-големите възложители', filterContext: '' },
+    ]);
+    expect(r.signals).toEqual({
+      clientRequestId: 'req-1',
+      prompt: 'най-големите възложители',
+      filterContext: '',
+    });
+    expect(r.doName).toBe(`L1|${FRESH}|най-големите възложители|`);
+  });
+
+  it('skips L1 for an unresolved relative date, falling back to the L0 key', () => {
+    const r = buildDedupRequest({
+      clientRequestId: 'req-2',
+      prompt: 'какво стана преди няколко месеца',
+      temporalResolved: false,
+      freshness: FRESH,
+    });
+    expect(r.payloads).toEqual([{ layer: 'L0', clientRequestId: 'req-2' }]);
+    expect(r.signals.prompt).toBeUndefined();
+    expect(r.doName).toBe(`L0|${FRESH}|req-2`);
+  });
+
+  it('skips dedup entirely when L1 is unsafe and there is no L0 key', () => {
+    const r = buildDedupRequest({
+      prompt: 'разходите тази седмица',
+      temporalResolved: false, // relative but unresolved, no clientRequestId
+      freshness: FRESH,
+    });
+    expect(r.payloads).toEqual([]);
+    expect(r.signals).toEqual({});
+    expect(r.doName).toBeNull();
+  });
+
+  it('DO key normalises whitespace so trivially-different phrasings collapse', () => {
+    const a = buildDedupRequest({
+      prompt: 'най-големите   възложители',
+      temporalResolved: false,
+      freshness: FRESH,
+    });
+    const b = buildDedupRequest({
+      prompt: '  най-големите възложители  ',
+      temporalResolved: false,
+      freshness: FRESH,
+    });
+    expect(a.doName).toBe(b.doName);
+  });
+
+  it('folds an FE filterContext into L1 alongside the period', () => {
+    const r = buildDedupRequest({
+      prompt: 'разходи този месец',
+      temporalResolved: true,
+      period: JULY,
+      filterContext: 'сектор=здравеопазване',
+      freshness: FRESH,
+    });
+    expect(r.signals.filterContext).toBe('p:2026-07-01..2026-08-01|f:сектор=здравеопазване');
+  });
+});
