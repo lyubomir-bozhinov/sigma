@@ -11,6 +11,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import {
   convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   jsonSchema,
   stepCountIs,
   streamText,
@@ -21,6 +23,7 @@ import {
 import { buildSystemPrompt } from './system-prompt';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
+import { buildFallbackReport } from './report-fallback';
 import type { TemporalContext } from './temporal';
 
 export interface AgentEnv {
@@ -110,9 +113,27 @@ function buildModel(env: AgentEnv) {
   return provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
 }
 
-// System-prompt version string used in StoredReport provenance for regression tracing.
-// Bump this whenever system-prompt.ts changes semantically.
-const PROMPT_VERSION = '2026-07-02-headline-totals'; // + leading totals-headline rule for list/breakdown
+// Shown when the model returns a completely empty turn — no report, no run_sql data to synthesize from,
+// and no prose (an empty completion / finishReason 'other'). Guarantees the dock never renders a blank
+// turn in that case. Mirrors the client-side NO_ANSWER_FALLBACK wording (AssistantTranscript.tsx).
+const EMPTY_COMPLETION_MESSAGE =
+  'Не успях да съставя справка за този въпрос. Опитайте отново или го формулирайте по-конкретно — ' +
+  'напр. посочете възложител, период или сектор.';
+
+// System-prompt version string used in StoredReport provenance for regression tracing. Derived — NOT a
+// manual bump: a FNV-1a fingerprint of the CANONICAL system prompt (empty input → full dictionary, no
+// per-turn bits), so any semantic edit to system-prompt.ts / describe-schema.ts re-fingerprints on the
+// next deploy without anyone remembering to touch a constant. Not security-sensitive; a plain
+// content hash is all provenance needs to correlate a stored report with the prompt that produced it.
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+const PROMPT_VERSION = `sp_${fnv1a(buildSystemPrompt({}))}`;
 
 /** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
 function randomReportId(): string {
@@ -224,7 +245,33 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const maxSteps = resolveMaxSteps(opts.env.MAX_STEPS);
   const messages = await convertToModelMessages(opts.messages);
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
+
+  // Resolves when the model loop (all steps + tool executions) is fully finished, so the last-resort
+  // finalizer below runs only after the model has had every chance to emit its own report. `onError`
+  // resolves it too (and flags the error) so the wrapping stream can never hang if the model throws —
+  // and so we don't paste a synthesized report on top of a genuine provider-failure message.
+  let resolveModelFinished!: () => void;
+  const modelFinished = new Promise<void>((resolve) => {
+    resolveModelFinished = resolve;
+  });
+  let modelErrored = false;
+  // Captured from the model's finish so the wrapper can tell an EMPTY completion (weak model returns 0
+  // tokens / finishReason 'other' under the gateway — reproducibly seen on some question shapes) from a
+  // legitimate prose-only turn. Without this an empty completion with no run_sql dead-ends on a BLANK turn:
+  // the fallback finalizer needs rows, so it can't fire, and nothing is ever written to the stream.
+  let modelFinishReason: string | undefined;
+  let modelProducedText = false;
+
   const result = streamText({
+    onFinish: (event) => {
+      modelFinishReason = event.finishReason;
+      modelProducedText = typeof event.text === 'string' && event.text.trim().length > 0;
+      resolveModelFinished();
+    },
+    onError: () => {
+      modelErrored = true;
+      resolveModelFinished();
+    },
     model: buildModel(opts.env),
     system: buildSystemPrompt({
       schemaContext: opts.schemaContext,
@@ -277,7 +324,91 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
     // leaves headroom while still capping worst-case tokens per step.
     maxOutputTokens: 8192,
   });
-  return result.toUIMessageStreamResponse({
+  // Wrap the model's UI stream so we can append a SERVER-SYNTHESIZED report when the model gathered real
+  // data but never produced a valid one. Without this a weak-model shape error / step-budget exhaustion
+  // dead-ends the turn on „couldn't compose" even though the answer is already in ctx.results. The
+  // injected part uses the SAME `tool-emit_report` shape the model would have produced, so the dock
+  // renders a normal report chip; values are bound through bindReport (server-owned, never model-written).
+  const stream = createUIMessageStream<UIMessage>({
+    execute: async ({ writer }) => {
+      writer.merge(result.toUIMessageStream());
+      // Wait for the model loop to settle before the last-resort finalizer, but never indefinitely.
+      // onFinish/onError resolve `modelFinished` and in practice one always fires (incl. on abort), so
+      // this timer is pure defense-in-depth: if the SDK ever failed to settle, the wrapper would keep the
+      // response stream open forever. On backstop we BAIL without synthesizing — the loop's state is
+      // indeterminate, so writing could race the still-open merged stream. Timer is cleared on the normal
+      // path so it can't keep the isolate alive.
+      const SETTLE_BACKSTOP_MS = 60_000;
+      let backstopTimer: ReturnType<typeof setTimeout> | undefined;
+      let settledCleanly = false;
+      await Promise.race([
+        modelFinished.then(() => {
+          settledCleanly = true;
+        }),
+        new Promise<void>((resolve) => {
+          backstopTimer = setTimeout(resolve, SETTLE_BACKSTOP_MS);
+        }),
+      ]);
+      if (backstopTimer) clearTimeout(backstopTimer);
+      if (!settledCleanly) {
+        console.error(
+          '[assistant] model stream did not settle within backstop — skipping fallback',
+          {
+            backstopMs: SETTLE_BACKSTOP_MS,
+          },
+        );
+        return;
+      }
+      // Skip the fallback when the model finalized its own report, or errored (a provider failure already
+      // surfaced its own message — don't paste a report over it).
+      if (modelErrored || opts.ctx.reportEmitted) return;
+      // No bindable data this turn → the fallback finalizer has nothing to synthesize from. If the model
+      // also produced no prose, the turn would otherwise be BLANK (empty completion). Write an explicit
+      // affordance so the dock shows guidance instead of an empty transcript. A legit prose-only answer
+      // (produced text, e.g. a clarifying reply) is left untouched.
+      if (opts.ctx.results.length === 0) {
+        if (!modelProducedText) {
+          console.warn('[assistant] empty completion — no report, no data, no prose', {
+            finishReason: modelFinishReason,
+          });
+          const textId = `empty_${randomReportId()}`;
+          writer.write({ type: 'text-start', id: textId });
+          writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
+          writer.write({ type: 'text-end', id: textId });
+        }
+        return;
+      }
+      try {
+        const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
+        if (!built.ok) {
+          // We had bindable data yet still couldn't synthesize a valid report (e.g. bindReport rejected
+          // the shape). Log it — otherwise this „had data, still no report" case fails invisibly.
+          console.warn('[assistant] fallback finalizer produced no valid report', {
+            errors: built.errors,
+            resultCount: opts.ctx.results.length,
+          });
+          return;
+        }
+        const storedId = await persistReport(opts.ctx, built, modelId);
+        const toolCallId = `fallback_${randomReportId()}`;
+        writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
+        writer.write({
+          type: 'tool-input-available',
+          toolCallId,
+          toolName: 'emit_report',
+          input: {},
+        });
+        writer.write({
+          type: 'tool-output-available',
+          toolCallId,
+          output: { ok: true as const, report: built.report, ...(storedId ? { storedId } : {}) },
+        });
+        opts.ctx.reportEmitted = true;
+      } catch (err) {
+        // The fallback is best-effort: never let it break the response the model already streamed.
+        console.error('[assistant] fallback finalizer failed', err);
+      }
+    },
     // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
     // readable Bulgarian line instead of a broken connection. The SDK default redacts the error to
     // "An error occurred." to avoid leaking server details — we log it server-side (Workers tail)
@@ -287,4 +418,5 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       return 'Асистентът временно не е достъпен. Опитай отново след малко.';
     },
   });
+  return createUIMessageStreamResponse({ stream });
 }

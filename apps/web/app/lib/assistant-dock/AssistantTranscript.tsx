@@ -100,10 +100,19 @@ export const AssistantTranscript = ({ messages, busy }: AssistantTranscriptProps
                 href={report.storedId ? `/reports/${report.storedId}` : undefined}
               />
             ) : null}
-            {report && !report.ok ? (
+            {/* Suppress the failure line while the last turn is still in flight: a first emit that
+                returns ok:false is normally RETRIED (the loop re-forces emit_report) and then
+                succeeds, so flashing „не можа да бъде съставена" mid-retry contradicts the report
+                that lands a moment later. Only show it once the turn has settled (or for an earlier
+                turn that genuinely ended on ok:false). While busy the pending indicator shows instead. */}
+            {report && !report.ok && !(busy && index === messages.length - 1) ? (
               <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
             ) : null}
-            {isReportPending(message) ? (
+            {/* Gate on `busy` + last turn: a fallback-finalized report (server delivers a fresh
+                emit_report part) leaves the model's ORIGINAL emit_report part orphaned at
+                `input-available`, so isReportPending stays true forever. Once the stream settles
+                (status → 'ready' → !busy) the spinner clears; the rendered chip is what remains. */}
+            {busy && index === messages.length - 1 && isReportPending(message) ? (
               <p className="assistant-transcript__pending">Подготвям справка…</p>
             ) : null}
             {showNoAnswer ? (
