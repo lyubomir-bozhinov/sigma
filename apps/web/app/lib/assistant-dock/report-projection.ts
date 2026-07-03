@@ -4,6 +4,7 @@
 // chip is a projection of that report's title + one lead statistic.
 
 import { count, date, money, pct } from '@sigma/shared';
+import { EMIT_REPORT_PART } from '../assistant-contract/stream';
 import type { CellFormat, EmitReportOutput, ResolvedReport } from './contract';
 
 // Minimal shape we read from a useChat UIMessage part — avoids coupling to the SDK's full part typing
@@ -16,8 +17,6 @@ interface MessagePartLike {
 interface MessageLike {
   parts?: MessagePartLike[];
 }
-
-const EMIT_REPORT_PART = 'tool-emit_report';
 
 export interface ReportChipData {
   title: string;
@@ -49,13 +48,11 @@ export const reportOutputFromMessage = (message: MessageLike): EmitReportOutput 
     if (
       part.type === EMIT_REPORT_PART &&
       part.state === 'output-available' &&
-      part.output != null
+      part.output != null &&
+      isEmitReportOutput(part.output)
     ) {
-      const output = isEmitReportOutput(part.output) ? part.output : null;
-      if (output) {
-        lastAny = output;
-        if (output.ok) lastOk = output;
-      }
+      lastAny = part.output;
+      if (part.output.ok) lastOk = part.output;
     }
   }
   return lastOk ?? lastAny;
@@ -77,17 +74,6 @@ export const isToolTurnWithoutReport = (message: MessageLike): boolean => {
   }
   return sawTool;
 };
-
-const PENDING_REPORT_STATES = new Set(['input-streaming', 'input-available']);
-
-/**
- * True while an `emit_report` tool call is in flight (before its output settles), so the transcript can
- * show a "preparing report" affordance between the streamed prose and the finished chip.
- */
-export const isReportPending = (message: MessageLike): boolean =>
-  (message.parts ?? []).some(
-    (part) => part.type === EMIT_REPORT_PART && PENDING_REPORT_STATES.has(part.state ?? ''),
-  );
 
 const toNumber = (value: string | number | null): number | null => {
   if (value == null) return null;

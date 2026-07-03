@@ -33,3 +33,42 @@ export interface ReportReadyPart {
 export function isReportReadyPart(part: { type: string }): part is ReportReadyPart {
   return part.type === REPORT_READY_PART;
 }
+
+// The terminal report tool's name and its SDK UI-message part type (`tool-${name}`). One source of
+// truth so the server filter, the agent registration, and the dock projection can't drift apart.
+export const EMIT_REPORT_TOOL = 'emit_report' as const;
+export const EMIT_REPORT_PART = `tool-${EMIT_REPORT_TOOL}` as const;
+
+// ── Turn phase (backend → dock) ──────────────────────────────────────────────────────────────────
+//
+// The ONLY progress signal the dock receives during a turn. The backend's stream filter
+// (lib/assistant/stream-phase.ts) collapses the internal tool loop — SQL assembly, raw rows,
+// reconcile — into these coarse keys; no tool name, SQL, or free text ever crosses the wire.
+// Emitted as a `transient` data part: delivered to useChat's onData but never added to
+// message.parts, so a phase is never persisted to the transcript.
+
+/** Closed enum of turn phases. The wire carries only the key; the dock maps it to a fixed label. */
+export const ASSISTANT_PHASES = ['thinking', 'querying', 'composing'] as const;
+export type AssistantPhase = (typeof ASSISTANT_PHASES)[number];
+
+/** AI SDK custom data-part name (namespaced `data-*`), sibling of REPORT_READY_PART. */
+export const PHASE_PART = 'data-phase' as const;
+
+export interface PhaseData {
+  phase: AssistantPhase;
+}
+export interface PhasePart {
+  type: typeof PHASE_PART;
+  data: PhaseData;
+}
+
+const PHASE_KEYS: ReadonlySet<string> = new Set(ASSISTANT_PHASES);
+
+/** Unlike isReportReadyPart above, this DOES validate `data` against the closed enum: the key drives
+ *  a client-side label lookup, so an unknown key must narrow to "no phase", never render raw. */
+export function isPhasePart(part: { type: string; data?: unknown }): part is PhasePart {
+  if (part.type !== PHASE_PART) return false;
+  const data = part.data;
+  if (typeof data !== 'object' || data === null || !('phase' in data)) return false;
+  return typeof data.phase === 'string' && PHASE_KEYS.has(data.phase);
+}
