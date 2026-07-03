@@ -539,7 +539,11 @@ export function bindReport(
             if (missingLinks.length === 0) {
               // Display columns: warn if missing (renders null in that slot) so a partially-missing
               // result still produces a viewable report instead of forcing a retry.
-              requireCols(r, b.columns.map((c) => c.key), at);
+              requireCols(
+                r,
+                b.columns.map((c) => c.key),
+                at,
+              );
               const idx = b.columns.map((c) => r.columns.indexOf(c.key));
               const linkIdx = b.columns.map((c) => (c.link ? r.columns.indexOf(c.link.idCol) : -1));
               blocks.push({
