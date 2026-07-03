@@ -11,7 +11,11 @@ import {
   type EmbeddingRunner,
   type VectorIndex,
 } from '../lib/assistant/rag';
-import { resolveRowsReadBudget, type ToolContext } from '../lib/assistant/tools';
+import {
+  resolveRowsReadBudget,
+  resolveSqlTimeoutMs,
+  type ToolContext,
+} from '../lib/assistant/tools';
 import { selectClientMessages } from '../lib/assistant/chat-input';
 import { firstPartyRejection } from '../lib/assistant/request-guard';
 import { turnstileRejection } from '../lib/assistant/turnstile';
@@ -20,6 +24,7 @@ import { freshnessVersion } from '../lib/csv-export';
 import { freshnessToken, type DedupHit } from '../../workers/assistant/dedup';
 import { buildDedupRequest, type DedupRequest } from '../../workers/assistant/dedup-request';
 import { dedupPart } from '../../workers/assistant/dedup-stream';
+import { rateLimitBgGptGlobal } from '../../workers/bggpt-global-rate-limit';
 
 function latestUserText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -169,6 +174,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     // calls. `LIMIT` caps only returned rows; D1 bills on rows scanned.
     rowsRead: 0,
     rowsReadBudget: resolveRowsReadBudget(env.D1_ROWS_READ_BUDGET),
+    // Per-query wall-time bound for run_sql (§9.4, gate #83).
+    sqlTimeoutMs: resolveSqlTimeoutMs(env.RUN_SQL_TIMEOUT_MS),
     // R2 bucket for report persistence (Lane C4). Optional — absent until the REPORTS binding is deployed.
     reports: env.REPORTS,
   };
@@ -218,6 +225,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const cfCtx = context.cloudflare.ctx;
+  const isProd = import.meta.env.PROD;
   try {
     if (flightNs && dedup && dedup.doName) {
       const { payloads } = dedup;
@@ -225,9 +233,14 @@ export async function action({ request, context }: Route.ActionArgs) {
       const claim = await stub.claimAndWait(dedup.signals, freshness);
       if (claim.kind === 'hit' || claim.kind === 'ready') {
         // 'ready' = a concurrent driver just generated it; tag the served layer as L1 (the collapse key).
+        // A cache hit is FREE — it never consults the global breaker (else a viral report link would trip
+        // the DoW cap on requests that cost nothing to serve, defeating this whole dedup lane).
         const layer = claim.kind === 'hit' ? claim.layer : 'L1';
         return dedupResponse({ reportId: claim.reportId, createdAt: claim.createdAt, layer });
       }
+      // This branch generates (paid) → consult the account-wide breaker BEFORE the model call (#135).
+      const denied = await rateLimitBgGptGlobal(request, env.BGGPT_CIRCUIT_BREAKER, isProd);
+      if (denied) return denied;
       // 'driver' → generate and broker the result to any waiters. 'regenerate' (rare: a prior driver
       // crashed/timed out) → just regenerate uncoordinated; the next identical turn re-warms the cache.
       // ponytail: regenerate skips the KV write — self-heals on the next driver, not worth a 2nd path.
@@ -249,6 +262,9 @@ export async function action({ request, context }: Route.ActionArgs) {
         onSettled,
       });
     }
+    // Dedup disabled (no KV/DO binding, or no safe key) → generate; still gate on the global breaker.
+    const denied = await rateLimitBgGptGlobal(request, env.BGGPT_CIRCUIT_BREAKER, isProd);
+    if (denied) return denied;
     return await runAssistant({
       env: env as unknown as AgentEnv,
       ctx,

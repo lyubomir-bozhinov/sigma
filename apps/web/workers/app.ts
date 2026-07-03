@@ -9,9 +9,11 @@ import { optionsResponse, redirectCleartextHttp, setAllowHeader } from './http';
 import { rateLimitSearchRoute } from './search-rate-limit';
 import { withRequestLog } from './request-log';
 
-// Durable Object for AI-assistant report dedup (Lane F). Must be a named export of the worker entry so
-// the `REPORT_SINGLE_FLIGHT` binding + migration in wrangler.jsonc resolve the class.
+// Durable Objects for the AI assistant. Both must be named exports of the worker entry so their
+// wrangler.jsonc bindings + migrations resolve the classes: ReportSingleFlight (Lane F report dedup) and
+// BgGptCircuitBreaker (#135 account-wide RPM cap in front of the paid model call).
 export { ReportSingleFlight } from './assistant/report-single-flight';
+export { BgGptCircuitBreaker } from './assistant/bggpt-circuit-breaker';
 
 declare module 'react-router' {
   export interface AppLoadContext {

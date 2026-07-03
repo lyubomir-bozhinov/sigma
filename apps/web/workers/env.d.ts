@@ -15,6 +15,10 @@ interface Env {
   >;
   /** Build/config version for the dedup freshness token `c` (Lane F). */
   BUILD_ID?: string;
+  /** Account-wide BgGPT RPM cap / circuit-breaker (#135). One global instance counts every paid turn. */
+  BGGPT_CIRCUIT_BREAKER?: DurableObjectNamespace<
+    import('./assistant/bggpt-circuit-breaker').BgGptCircuitBreaker
+  >;
   /**
    * Master launch gate for the AI assistant (#83). Dark unless explicitly truthy (`true`/`1`/`on`).
    * Independent of provisioning, so a fully-provisioned deploy can be held dark until go-live and killed

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   ASSISTANT_TOOLS,
   DEFAULT_ROWS_READ_BUDGET,
+  DEFAULT_SQL_TIMEOUT_MS,
   finalizeReport,
   resolveRowsReadBudget,
+  resolveSqlTimeoutMs,
   runTool,
   type ToolContext,
 } from './tools';
@@ -27,6 +29,10 @@ function ctx(
     // benign all-allowlisted READ plan so every non-write query passes; override with a write opcode to
     // exercise the guard's reject path (Unit 8).
     explainPlan?: { opcode: string }[];
+    // When set, the REAL query's `.all()` never resolves — exercises the §9.4 per-query timeout race.
+    hang?: boolean;
+    // Per-query timeout to place on the context (§9.4). Small values keep the timeout test fast.
+    sqlTimeoutMs?: number;
   } = {},
 ): ToolContext {
   const explainPlan = opts.explainPlan ?? [
@@ -48,6 +54,8 @@ function ctx(
           if (isExplain) {
             return { results: explainPlan as T[], meta: { rows_read: 0, total_attempts: 1 } };
           }
+          // Simulate a query that never returns, so the §9.4 timeout race is what settles the call.
+          if (opts.hang) return new Promise<{ results: T[]; meta: unknown }>(() => {});
           return {
             results: rows as T[],
             meta: { rows_read: opts.rowsRead ?? 0, total_attempts: opts.totalAttempts ?? 1 },
@@ -59,7 +67,14 @@ function ctx(
       };
     },
   } as unknown as D1Database;
-  return { db, results: [], sources: [], rowsRead: 0, rowsReadBudget: opts.rowsReadBudget };
+  return {
+    db,
+    results: [],
+    sources: [],
+    rowsRead: 0,
+    rowsReadBudget: opts.rowsReadBudget,
+    sqlTimeoutMs: opts.sqlTimeoutMs,
+  };
 }
 
 describe('the tool registry', () => {
@@ -123,6 +138,31 @@ describe('run_sql', () => {
     const refused = await runTool('run_sql', { sql: ROLLUP_QUERY }, c);
     expect(refused).toMatch(/прочетени редове/);
     expect(c.results).toHaveLength(1);
+  });
+
+  it('times out a query that never returns, retains nothing, and never leaks the cause (§9.4)', async () => {
+    const c = ctx([{ n: 1 }], { hang: true, sqlTimeoutMs: 10 });
+    const out = await runTool('run_sql', { sql: ROLLUP_QUERY }, c);
+    // Generic error — the model must never learn the query stalled (no schema/timing disclosure).
+    expect(out).toBe('Грешка при изпълнение на заявката.');
+    expect(c.results).toHaveLength(0);
+    expect(c.sources).toHaveLength(0);
+  });
+});
+
+describe('resolveSqlTimeoutMs (§9.4)', () => {
+  it('defaults on a missing / non-numeric / < 1 value', () => {
+    expect(resolveSqlTimeoutMs(undefined)).toBe(DEFAULT_SQL_TIMEOUT_MS);
+    expect(resolveSqlTimeoutMs('')).toBe(DEFAULT_SQL_TIMEOUT_MS);
+    expect(resolveSqlTimeoutMs('abc')).toBe(DEFAULT_SQL_TIMEOUT_MS);
+    expect(resolveSqlTimeoutMs('0')).toBe(DEFAULT_SQL_TIMEOUT_MS);
+    expect(resolveSqlTimeoutMs('-5')).toBe(DEFAULT_SQL_TIMEOUT_MS);
+  });
+
+  it('clamps a valid value to [1000, 30000]', () => {
+    expect(resolveSqlTimeoutMs('500')).toBe(1_000); // floor
+    expect(resolveSqlTimeoutMs('5000')).toBe(5_000);
+    expect(resolveSqlTimeoutMs('999999')).toBe(30_000); // ceiling
   });
 });
 
