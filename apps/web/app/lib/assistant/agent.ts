@@ -120,9 +120,20 @@ const EMPTY_COMPLETION_MESSAGE =
   'Не успях да съставя справка за този въпрос. Опитайте отново или го формулирайте по-конкретно — ' +
   'напр. посочете възложител, период или сектор.';
 
-// System-prompt version string used in StoredReport provenance for regression tracing.
-// Bump this whenever system-prompt.ts changes semantically.
-const PROMPT_VERSION = '2026-07-03'; // + percent-is-a-0..1-ratio block guidance (system-prompt.ts)
+// System-prompt version string used in StoredReport provenance for regression tracing. Derived — NOT a
+// manual bump: a FNV-1a fingerprint of the CANONICAL system prompt (empty input → full dictionary, no
+// per-turn bits), so any semantic edit to system-prompt.ts / describe-schema.ts re-fingerprints on the
+// next deploy without anyone remembering to touch a constant. Not security-sensitive; a plain
+// content hash is all provenance needs to correlate a stored report with the prompt that produced it.
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+const PROMPT_VERSION = `sp_${fnv1a(buildSystemPrompt({}))}`;
 
 /** Generate a URL-safe random report ID (e.g. `r_a3f8c2d1e9b4`). */
 function randomReportId(): string {
@@ -321,7 +332,30 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
       writer.merge(result.toUIMessageStream());
-      await modelFinished;
+      // Wait for the model loop to settle before the last-resort finalizer, but never indefinitely.
+      // onFinish/onError resolve `modelFinished` and in practice one always fires (incl. on abort), so
+      // this timer is pure defense-in-depth: if the SDK ever failed to settle, the wrapper would keep the
+      // response stream open forever. On backstop we BAIL without synthesizing — the loop's state is
+      // indeterminate, so writing could race the still-open merged stream. Timer is cleared on the normal
+      // path so it can't keep the isolate alive.
+      const SETTLE_BACKSTOP_MS = 60_000;
+      let backstopTimer: ReturnType<typeof setTimeout> | undefined;
+      let settledCleanly = false;
+      await Promise.race([
+        modelFinished.then(() => {
+          settledCleanly = true;
+        }),
+        new Promise<void>((resolve) => {
+          backstopTimer = setTimeout(resolve, SETTLE_BACKSTOP_MS);
+        }),
+      ]);
+      if (backstopTimer) clearTimeout(backstopTimer);
+      if (!settledCleanly) {
+        console.error('[assistant] model stream did not settle within backstop — skipping fallback', {
+          backstopMs: SETTLE_BACKSTOP_MS,
+        });
+        return;
+      }
       // Skip the fallback when the model finalized its own report, or errored (a provider failure already
       // surfaced its own message — don't paste a report over it).
       if (modelErrored || opts.ctx.reportEmitted) return;

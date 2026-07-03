@@ -34,7 +34,8 @@ describe('assertDefaultFilters', () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.callout).toEqual(applyDefaultFilters().callout);
-      expect(r.callout.length).toBeGreaterThan(0);
+      // Exactly the three default callouts: null-amount, synthetic-exclusion, signed_at date field.
+      expect(r.callout.length).toBe(3);
     }
   });
 
