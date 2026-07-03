@@ -148,7 +148,9 @@ export interface ResolvedReport {
   watermark: 'ai-generated'; // renderer always shows the „AI-генерирано, неофициално" label (§9.12)
 }
 
-export type BindResult = { ok: true; report: ResolvedReport } | { ok: false; errors: string[] };
+export type BindResult =
+  | { ok: true; report: ResolvedReport; warnings: string[] }
+  | { ok: false; errors: string[] };
 
 export interface BindOptions {
   // Server-authoritative question text (the actual latest user message), set by the chat route. When
@@ -385,6 +387,10 @@ export function bindReport(
   opts: BindOptions = {},
 ): BindResult {
   const errors: string[] = [];
+  // Non-fatal issues: missing columns and out-of-range rows render as null rather than blocking the
+  // report. The model referenced a valid handle but the column/row wasn't in the actual DB result —
+  // the report displays with null in those slots rather than forcing a retry.
+  const warnings: string[] = [];
   const byHandle = new Map(results.map((r) => [r.handle, r]));
 
   const cell = (ref: CellRef, where: string): string | number | null => {
@@ -395,15 +401,17 @@ export function bindReport(
     }
     const colIdx = r.columns.indexOf(ref.col);
     if (colIdx < 0) {
-      errors.push(`${where}: result "${ref.resultId}" has no column "${ref.col}"`);
+      warnings.push(
+        `${where}: result "${ref.resultId}" has no column "${ref.col}" — rendered as null`,
+      );
       return null;
     }
     // Self-defend against a non-integer row (`1.5`): `1.5 >= length` can be false, then `rows[1.5]` is
     // undefined and the slot would silently bind null. Don't rely on validateEmitShape running first
     // (review #80, ydimitrof).
     if (!Number.isInteger(ref.row) || ref.row < 0 || ref.row >= r.rows.length) {
-      errors.push(
-        `${where}: result "${ref.resultId}" row ${ref.row} out of range (0..${r.rows.length - 1})`,
+      warnings.push(
+        `${where}: result "${ref.resultId}" row ${ref.row} out of range (0..${r.rows.length - 1}) — rendered as null`,
       );
       return null;
     }
@@ -419,15 +427,15 @@ export function bindReport(
     return r ?? null;
   };
 
-  const requireCols = (r: QueryResult, cols: string[], where: string): boolean => {
-    let ok = true;
+  // Reports missing columns as warnings (not errors) so the block still renders with null values
+  // rather than failing the whole report. Returns true so callers always proceed to build the block.
+  const requireCols = (r: QueryResult, cols: string[], where: string): true => {
     for (const c of cols) {
       if (!r.columns.includes(c)) {
-        errors.push(`${where}: result "${r.handle}" has no column "${c}"`);
-        ok = false;
+        warnings.push(`${where}: result "${r.handle}" has no column "${c}" — rendered as null`);
       }
     }
-    return ok;
+    return true;
   };
 
   const colValues = (r: QueryResult, col: string) => {
@@ -632,5 +640,6 @@ export function bindReport(
       blocks,
       watermark: 'ai-generated',
     },
+    warnings,
   };
 }
