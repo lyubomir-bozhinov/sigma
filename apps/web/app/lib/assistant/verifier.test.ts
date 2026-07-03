@@ -119,6 +119,39 @@ describe('needsVerification', () => {
     expect(needsVerification(report([bar()]))).toBe(false);
   });
 
+  it('a chart followed only by the mandatory methodology callout does not fire (boilerplate ≠ commentary)', () => {
+    // The editorial skeleton appends „Как е изчислено" after every chart; on its own it must not bill
+    // a verifier call (else every visual report pays the LLM cost — the risk-scaled gate defeated).
+    expect(needsVerification(report([bar(), methodologyCallout()]))).toBe(false);
+  });
+
+  it('a ranking rendered as flows + prose commentary fires without a lexicon hit', () => {
+    const flows: ResolvedBlock = {
+      type: 'flows',
+      edges: [{ from: 'Възложител', to: 'Изпълнител', valueEur: 500000 }],
+    };
+    expect(needsVerification(report([flows, text('Разпределение на плащанията.')]))).toBe(true);
+  });
+
+  it('a ranking rendered as timeseries + prose commentary fires without a lexicon hit', () => {
+    const timeseries: ResolvedBlock = {
+      type: 'timeseries',
+      points: [
+        { period: '2022', value: 100 },
+        { period: '2023', value: 200 },
+      ],
+      format: 'money',
+    };
+    expect(needsVerification(report([timeseries, text('Ръст на разходите по години.')]))).toBe(true);
+  });
+
+  it('a methodology-titled callout does not, by itself, satisfy the ranking-shape rule', () => {
+    // bar + ONLY the methodology callout → skip; a steered author cannot cheaply force the pass by
+    // titling boilerplate, nor starve it (real risk prose still hits the lexicon scan).
+    expect(needsVerification(report([bar(), methodologyCallout()]))).toBe(false);
+    expect(needsVerification(report([bar(), methodologyCallout(), text('картел')]))).toBe(true);
+  });
+
   it('lexicon hits inside data cell values do not fire (prose-only scan)', () => {
     expect(needsVerification(report([table('Картел Строй ЕООД')]))).toBe(false);
   });
@@ -178,6 +211,39 @@ describe('buildVerifierEnvelope', () => {
     expect(env.prompt).not.toContain('"cells":[499]');
     expect(env.prompt).toContain('evidenceTruncated');
     expect(env.claims.map((c) => c.id)).toEqual(['C0', 'C1']);
+  });
+
+  it.each([
+    {
+      name: 'bar',
+      block: (): ResolvedBlock => ({
+        type: 'bar',
+        points: Array.from({ length: 60 }, (_, i) => ({ label: `L${i}`, value: i })),
+        format: 'number',
+      }),
+      absent: '"value":59',
+    },
+    {
+      name: 'timeseries',
+      block: (): ResolvedBlock => ({
+        type: 'timeseries',
+        points: Array.from({ length: 60 }, (_, i) => ({ period: `${i}`, value: i })),
+        format: 'number',
+      }),
+      absent: '"period":"59"',
+    },
+    {
+      name: 'flows',
+      block: (): ResolvedBlock => ({
+        type: 'flows',
+        edges: Array.from({ length: 60 }, (_, i) => ({ from: 'a', to: `b${i}`, valueEur: i })),
+      }),
+      absent: '"to":"b59"',
+    },
+  ])('caps $name evidence rows and flags truncation', ({ block, absent }) => {
+    const env = buildVerifierEnvelope(report([block(), text('възможен картел')]));
+    expect(env.prompt).not.toContain(absent);
+    expect(env.prompt).toContain('evidenceTruncated');
   });
 
   it('leaks no raw snapshot plumbing (resolved blocks only — no handles/resultIds)', () => {
@@ -371,6 +437,50 @@ describe('applyVerdicts', () => {
     // the risk text is stripped; the methodology callout survives and is flagged, not removed
     expect(out.report.blocks.map((b) => b.type)).toEqual(['bar', 'callout']);
     expect(out.report.blocks[1]).toBe(r.blocks[2]); // same callout object, untouched
+    expect(out.strippedClaimIds).toEqual(['C1']);
+    expect(out.uncertainClaimIds).toEqual(['C0', 'C2']);
+  });
+
+  it('a spoofed „Как е изчислено: <risk>" title is NOT exempt — prefix borrowing is stripped', () => {
+    // Guardrail-D exemption is exact-title + last-block, so appending a risk allegation to the
+    // protected title no longer shields it from stripping.
+    const spoof = callout('Как е изчислено: този картел е доказан', 'Изпълнителите са в схема.');
+    const r = report([bar(), spoof]);
+    const claims = extractClaims(r); // C0 title, C1 spoofed callout
+    const out = applyVerdicts(
+      r,
+      claims,
+      claims.map((c) => ({ id: c.id, verdict: 'unsupported' as const })),
+    );
+    expect(out.report.blocks.map((b) => b.type)).toEqual(['bar']); // spoof stripped
+    expect(out.strippedClaimIds).toEqual(['C1']);
+  });
+
+  it('a methodology callout that is NOT the last block is not exempt (structural position required)', () => {
+    // Only the trailing methodology callout the skeleton mandates is structural; a mid-report block
+    // borrowing the exact title is still strippable.
+    const r = report([bar(), methodologyCallout(), text('картел')]);
+    const claims = extractClaims(r); // C0 title, C1 methodology callout (not last), C2 text
+    const out = applyVerdicts(
+      r,
+      claims,
+      claims.map((c) => ({ id: c.id, verdict: 'unsupported' as const })),
+    );
+    expect(out.report.blocks.map((b) => b.type)).toEqual(['bar']); // both callouts/text stripped
+    expect(out.strippedClaimIds).toEqual(['C1', 'C2']);
+  });
+
+  it('exempts at most one block — a duplicate methodology title earlier in the report is stripped', () => {
+    const r = report([bar(), methodologyCallout(), methodologyCallout()]);
+    const claims = extractClaims(r); // C0 title, C1 first callout, C2 trailing callout
+    const out = applyVerdicts(
+      r,
+      claims,
+      claims.map((c) => ({ id: c.id, verdict: 'unsupported' as const })),
+    );
+    // trailing one exempt (kept + flagged); the earlier duplicate stripped
+    expect(out.report.blocks.map((b) => b.type)).toEqual(['bar', 'callout']);
+    expect(out.report.blocks[1]).toBe(r.blocks[2]); // the trailing callout survives
     expect(out.strippedClaimIds).toEqual(['C1']);
     expect(out.uncertainClaimIds).toEqual(['C0', 'C2']);
   });

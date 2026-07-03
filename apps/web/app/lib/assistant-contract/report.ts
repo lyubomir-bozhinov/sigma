@@ -55,6 +55,7 @@ export interface ReportVerification {
   status: ReportVerificationStatus;
   strippedClaimIds: string[]; // prose blocks removed from the published report
   uncertainClaimIds: string[]; // kept-but-flagged (uncertain verdicts + an unsupported title/methodology callout)
+  errors?: string[]; // present only on status 'error' — why the pass fail-closed (server-side audit; stripped from the client payload)
 }
 
 export interface ReportProvenance {

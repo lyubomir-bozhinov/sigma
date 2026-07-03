@@ -125,18 +125,23 @@ const VERIFIER_TIMEOUT_MS = 20_000;
 
 // The injected LLM call for verifyReport — same gateway-mandatory model as the main loop (§9.5),
 // tool-less by construction. Verdicts only need a few hundred tokens; the low cap bounds cost and
-// makes a steered long-form answer structurally impossible to return in full.
-function buildVerifierGenerate(env: AgentEnv): GenerateFn {
+// makes a steered long-form answer structurally impossible to return in full. Exactly ONE call:
+// `maxRetries: 0` (the AI SDK counts retries on top of the initial call, so `1` would allow two
+// gateway calls — doubling worst-case spend under the 120 RPM budget). The per-call timeout is
+// combined with the turn's abort signal so a client disconnect cancels the verifier too.
+function buildVerifierGenerate(env: AgentEnv, turnSignal?: AbortSignal): GenerateFn {
   const model = buildModel(env);
   return async ({ system, prompt }) => {
+    const timeout = AbortSignal.timeout(VERIFIER_TIMEOUT_MS);
+    const abortSignal = turnSignal ? AbortSignal.any([turnSignal, timeout]) : timeout;
     const result = await generateText({
       model,
       system,
       prompt,
       temperature: 0,
-      maxRetries: 1,
+      maxRetries: 0,
       maxOutputTokens: 1024,
-      abortSignal: AbortSignal.timeout(VERIFIER_TIMEOUT_MS),
+      abortSignal,
     });
     return result.text;
   };
@@ -187,7 +192,7 @@ async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: s
 }
 
 /** Persist a resolved report to R2 and return its ID. Returns null on any write failure. */
-async function persistReport(
+export async function persistReport(
   ctx: ToolContext,
   report: ResolvedReport,
   modelId: string,
@@ -215,6 +220,8 @@ async function persistReport(
               status: verification.status,
               strippedClaimIds: verification.strippedClaimIds,
               uncertainClaimIds: verification.uncertainClaimIds,
+              // Diagnostic-only; server-side audit trail (report.tsx strips provenance before hydration).
+              ...(verification.errors ? { errors: verification.errors } : {}),
             },
           }
         : {}),
@@ -296,7 +303,7 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
   // Role ④ — one verifier closure per turn; verifyReport itself decides (deterministically) whether a
   // given report warrants the extra LLM call.
-  const verifierGenerate = buildVerifierGenerate(opts.env);
+  const verifierGenerate = buildVerifierGenerate(opts.env, opts.abortSignal);
   const verify = (report: ResolvedReport) => verifyReport(report, verifierGenerate);
 
   // Resolves when the model loop (all steps + tool executions) is fully finished, so the last-resort

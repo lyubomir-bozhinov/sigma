@@ -52,16 +52,26 @@ const RISK_STEMS = [
 
 export const RISK_LEXICON = new RegExp(`(?<![\\p{L}\\p{N}])(?:${RISK_STEMS.join('|')})`, 'iu');
 
+// Guardrail D: the mandatory „Как е изчислено" methodology callout that ends every report. Matched by
+// EXACT title (trimmed, case-insensitive) — a prefix match let a steered model shield a risk claim by
+// titling it „Как е изчислено: този картел…". A module constant so the gate and the strip path agree
+// on what counts as the structural callout.
+export const METHODOLOGY_CALLOUT_TITLE = 'Как е изчислено';
+function isMethodologyCalloutTitle(title: string): boolean {
+  return title.trim().toLowerCase() === METHODOLOGY_CALLOUT_TITLE.toLowerCase();
+}
+
 /**
  * Deterministic gate deciding whether role ④ runs at all (spec: "run it only when a report makes
  * ranking or risk claims; skip it for plain lookups"). Scans ONLY model-authored prose surfaces
  * (title, text.md, callout.title/md) — a lexicon word inside a data cell is submitter-controlled
  * data, not a claim, and must not let an attacker force (or bill) verifier calls. A ranking-shaped
- * report (bar chart + non-empty prose commentary) also qualifies even without a lexicon hit.
+ * report (bar/flows/timeseries chart + non-empty prose commentary) also qualifies even without a
+ * lexicon hit.
  */
 export function needsVerification(report: ResolvedReport): boolean {
   const prose: string[] = [report.title];
-  let hasBar = false;
+  let hasRankingChart = false;
   let hasProse = false;
   for (const b of report.blocks) {
     if (b.type === 'text') {
@@ -69,12 +79,15 @@ export function needsVerification(report: ResolvedReport): boolean {
       if (b.md.trim().length > 0) hasProse = true;
     } else if (b.type === 'callout') {
       prose.push(b.title, b.md);
-      if ((b.title + b.md).trim().length > 0) hasProse = true;
-    } else if (b.type === 'bar') {
-      hasBar = true;
+      // The mandatory „Как е изчислено" sourcing callout is boilerplate the editorial skeleton appends
+      // after every chart — it is not ranking commentary, so on its own it must not force a verifier
+      // call (else every visual report pays the LLM cost). Its text still feeds the lexicon scan below.
+      if (!isMethodologyCalloutTitle(b.title) && (b.title + b.md).trim().length > 0) hasProse = true;
+    } else if (b.type === 'bar' || b.type === 'flows' || b.type === 'timeseries') {
+      hasRankingChart = true;
     }
   }
-  if (hasBar && hasProse) return true;
+  if (hasRankingChart && hasProse) return true;
   return prose.some((s) => RISK_LEXICON.test(s));
 }
 
@@ -302,13 +315,17 @@ export function parseVerdicts(raw: string, expectedIds: string[]): ParseVerdicts
 // unsupported verdict on it is RECORDED (flagged), never removed. Without this the fail-closed path
 // (which marks every claim unsupported) would drop the methodology callout on any verifier timeout,
 // publishing figures with no "how computed" — the opposite of what these gates exist to protect.
-export const METHODOLOGY_CALLOUT_TITLE = 'Как е изчислено';
-function isMethodologyCallout(block: ResolvedBlock | undefined): boolean {
-  return (
-    block !== undefined &&
-    block.type === 'callout' &&
-    block.title.trim().toLowerCase().startsWith(METHODOLOGY_CALLOUT_TITLE.toLowerCase())
-  );
+//
+// The exemption is STRUCTURAL: the callout must be the LAST block AND carry the exact guardrail-D
+// title. Requiring last-position + exact-title (not a prefix) denies a steered author model the
+// escape of titling a mid-report risk claim „Как е изчислено: този картел…" to make it strip-proof;
+// at most one block — the trailing methodology callout the editorial skeleton mandates — is exempt.
+export function methodologyCalloutIndex(report: ResolvedReport): number {
+  const i = report.blocks.length - 1;
+  const last = report.blocks[i];
+  return last !== undefined && last.type === 'callout' && isMethodologyCalloutTitle(last.title)
+    ? i
+    : -1;
 }
 
 export interface AppliedVerdicts {
@@ -332,6 +349,7 @@ export function applyVerdicts(
   verdicts: ClaimVerdict[],
 ): AppliedVerdicts {
   const byId = new Map(verdicts.map((v) => [v.id, v.verdict]));
+  const exemptIndex = methodologyCalloutIndex(report);
   const strippedClaimIds: string[] = [];
   const uncertainClaimIds: string[] = [];
   const removeIndexes = new Set<number>();
@@ -342,11 +360,11 @@ export function applyVerdicts(
         uncertainClaimIds.push(claim.id); // title — structural, kept + flagged
         continue;
       }
-      const block = report.blocks[claim.blockIndex];
-      if (isMethodologyCallout(block)) {
+      if (claim.blockIndex === exemptIndex) {
         uncertainClaimIds.push(claim.id); // methodology callout (guardrail D) — structural, kept + flagged
         continue;
       }
+      const block = report.blocks[claim.blockIndex];
       if (block !== undefined && (block.type === 'text' || block.type === 'callout')) {
         removeIndexes.add(claim.blockIndex);
         strippedClaimIds.push(claim.id);
