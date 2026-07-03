@@ -15,4 +15,10 @@ interface Env {
   >;
   /** Build/config version for the dedup freshness token `c` (Lane F). */
   BUILD_ID?: string;
+  /**
+   * Master launch gate for the AI assistant (#83). Dark unless explicitly truthy (`true`/`1`/`on`).
+   * Independent of provisioning, so a fully-provisioned deploy can be held dark until go-live and killed
+   * instantly in an incident — a var flip, no code redeploy.
+   */
+  ASSISTANT_ENABLED?: string;
 }
