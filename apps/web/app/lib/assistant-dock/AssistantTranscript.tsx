@@ -57,6 +57,7 @@ export const AssistantTranscript = ({
           question: output.report.question,
           createdAt:
             (message as { createdAt?: Date }).createdAt?.toISOString() ?? new Date().toISOString(),
+          leadStat: projectChip(output.report).leadStat,
         });
       }
     }
