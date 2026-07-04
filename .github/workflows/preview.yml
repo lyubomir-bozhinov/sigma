@@ -81,6 +81,16 @@ jobs:
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || exit 1
 
+      # GitOps: enforce the shared dev report-dedup KV namespace from git (idempotent create-if-absent) and
+      # hand its id to wrangler-render via SIGMA_DEDUP_KV_ID. Previews share the single `sigma-dedup-dev`
+      # namespace with the dev env — the freshness token folded into every dedup key (dedup-request.ts)
+      # isolates entries per build/data version, so one shared namespace can never cross-serve reports.
+      - name: Ensure DEDUP_KV namespace (shared dev)
+        run: |
+          id="$(node scripts/ensure-kv-namespace.mjs sigma-dedup-dev)"
+          echo "::add-mask::$id"
+          echo "SIGMA_DEDUP_KV_ID=$id" >> "$GITHUB_ENV"
+
       - name: Deploy preview worker
         id: deploy
         run: |

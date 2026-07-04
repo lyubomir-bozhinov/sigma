@@ -18,6 +18,9 @@ import { basename, dirname, extname, join } from 'node:path';
 // the values come from the environment at deploy time. Add a row to extend (e.g. a future KV).
 const SENTINELS = {
   '00000000-0000-0000-0000-000000000000': 'SIGMA_D1_ID', // D1 database_id (UUID v4 shape)
+  // DEDUP_KV namespace id (32-hex shape). Provisioned idempotently in CI by scripts/ensure-kv-namespace.mjs
+  // (one namespace per env — dev shared with previews, staging, prod), which exports SIGMA_DEDUP_KV_ID.
+  '00000000000000000000000000000000': 'SIGMA_DEDUP_KV_ID',
 };
 
 // Required at deploy: every rate limiter the worker relies on must be bound, and Cloudflare requires

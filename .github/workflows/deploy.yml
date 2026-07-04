@@ -135,6 +135,21 @@ jobs:
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || { echo "Refusing to deploy '${{ needs.detect.outputs.env }}' with production resource names."; exit 1; }
 
+      # GitOps: enforce this environment's report-dedup KV namespace from git (idempotent create-if-absent)
+      # and hand its id to wrangler-render via SIGMA_DEDUP_KV_ID. One namespace per real env — dev (shared
+      # with the ephemeral previews), staging, prod — kept distinct by title so no env can touch another's
+      # cache. `production` maps to the short `prod` suffix; dev/staging use the env name verbatim.
+      - name: Ensure DEDUP_KV namespace
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          case "${{ needs.detect.outputs.env }}" in
+            production) title=sigma-dedup-prod ;;
+            *)          title="sigma-dedup-${{ needs.detect.outputs.env }}" ;;
+          esac
+          id="$(node scripts/ensure-kv-namespace.mjs "$title")"
+          echo "::add-mask::$id"
+          echo "SIGMA_DEDUP_KV_ID=$id" >> "$GITHUB_ENV"
+
       - name: Typecheck
         if: steps.guard.outputs.ok == 'true'
         run: pnpm typecheck

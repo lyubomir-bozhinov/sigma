@@ -35,10 +35,11 @@
   "ai": { "binding": "AI" },
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "sigma-assistant" }],
   // AI assistant dedup (Lane F — docs/spec/ai-assistant-dedup.md).
-  //  • DEDUP_KV — freshness-validated report cache (L0/L1/L2/L2.5). ⚠️ DEPLOY GATE: the KV namespace must
-  //    exist before `wrangler deploy`; `id` is a local-dev placeholder, substituted per-env by
-  //    scripts/wrangler-render.mjs (same pattern as SIGMA_D1_ID). Until provisioned the assistant still
-  //    runs — a missing binding just disables dedup (every request generates).
+  //  • DEDUP_KV — freshness-validated report cache (L0/L1/L2/L2.5). `id` is a local-dev placeholder;
+  //    scripts/wrangler-render.mjs substitutes the real per-env id (SIGMA_DEDUP_KV_ID) at deploy (same
+  //    pattern as SIGMA_D1_ID). CI provisions the namespace idempotently before deploy —
+  //    scripts/ensure-kv-namespace.mjs, one per env (dev shared with previews, staging, prod). Locally the
+  //    placeholder is fine: miniflare keys state by it, and a missing binding just disables dedup.
   //  • REPORT_SINGLE_FLIGHT — one coordinator per freshness-folded key so concurrent identical questions
   //    collapse onto one generation (Option 2: the driver generates in-request, the DO brokers waiters).
   //    SQLite-backed (uses storage alarms for driver-crash release).

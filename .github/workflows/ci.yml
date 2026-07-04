@@ -65,3 +65,9 @@ jobs:
       - name: Golden reports
         if: ${{ !cancelled() }}
         run: pnpm test:golden
+      # Root-level tooling (scripts/*.mjs) lives outside the turbo/vitest workspaces, so `pnpm test` never
+      # ran its node:test suites. Gate them here — the CI-provisioning + teardown tools (ensure-kv-namespace,
+      # teardown-remote, reap-previews, load-eop) are deploy-critical and must stay covered.
+      - name: Script tests
+        if: ${{ !cancelled() }}
+        run: node --test scripts/*.test.mjs
