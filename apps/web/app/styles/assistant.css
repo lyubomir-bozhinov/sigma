@@ -842,7 +842,7 @@ html.a11y-textonly .assistant-dock {
 .reports-list__lead-stat {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-brand);
+  color: var(--accent);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
