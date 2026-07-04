@@ -69,8 +69,14 @@ if (ext === '.json' || ext === '.jsonc') {
     d1Name: process.env.SIGMA_D1_NAME || '',
     csvCacheName: process.env.SIGMA_CSV_CACHE_NAME || '',
     reportsName: process.env.SIGMA_REPORTS_NAME || '',
+    // Per-build dedup freshness `c` (commit sha at deploy). Committed value is the constant "dev"; without
+    // a real per-build value the dedup cache's code-version leg is dead — a report-shape/FX code change
+    // wouldn't bust cached reports, and dev + every preview (which share ONE sigma-dedup-dev namespace and
+    // the same dev D1 data version) would compute identical freshness tokens and cross-serve each other's
+    // reports. Injecting the sha makes each build's keys distinct, so the shared namespace is safe.
+    buildId: process.env.SIGMA_BUILD_ID || '',
   };
-  if (names.webName || names.d1Name || names.csvCacheName || names.reportsName) {
+  if (names.webName || names.d1Name || names.csvCacheName || names.reportsName || names.buildId) {
     out = renderJson(out, names);
   }
   // Most rate limiters fail OPEN at runtime (apps/web/workers/rate-limit.ts), so a missing binding or a
@@ -151,6 +157,8 @@ function renderJson(text, names) {
       if (names.reportsName && bucket.binding === 'REPORTS') bucket.bucket_name = names.reportsName;
     }
   }
+  // Stamp the real per-build dedup freshness `c` over the committed "dev" constant.
+  if (names.buildId && obj.vars && typeof obj.vars === 'object') obj.vars.BUILD_ID = names.buildId;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 

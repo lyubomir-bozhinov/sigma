@@ -71,7 +71,8 @@
     "AI_GATEWAY_ID": "sigma-assistant",
     "ASSISTANT_MODEL": "google/gemma-4-31b-it",
     "MAX_STEPS": "6",
-    // Reserved for the launch-gate global circuit-breaker — declared but NOT yet read by any code.
+    // Account-wide BgGPT RPM cap enforced by the BGGPT_CIRCUIT_BREAKER DO (#135): read via
+    // resolveGlobalRpm() in workers/assistant/bggpt-circuit-breaker.ts, checked on every paid turn.
     "BGGPT_RATE_LIMIT_RPM": "120",
     // Per-turn D1 rows-read budget — Denial-of-Wallet guard (issue #122). D1 bills on rows READ, not
     // returned, and LIMIT caps only returned rows; once a chat turn's cumulative rows_read crosses
@@ -87,7 +88,9 @@
     // the query itself (it still bills), so this bounds worker wait, not DB cost — that's the rows-read budget.
     "RUN_SQL_TIMEOUT_MS": "10000",
     // Freshness `c` (code/config version) for the dedup token (Lane F) — busts the report cache when
-    // report shape / CPV taxonomy / FX logic ship without a data change. Deploy substitutes a real build id.
+    // report shape / CPV taxonomy / FX logic ship without a data change. This committed "dev" is the
+    // local-dev constant; at deploy wrangler-render.mjs stamps the commit sha (SIGMA_BUILD_ID) so each build
+    // gets a distinct `c` — required for the shared sigma-dedup-dev namespace to isolate dev vs previews.
     "BUILD_ID": "dev",
     // ⚠️ LAUNCH GATE (#83) — master kill switch for the assistant. Default OFF (fail dark): PRODUCTION is
     // off by default and stays off until the #83 gates clear (read-only D1 #134, global BgGPT
@@ -123,9 +126,9 @@
       },
       {
         // Per-IP throttle for POST /assistant/chat — each call runs embeddings + the BgGPT agent loop
-        // (review #80). Tight, since it is far costlier than a page view. A global (account-wide) budget
-        // / circuit-breaker is a launch-gate TODO: BGGPT_RATE_LIMIT_RPM (below) is declared for it but
-        // not yet read — only this per-IP limiter is active today.
+        // (review #80). Tight, since it is far costlier than a page view. The account-wide budget is the
+        // separate BGGPT_CIRCUIT_BREAKER DO enforcing BGGPT_RATE_LIMIT_RPM (checked on the paid path); this
+        // is the per-IP layer.
         "name": "ASSISTANT_RATE_LIMITER",
         "type": "ratelimit",
         // namespace_id must be unique per limiter — a duplicate silently disables one (no deploy error).

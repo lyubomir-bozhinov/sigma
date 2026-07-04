@@ -43,6 +43,10 @@ jobs:
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
       # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
       SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+      # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the
+      # dev D1 (identical data version), so the build id is the ONLY discriminator — stamping the head sha
+      # keeps each preview's (and the dev env's) dedup keys distinct, so no preview can cross-serve reports.
+      SIGMA_BUILD_ID: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

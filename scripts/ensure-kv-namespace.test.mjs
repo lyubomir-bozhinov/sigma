@@ -13,7 +13,10 @@ function fakeCf({ pages = [[]], onCreate } = {}) {
   const fetchImpl = async (url, opts = {}) => {
     calls.push({ url, method: opts.method ?? 'GET' });
     if ((opts.method ?? 'GET') === 'GET') {
-      return ok(pages[Math.min(listCall++, pages.length - 1)]);
+      // Return an EMPTY page past the supplied set — not a clamp to the last page. A clamp would feed
+      // duplicate results if the implementation ever over-fetched (e.g. a `< PER_PAGE` → `<= PER_PAGE`
+      // regression), silently hiding the bug instead of failing the test.
+      return ok(pages[listCall++] ?? []);
     }
     return onCreate(JSON.parse(opts.body));
   };
