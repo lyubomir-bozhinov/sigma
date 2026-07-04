@@ -95,6 +95,11 @@ jobs:
       # Per-build dedup freshness `c` — wrangler-render stamps this over the committed "dev" so a code-only
       # deploy (report shape / FX / CPV logic) busts the report cache, and each env's build keys stay distinct.
       SIGMA_BUILD_ID: ${{ github.sha }}
+      # Master kill-switch override (#83), per-environment: set the SIGMA_ASSISTANT_ENABLED *variable* to
+      # "true" on the environments that should serve the assistant (dev now; staging at go-live). Unset →
+      # wrangler-render leaves the committed fail-dark "false", so production stays dark until deliberately
+      # flipped. Killing a live assistant is then just clearing this var + redeploy (or the runtime flag).
+      SIGMA_ASSISTANT_ENABLED: ${{ vars.SIGMA_ASSISTANT_ENABLED }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

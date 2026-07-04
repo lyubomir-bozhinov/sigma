@@ -94,10 +94,10 @@
     "BUILD_ID": "dev",
     // ⚠️ LAUNCH GATE (#83) — master kill switch for the assistant. Default OFF (fail dark): PRODUCTION is
     // off by default and stays off until the #83 gates clear (read-only D1 #134, global BgGPT
-    // circuit-breaker #135, per-query timeout) and someone flips it at go-live. STAGING / ephemeral PR
-    // previews override this to "true" in the deploy layer (wrangler-render.mjs on the contracts branch).
-    // The route reads it via assistantEnabled(); an unset OR non-truthy var is OFF. Killing the live
-    // endpoint in an incident is a var flip — no code redeploy.
+    // circuit-breaker #135, per-query timeout) and someone flips it at go-live. Previews (always) and any
+    // deploy env with the SIGMA_ASSISTANT_ENABLED variable set to "true" (dev now, staging at go-live) opt
+    // IN via wrangler-render, which stamps this var at deploy. The route reads it via assistantEnabled(); an
+    // unset OR non-truthy var is OFF. Killing the live endpoint is clearing that var + redeploy.
     "ASSISTANT_ENABLED": "false",
   },
   "unsafe": {

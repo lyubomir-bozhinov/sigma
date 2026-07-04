@@ -75,8 +75,19 @@ if (ext === '.json' || ext === '.jsonc') {
     // the same dev D1 data version) would compute identical freshness tokens and cross-serve each other's
     // reports. Injecting the sha makes each build's keys distinct, so the shared namespace is safe.
     buildId: process.env.SIGMA_BUILD_ID || '',
+    // Master kill switch override (#83). Committed value is "false" (fail dark); an environment opts the
+    // assistant IN by setting SIGMA_ASSISTANT_ENABLED (preview + dev = "true"). Unset → committed "false"
+    // stays, so staging/production remain dark until deliberately flipped at go-live.
+    assistantEnabled: process.env.SIGMA_ASSISTANT_ENABLED || '',
   };
-  if (names.webName || names.d1Name || names.csvCacheName || names.reportsName || names.buildId) {
+  if (
+    names.webName ||
+    names.d1Name ||
+    names.csvCacheName ||
+    names.reportsName ||
+    names.buildId ||
+    names.assistantEnabled
+  ) {
     out = renderJson(out, names);
   }
   // Most rate limiters fail OPEN at runtime (apps/web/workers/rate-limit.ts), so a missing binding or a
@@ -159,6 +170,9 @@ function renderJson(text, names) {
   }
   // Stamp the real per-build dedup freshness `c` over the committed "dev" constant.
   if (names.buildId && obj.vars && typeof obj.vars === 'object') obj.vars.BUILD_ID = names.buildId;
+  // Opt this environment's assistant IN over the committed fail-dark "false".
+  if (names.assistantEnabled && obj.vars && typeof obj.vars === 'object')
+    obj.vars.ASSISTANT_ENABLED = names.assistantEnabled;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 
