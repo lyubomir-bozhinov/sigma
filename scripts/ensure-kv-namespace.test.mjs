@@ -86,7 +86,10 @@ describe('ensureNamespace', () => {
     const fetchImpl = async () => ({
       ok: false,
       status: 403,
-      json: async () => ({ success: false, errors: [{ code: 10000, message: 'Authentication error' }] }),
+      json: async () => ({
+        success: false,
+        errors: [{ code: 10000, message: 'Authentication error' }],
+      }),
     });
     await assert.rejects(
       () => ensureNamespace({ ...CREDS, title: 'sigma-dedup-dev', fetchImpl }),

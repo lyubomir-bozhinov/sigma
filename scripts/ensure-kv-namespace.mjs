@@ -39,7 +39,9 @@ export async function listNamespaces({ accountId, token, fetchImpl = fetch }) {
     );
     const body = await res.json();
     if (!res.ok || !body.success) {
-      throw new Error(`KV namespace list failed (page ${page}): ${summariseErrors(res.status, body)}`);
+      throw new Error(
+        `KV namespace list failed (page ${page}): ${summariseErrors(res.status, body)}`,
+      );
     }
     const result = Array.isArray(body.result) ? body.result : [];
     out.push(...result.map((n) => ({ id: n.id, title: n.title })));
