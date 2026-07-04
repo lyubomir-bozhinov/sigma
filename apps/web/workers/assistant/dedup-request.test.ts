@@ -176,4 +176,26 @@ describe('buildDedupRequest', () => {
     });
     expect(r.signals.filterContext).toBe('p:2026-07-01..2026-08-01|f:сектор=здравеопазване');
   });
+
+  it('DO name is INJECTIVE — a `|` in the prompt cannot alias the prompt/context boundary', () => {
+    // Pre-fix these two DIFFERENT questions collided onto ONE DO instance: the raw `${prompt}|${context}`
+    // join is identical whether the `|` ends the prompt or starts the folded context. On a concurrent miss
+    // the second request (a waiter) would then be woken with the first's DIFFERENT report. The escaped join
+    // must keep the DO names distinct. (KV lookup was already injective via encodeFields; this closes the
+    // single-flight routing key to match.)
+    const a = buildDedupRequest({
+      prompt: 'x',
+      temporalResolved: true,
+      period: JULY, // folds context → 'p:2026-07-01..2026-08-01|f:sector=z'
+      filterContext: 'sector=z',
+      freshness: FRESH,
+    });
+    const b = buildDedupRequest({
+      prompt: 'x|p:2026-07-01..2026-08-01', // the `|` shifted into the prompt
+      temporalResolved: false,
+      filterContext: 'sector=z',
+      freshness: FRESH,
+    });
+    expect(a.doName).not.toBe(b.doName);
+  });
 });

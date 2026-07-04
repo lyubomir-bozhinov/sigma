@@ -5,6 +5,14 @@
 
 import { normalizeText, type DedupPayload, type ResolveSignals } from './dedup';
 
+/**
+ * Escape the single-flight DO-name field delimiter so distinct (prompt, filterContext) tuples can never
+ * alias one DO instance. `\`→`\\` then `|`→`\|` is a classic reversible (hence injective) escaping: an
+ * escaped field contains no bare `|`, so the `|` field separators stay unambiguous. Cheap synchronous
+ * parity with the KV key's length-prefixed encodeFields, sufficient for a DO name (no hash needed).
+ */
+const escapeDoField = (value: string): string => value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+
 /** Minimal structural view of a resolved period — `sinceIso`..`untilIso` (half-open), both YYYY-MM-DD. */
 export interface PeriodBounds {
   sinceIso: string;
@@ -94,8 +102,17 @@ export function buildDedupRequest(input: DedupRequestInput): DedupRequest {
   if (l1Safe) {
     // normalizeText the filterContext too, matching dedupKey's canonicalFields — else trivially-different
     // whitespace routes identical requests to different DO instances (missed collapse; a cost blip only).
-    doName = `L1|${input.freshness}|${normalizeText(input.prompt)}|${normalizeText(filterContext)}`;
+    // ESCAPE the delimiter: normalizeText does NOT strip '|', and both prompt and filterContext are
+    // free-ish text, so a raw '|'-join is non-injective — `a|b`+`c` would alias `a`+`b|c` onto ONE DO
+    // instance, and on a concurrent miss the waiter is woken with the driver's DIFFERENT report (the one
+    // thing this cache must never do). Escaping `\`→`\\` then `|`→`\|` makes the join injective — the
+    // same guarantee the KV key gets from encodeFields's length-prefix, without an async hash for a DO name.
+    doName = `L1|${input.freshness}|${escapeDoField(normalizeText(input.prompt))}|${escapeDoField(
+      normalizeText(filterContext),
+    )}`;
   } else if (input.clientRequestId) {
+    // L0 is injective as-is: freshness is fixed-arity (`d:<alnum>|c:<alnum>`) and clientRequestId is
+    // charset-validated (^[A-Za-z0-9_-]{1,100}$, no '|'), so the split is unambiguous.
     doName = `L0|${input.freshness}|${input.clientRequestId}`;
   }
 
