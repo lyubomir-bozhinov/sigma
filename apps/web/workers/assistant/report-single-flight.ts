@@ -17,10 +17,20 @@ import { DurableObject } from 'cloudflare:workers';
 import { SingleFlight, type GeneratorResult } from './single-flight';
 import type { DedupLayer, DedupPayload, ResolveSignals } from './dedup';
 
-// Upper bound a driver may hold the flight before waiters are released to regenerate. ≥ the model
-// step budget (agent.ts SETTLE_BACKSTOP_MS 60s + tool loop); generous so a slow-but-live generation is
-// not cut off, bounded so a crashed driver can't hang waiters forever. Fail toward regeneration.
+// Crash-safety alarm: how long a driver's DO may sit in the 'driver' role before the coordinator is
+// reset so the NEXT request can drive. Generous (> a live driver's own budget) so a slow-but-live
+// driver's eventual complete() still populates the cache; it never gates a waiter's wall-clock (that is
+// WAITER_MAX_BLOCK_MS below). Fail toward regeneration.
 const GENERATION_TIMEOUT_MS = 130_000;
+
+// How long a WAITER may block awaiting the driver's report. Bounded to the driver's OWN generation budget
+// (agent.ts SETTLE_BACKSTOP_MS, 60s) — NOT the 130s crash alarm: a waiter is a live Worker request, and
+// Cloudflare severs a request that produces no bytes for too long (524), so a waiter that blocked the full
+// 130s would be killed mid-wait with no usable result. At this cap the waiter returns 'regenerate' cleanly
+// instead. Trade-off: a genuinely >60s live generation collapses fewer waiters (they regenerate rather
+// than share the driver's report) — safe, at some duplicate cost. Streaming keepalive to waiters is the
+// real remedy for very-slow generations (tracked follow-up); this tune just removes the silent-524 window.
+const WAITER_MAX_BLOCK_MS = 60_000;
 
 export type ClaimResult =
   | { kind: 'hit'; reportId: string; createdAt: string; layer: DedupLayer }
@@ -65,11 +75,20 @@ export class ReportSingleFlight extends DurableObject<ReportSingleFlightEnv> {
       await this.ctx.storage.setAlarm(Date.now() + GENERATION_TIMEOUT_MS);
       return { kind: 'driver' };
     }
+    // Block on the driver, but never past WAITER_MAX_BLOCK_MS — race the wait against a timer so a slow or
+    // crashed driver releases this waiter to regenerate well before the platform 524s the request. The
+    // timer is always cleared (finally), including when the driver's report wins the race, so it can't leak.
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await outcome.result;
+      const capped = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('waiter block exceeded')), WAITER_MAX_BLOCK_MS);
+      });
+      const result = await Promise.race([outcome.result, capped]);
       return { kind: 'ready', reportId: result.reportId, createdAt: result.createdAt };
     } catch {
       return { kind: 'regenerate' };
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
