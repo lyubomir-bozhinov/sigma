@@ -42,7 +42,7 @@ function run() {
       const person = c.person || d.declarant;
       for (const it of d.interests) {
         holdingsOut.write(JSON.stringify({
-          folder, year: d.year, template: d.templateType,
+          folder, xmlFile: file, year: d.year, template: d.templateType,
           category: c.category ?? '', institution: c.institution ?? '', person, position: c.position ?? d.position ?? '',
           entity: it.entity, kind: it.kind, detail: it.detail, timing: it.timing, seat: it.seat ?? '',
           controlHash: d.controlHash,
@@ -52,7 +52,7 @@ function run() {
       }
       for (const rp of d.relatedPersons) {
         relatedOut.write(JSON.stringify({
-          folder, year: d.year, person, institution: c.institution ?? '',
+          folder, xmlFile: file, year: d.year, person, institution: c.institution ?? '',
           related_name: rp.name, related_kind: rp.kind, info: rp.info, timing: rp.timing,
         }) + '\n');
         stats.related++;
