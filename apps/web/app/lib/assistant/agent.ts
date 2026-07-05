@@ -266,6 +266,10 @@ function buildToolSet(
     execute: async (input: unknown) => {
       const r = finalizeReport(input, ctx);
       if (!r.ok) return { ok: false as const, errors: r.errors };
+      if (r.warnings.length > 0)
+        console.warn('[assistant] partial report: missing display columns rendered as null', {
+          warnings: r.warnings,
+        });
       // Record that a valid report exists this turn, so chooseToolChoice stops force-finalizing on the
       // remaining steps (a legitimate multi-query flow that already emitted must not be re-forced).
       ctx.reportEmitted = true;
@@ -450,6 +454,13 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
           });
           return;
         }
+        if (built.warnings.length > 0)
+          console.warn(
+            '[assistant] partial fallback report: missing display columns rendered as null',
+            {
+              warnings: built.warnings,
+            },
+          );
         // Same ④ pass as the model path — the fallback's prose is deterministic (report-fallback.ts),
         // so this resolves as 'skipped' without an LLM call; running it anyway keeps the invariant
         // simple: no report reaches persist/stream unverified.
