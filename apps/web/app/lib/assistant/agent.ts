@@ -1,58 +1,54 @@
-// Thin Vercel-AI-SDK wiring (spec §2). Carries NO logic — it maps the SDK-agnostic tool registry
-// (tools.ts) to SDK `tool()`s and runs the streamed tool-calling loop against the chat model, routed
-// through the Cloudflare AI Gateway (§9.5). Everything testable lives in the pure modules; this layer
-// needs `ASSISTANT_API_KEY` + bindings and is only exercised end-to-end on a deployed Worker.
+// Assistant orchestrator (spec §2). Drives a bounded PROMPTED-JSON action loop against the chat model,
+// routed through the Cloudflare AI Gateway (§9.5), and streams the result as the UI-message Response the
+// chat route hands back to the dock.
 //
-// Provider-agnostic by design: the OpenAI-compatible provider is pointed at the AI Gateway, whose
-// upstream (OpenRouter today) and model are pure config — switch models/providers by editing
-// `ASSISTANT_MODEL` / `AI_GATEWAY_BASE_URL`, no code change. Routing is MANDATORY: with no gateway
-// URL configured we fail closed rather than call the provider directly (see `buildModel`).
+// Why not native tool-calling: the BgGPT/mamay vLLM upstream is served WITHOUT
+// `--enable-auto-tool-choice --tool-call-parser`, so any `tools`/`tool_choice` in the request → HTTP 400.
+// Instead the model emits ONE JSON action object per step ({"action":"run_sql",…} / {"action":"emit_report",…}),
+// which we parse (json-action.ts) and dispatch to the SAME SDK-agnostic tool registry (tools.ts). Every
+// downstream seam is reused unchanged: the SQL guards, `runTool`, `finalizeReport`/`bindReport`/persistence,
+// the `report-fallback`, the stream-phase filter, and the entire dock client. We just hand-write the same
+// `data-phase` + `tool-emit_report` chunk shapes the SDK path used to produce.
 
-import { createOpenAI } from '@ai-sdk/openai';
-import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  jsonSchema,
-  stepCountIs,
-  streamText,
-  tool,
-  type ToolSet,
-  type UIMessage,
-} from 'ai';
+import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from 'ai';
 import { buildSystemPrompt } from './system-prompt';
 import { createPhaseFilter } from './stream-phase';
-import { EMIT_REPORT_TOOL } from '../assistant-contract/stream';
-import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
-import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
+import { EMIT_REPORT_TOOL, PHASE_PART, type AssistantPhase } from '../assistant-contract/stream';
+import { finalizeReport, runTool, type ToolContext } from './tools';
 import { buildFallbackReport } from './report-fallback';
+import { bggptChat, type BggptChatConfig, type ChatTurnMessage } from './bggpt-chat';
+import { parseAction } from './json-action';
 import type { TemporalContext } from './temporal';
 
 export interface AgentEnv {
-  /** Provider API key (OpenRouter today). SECRET — `wrangler secret put ASSISTANT_API_KEY`. */
+  /** Provider API key (BgGPT/mamay key today). SECRET — set via GitHub Environment → `wrangler secret put`. */
   ASSISTANT_API_KEY: string;
   /**
    * REQUIRED — OpenAI-compatible endpoint of the Cloudflare AI Gateway upstream, e.g.
-   * `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openrouter/v1`. Empty ⇒ fail closed
-   * (we never call the provider directly). This is the single lever that guarantees LLM traffic
-   * transits the gateway for logging / cost / rate-limit visibility (§9.5).
+   * `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-bggpt/v1`. Empty ⇒ fail closed
+   * (we never call the provider directly). This is the single lever that guarantees LLM traffic transits
+   * the gateway for logging / cost / rate-limit visibility (§9.5).
    */
   AI_GATEWAY_BASE_URL?: string;
-  /** Model id, provider-scoped (e.g. `google/gemma-4-31b-it`). Swappable via config alone. */
+  /** Model id (e.g. `bggpt-gemma4-31b-it-bg-gptq-w4a16`). Swappable via config alone. */
   ASSISTANT_MODEL?: string;
   MAX_STEPS?: string;
 }
 
-const DEFAULT_MODEL = 'google/gemma-4-31b-it';
+const DEFAULT_MODEL = 'bggpt-gemma4-31b-it-bg-gptq-w4a16';
 const DEFAULT_MAX_STEPS = 6;
-// Hard ceiling on the tool-loop length regardless of env, bounding worst-case model calls per turn.
-// `MAX_STEPS` is operator-supplied config — a misconfigured deploy could otherwise stall the loop
-// (0/negative) or uncap it (a huge value). (review #80)
+// Hard ceiling on the loop length regardless of env, bounding worst-case model calls per turn. `MAX_STEPS`
+// is operator-supplied config — a misconfigured deploy could otherwise stall the loop (0/negative) or
+// uncap it (a huge value).
 const MAX_STEPS_CAP = 20;
+// Bounded protocol-correction nudges (parse failures + rejected emit_report shapes) before we give up on
+// the model and fall back — mirrors kolkostruva's 2-correction budget. Prevents burning every step on a
+// model that keeps emitting malformed JSON.
+const MAX_CORRECTIONS = 2;
 
 /**
- * Resolve the tool-loop step budget from the (untrusted) env string: fall back to the default on a
- * missing / non-numeric / < 1 value, and clamp to [1, MAX_STEPS_CAP].
+ * Resolve the loop step budget from the (untrusted) env string: fall back to the default on a missing /
+ * non-numeric / < 1 value, and clamp to [1, MAX_STEPS_CAP].
  */
 export function resolveMaxSteps(raw: string | undefined): number {
   const n = Number(raw);
@@ -60,73 +56,18 @@ export function resolveMaxSteps(raw: string | undefined): number {
   return Math.min(Math.floor(n), MAX_STEPS_CAP);
 }
 
-/** Per-step tool-choice, as accepted by the SDK's `prepareStep` (a specific-tool force is an object). */
-export type StepToolChoice = 'auto' | 'required' | { type: 'tool'; toolName: 'emit_report' };
-
-export interface ToolChoiceInput {
-  stepNumber: number; // 0-based index of the step about to run
-  maxSteps: number; // the hard step budget for this turn (stepCountIs)
-  hasResults: boolean; // this turn's run_sql produced ≥1 bindable result handle
-  reportEmitted: boolean; // a prior step already produced a valid (ok:true) report
-  lastStepFailedEmit: boolean; // the previous step's emit_report returned ok:false (shape errors)
-}
-
-/**
- * Decide the tool-choice for the step about to run. Pure so the policy is unit-testable without the SDK.
- *
- * The load-bearing rule for weak models: DON'T let the turn end silently. A 27–31B model tends to burn
- * the whole step budget re-querying the same data (different date syntax, reformatting, double-checking)
- * and then run out BEFORE calling emit_report — so the user sees nothing. When the budget is nearly spent
- * (the final two steps) and we already hold bindable data but no report yet, FORCE emit_report so the turn
- * finalizes from what it has. The client then always renders either the report or the "couldn't compose"
- * affordance — never a blank turn. (Ordering + step-0 forcing rationale below.)
- */
-export function chooseToolChoice(input: ToolChoiceInput): StepToolChoice {
-  const { stepNumber, maxSteps, hasResults, reportEmitted, lastStepFailedEmit } = input;
-  // Force a real tool call on the FIRST step so a weak model can't narrate the call as prose (```sql).
-  if (stepNumber === 0) return 'required';
-  // Near the budget with gathered data but no report → force finalization from what we have, instead of
-  // spending the last steps exploring and returning nothing. Checked before the failed-emit retry because
-  // forcing the specific tool is strictly stronger than a bare 'required'.
-  if (!reportEmitted && hasResults && stepNumber >= maxSteps - 2) {
-    return { type: 'tool', toolName: 'emit_report' };
-  }
-  // A failed emit_report (shape errors returned to the model) → force a retry rather than let it drop to
-  // prose.
-  if (lastStepFailedEmit) return 'required';
-  return 'auto';
-}
-
-// `.chat()` forces the chat-completions endpoint (not the OpenAI Responses API), which is what the
-// gateway upstream (OpenRouter/BgGPT/etc.) speaks.
-//
-// Fail closed: refuse to build a model unless the AI Gateway base URL is configured. Without it the
-// only alternative is a direct provider call, which would silently bypass the gateway's logging, cost
-// accounting and rate limiting — exactly the visibility guarantee we require. The chat route also
-// gates on this up front (503), so in practice this throw is defense-in-depth.
-function buildModel(env: AgentEnv) {
-  const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
-  if (!baseURL) {
-    throw new Error(
-      'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
-    );
-  }
-  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
-  return provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
-}
-
-// Shown when the model returns a completely empty turn — no report, no run_sql data to synthesize from,
-// and no prose (an empty completion / finishReason 'other'). Guarantees the dock never renders a blank
-// turn in that case. Mirrors the client-side NO_ANSWER_FALLBACK wording (AssistantTranscript.tsx).
+// Shown when the loop ends with no report and no bindable data (an empty/unparseable model turn).
+// Guarantees the dock never renders a blank turn. Mirrors the client NO_ANSWER_FALLBACK wording.
 const EMPTY_COMPLETION_MESSAGE =
   'Не успях да съставя справка за този въпрос. Опитайте отново или го формулирайте по-конкретно — ' +
   'напр. посочете възложител, период или сектор.';
 
-// System-prompt version string used in StoredReport provenance for regression tracing. Derived — NOT a
-// manual bump: a FNV-1a fingerprint of the CANONICAL system prompt (empty input → full dictionary, no
-// per-turn bits), so any semantic edit to system-prompt.ts / describe-schema.ts re-fingerprints on the
-// next deploy without anyone remembering to touch a constant. Not security-sensitive; a plain
-// content hash is all provenance needs to correlate a stored report with the prompt that produced it.
+// Graceful degradation (§7): a provider outage / 4xx / timeout surfaces as a readable Bulgarian line
+// instead of a broken stream.
+const PROVIDER_ERROR_MESSAGE = 'Асистентът временно не е достъпен. Опитай отново след малко.';
+
+// System-prompt version string for StoredReport provenance — a FNV-1a fingerprint of the CANONICAL prompt
+// (empty input), so any semantic edit to system-prompt.ts / describe-schema.ts re-fingerprints on deploy.
 function fnv1a(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -142,8 +83,7 @@ function randomReportId(): string {
   return `r_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
-// Whitelist of recognised source values stored in provenance freshness rows.
-// Rows with any other value are silently dropped rather than leaking an internal bucket name.
+// Whitelist of recognised freshness sources; rows with any other value are dropped (no internal leaks).
 const KNOWN_FRESHNESS_SOURCES = new Set(['admin', 'ocds', 'eop'] as const);
 
 async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: string }[]> {
@@ -197,231 +137,218 @@ async function persistReport(
   }
 }
 
-function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
-  const set: ToolSet = {};
-  for (const t of ASSISTANT_TOOLS) {
-    set[t.name] = tool({
-      description: t.description,
-      inputSchema: jsonSchema(t.parameters as unknown as Parameters<typeof jsonSchema>[0]),
-      execute: async (input: unknown) => t.execute((input ?? {}) as Record<string, unknown>, ctx),
-    });
-  }
-  // Terminal tool — finalizes the report by binding values from THIS turn's server-executed results
-  // (never client-supplied). Returns validation errors for the model to retry against (§4, §9.1).
-  set[EMIT_REPORT_TOOL] = tool({
-    description:
-      'Финализира справка. Блоковете реферират резултатни хендъли (R1…); сървърът свързва числата. ' +
-      'Извикай го за всеки отговор с число, класация, сравнение или разбивка (виж системните правила).',
-    inputSchema: jsonSchema(EMIT_REPORT_JSON_SCHEMA as unknown as Parameters<typeof jsonSchema>[0]),
-    execute: async (input: unknown) => {
-      const r = finalizeReport(input, ctx);
-      if (!r.ok) return { ok: false as const, errors: r.errors };
-      // Record that a valid report exists this turn, so chooseToolChoice stops force-finalizing on the
-      // remaining steps (a legitimate multi-query flow that already emitted must not be re-forced).
-      ctx.reportEmitted = true;
-      const storedId = await persistReport(ctx, r, modelId);
-      return { ok: true as const, report: r.report, ...(storedId ? { storedId } : {}) };
-    },
-  });
-  return set;
-}
-
 export interface RunAssistantOptions {
   env: AgentEnv;
   ctx: ToolContext;
   messages: UIMessage[];
   schemaContext?: string[];
   freshness?: string;
-  // Deterministic, server-resolved temporal context for this turn (temporal.ts). Threaded into the system
-  // prompt so the model uses absolute dates instead of guessing relative periods from its stale prior.
+  // Deterministic, server-resolved temporal context for this turn (temporal.ts).
   temporal?: TemporalContext;
-  abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the model loop (review #80)
+  abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the model loop
+}
+
+/** Minimal writer surface used by the loop — matches the `createUIMessageStream` execute writer. */
+interface StreamWriter {
+  write(chunk: unknown): void;
+}
+
+/** Flatten UI messages to plain chat turns (text parts only). Non-text parts are dropped. */
+function toChatMessages(msgs: UIMessage[]): ChatTurnMessage[] {
+  const out: ChatTurnMessage[] = [];
+  for (const m of msgs) {
+    if (m.role !== 'user' && m.role !== 'assistant' && m.role !== 'system') continue;
+    const text = (m.parts ?? [])
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && 'text' in p)
+      .map((p) => p.text)
+      .join('');
+    if (text.trim().length > 0) out.push({ role: m.role, content: text });
+  }
+  return out;
+}
+
+/** Emit the coarse turn phase as a transient data part (allowlisted by the phase filter). */
+function writePhase(writer: StreamWriter, phase: AssistantPhase): void {
+  writer.write({ type: PHASE_PART, data: { phase }, transient: true });
+}
+
+/** Write a plain text message to the transcript (start → delta → end). */
+function writeText(writer: StreamWriter, text: string): void {
+  const id = `t_${randomReportId()}`;
+  writer.write({ type: 'text-start', id });
+  writer.write({ type: 'text-delta', id, delta: text });
+  writer.write({ type: 'text-end', id });
 }
 
 /**
- * Run one assistant turn: the chat model (via AI Gateway) + the bounded tool loop, returned as the streamed
- * UI-message Response the chat route hands back to the dock. (Returns a `Response` rather than the
- * SDK result so no internal SDK type leaks across the module boundary.)
+ * Write the terminal `tool-emit_report` part sequence the dock projects into a report chip. Identical
+ * shape to what the SDK tool path produced, so the client renders it unchanged.
+ */
+function writeReport(
+  writer: StreamWriter,
+  report: (ReturnType<typeof finalizeReport> & { ok: true })['report'],
+  storedId: string | null,
+): void {
+  const toolCallId = `emit_${randomReportId()}`;
+  writer.write({ type: 'tool-input-start', toolCallId, toolName: EMIT_REPORT_TOOL });
+  writer.write({ type: 'tool-input-available', toolCallId, toolName: EMIT_REPORT_TOOL, input: {} });
+  writer.write({
+    type: 'tool-output-available',
+    toolCallId,
+    output: { ok: true as const, report, ...(storedId ? { storedId } : {}) },
+  });
+}
+
+/**
+ * Run one assistant turn: a bounded prompted-JSON action loop (chat model via the AI Gateway) + the
+ * reused tool/report machinery, returned as the streamed UI-message Response the chat route hands to the
+ * dock. Fail closed: refuse to reach the provider unless the gateway base URL is configured.
  */
 export async function runAssistant(opts: RunAssistantOptions): Promise<Response> {
+  const baseURL = opts.env.AI_GATEWAY_BASE_URL?.trim();
+  if (!baseURL) {
+    throw new Error(
+      'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
+    );
+  }
   const maxSteps = resolveMaxSteps(opts.env.MAX_STEPS);
-  const messages = await convertToModelMessages(opts.messages);
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
+  const cfg: BggptChatConfig = {
+    baseURL,
+    apiKey: opts.env.ASSISTANT_API_KEY,
+    model: modelId,
+    fetchImpl: opts.ctx.fetchImpl as typeof fetch | undefined,
+  };
 
-  // Resolves when the model loop (all steps + tool executions) is fully finished, so the last-resort
-  // finalizer below runs only after the model has had every chance to emit its own report. `onError`
-  // resolves it too (and flags the error) so the wrapping stream can never hang if the model throws —
-  // and so we don't paste a synthesized report on top of a genuine provider-failure message.
-  let resolveModelFinished!: () => void;
-  const modelFinished = new Promise<void>((resolve) => {
-    resolveModelFinished = resolve;
+  const system = buildSystemPrompt({
+    schemaContext: opts.schemaContext,
+    freshness: opts.freshness,
+    temporal: opts.temporal,
   });
-  let modelErrored = false;
-  // Captured from the model's finish so the wrapper can tell an EMPTY completion (weak model returns 0
-  // tokens / finishReason 'other' under the gateway — reproducibly seen on some question shapes) from a
-  // legitimate prose-only turn. Without this an empty completion with no run_sql dead-ends on a BLANK turn:
-  // the fallback finalizer needs rows, so it can't fire, and nothing is ever written to the stream.
-  let modelFinishReason: string | undefined;
-  let modelProducedText = false;
+  const messages: ChatTurnMessage[] = [
+    { role: 'system', content: system },
+    ...toChatMessages(opts.messages),
+  ];
 
-  const result = streamText({
-    onFinish: (event) => {
-      modelFinishReason = event.finishReason;
-      modelProducedText = typeof event.text === 'string' && event.text.trim().length > 0;
-      resolveModelFinished();
-    },
-    onError: () => {
-      modelErrored = true;
-      resolveModelFinished();
-    },
-    model: buildModel(opts.env),
-    system: buildSystemPrompt({
-      schemaContext: opts.schemaContext,
-      freshness: opts.freshness,
-      temporal: opts.temporal,
-    }),
-    messages,
-    tools: buildToolSet(opts.ctx, modelId),
-    stopWhen: stepCountIs(maxSteps),
-    // Force a real tool call on the FIRST step (then let the loop run free). Weaker chat models under the
-    // streamed loop otherwise narrate the call as prose (writes ```sql / `[run_sql(...)]` instead of
-    // invoking it) — `tool_choice: 'required'` makes that structurally impossible. Step 0 only: later
-    // steps need `auto` so the model can finalize with `emit_report` and stop. Measured against the real
-    // streamText path this took the failing cases from 0/4 to 4/4 (run_sql→emit_report). The matching
-    // „run_sql FIRST, emit_report after" ordering rule lives in system-prompt.ts. Trade-off: a pure
-    // meta/clarifying turn is also forced to call one tool first (usually describe_schema) — acceptable
-    // for a data-analysis assistant where nearly every turn is a data question.
-    //
-    // Additionally: if the last step contained a failed emit_report (ok:false — shape validation errors
-    // returned to the model), force `required` again so the model retries the tool call rather than
-    // falling back to prose. Without this the model answers in text then emits `ok:false` and stops.
-    prepareStep: ({ stepNumber, steps }) => {
-      const lastStep = steps[steps.length - 1];
-      const lastStepFailedEmit = !!lastStep?.toolResults.some(
-        (tr) => tr.toolName === 'emit_report' && (tr.output as { ok?: boolean }).ok === false,
-      );
-      return {
-        toolChoice: chooseToolChoice({
-          stepNumber,
-          maxSteps,
-          hasResults: opts.ctx.results.length > 0,
-          reportEmitted: opts.ctx.reportEmitted === true,
-          lastStepFailedEmit,
-        }),
-      };
-    },
-    // Bound worst-case resource use (review #80): cancel on client disconnect; one explicit retry
-    // (the SDK default of 2 silently multiplies the per-step call count beyond the visible step cap);
-    // a per-step output backstop (the model emits block structure + refs, not the bound data values).
-    abortSignal: opts.abortSignal,
-    maxRetries: 1,
-    // Low temperature materially improves tool-calling reliability with weaker chat models: under the
-    // streamed tool loop the model otherwise drifts into NARRATING the call (writing `run_sql(...)` /
-    // ```sql as prose) instead of emitting a real function call. Local probes: ~75% tool-call rate at
-    // the model default vs ~88% at 0.1 (streamed). Determinism here is desirable — we want the SQL, not
-    // creative variation.
-    temperature: 0.1,
-    // Per-step output backstop. The model emits block structure + refs (not the bound data values),
-    // but a longer multi-block справка plus reasoning can exceed 4k and get truncated mid-report; 8k
-    // leaves headroom while still capping worst-case tokens per step.
-    maxOutputTokens: 8192,
-  });
-  // Wrap the model's UI stream so we can append a SERVER-SYNTHESIZED report when the model gathered real
-  // data but never produced a valid one. Without this a weak-model shape error / step-budget exhaustion
-  // dead-ends the turn on „couldn't compose" even though the answer is already in ctx.results. The
-  // injected part uses the SAME `tool-emit_report` shape the model would have produced, so the dock
-  // renders a normal report chip; values are bound through bindReport (server-owned, never model-written).
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
-      // Drop reasoning/sources at source too — defense-in-depth with the phase filter downstream.
-      writer.merge(result.toUIMessageStream({ sendReasoning: false, sendSources: false }));
-      // Wait for the model loop to settle before the last-resort finalizer, but never indefinitely.
-      // onFinish/onError resolve `modelFinished` and in practice one always fires (incl. on abort), so
-      // this timer is pure defense-in-depth: if the SDK ever failed to settle, the wrapper would keep the
-      // response stream open forever. On backstop we BAIL without synthesizing — the loop's state is
-      // indeterminate, so writing could race the still-open merged stream. Timer is cleared on the normal
-      // path so it can't keep the isolate alive.
-      const SETTLE_BACKSTOP_MS = 60_000;
-      let backstopTimer: ReturnType<typeof setTimeout> | undefined;
-      let settledCleanly = false;
-      await Promise.race([
-        modelFinished.then(() => {
-          settledCleanly = true;
-        }),
-        new Promise<void>((resolve) => {
-          backstopTimer = setTimeout(resolve, SETTLE_BACKSTOP_MS);
-        }),
-      ]);
-      if (backstopTimer) clearTimeout(backstopTimer);
-      if (!settledCleanly) {
-        console.error(
-          '[assistant] model stream did not settle within backstop — skipping fallback',
-          {
-            backstopMs: SETTLE_BACKSTOP_MS,
-          },
-        );
-        return;
-      }
-      // Skip the fallback when the model finalized its own report, or errored (a provider failure already
-      // surfaced its own message — don't paste a report over it).
-      if (modelErrored || opts.ctx.reportEmitted) return;
-      // No bindable data this turn → the fallback finalizer has nothing to synthesize from. If the model
-      // also produced no prose, the turn would otherwise be BLANK (empty completion). Write an explicit
-      // affordance so the dock shows guidance instead of an empty transcript. A legit prose-only answer
-      // (produced text, e.g. a clarifying reply) is left untouched.
-      if (opts.ctx.results.length === 0) {
-        if (!modelProducedText) {
-          console.warn('[assistant] empty completion — no report, no data, no prose', {
-            finishReason: modelFinishReason,
-          });
-          const textId = `empty_${randomReportId()}`;
-          writer.write({ type: 'text-start', id: textId });
-          writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
-          writer.write({ type: 'text-end', id: textId });
-        }
-        return;
-      }
+      const w = writer as unknown as StreamWriter;
+      w.write({ type: 'start' });
+      w.write({ type: 'start-step' });
+      writePhase(w, 'thinking');
+
+      let emitted = false;
+      let providerErrored = false;
+      let corrections = 0;
+
       try {
-        const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
-        if (!built.ok) {
-          // We had bindable data yet still couldn't synthesize a valid report (e.g. bindReport rejected
-          // the shape). Log it — otherwise this „had data, still no report" case fails invisibly.
-          console.warn('[assistant] fallback finalizer produced no valid report', {
-            errors: built.errors,
-            resultCount: opts.ctx.results.length,
+        for (let step = 0; step < maxSteps && !emitted; step++) {
+          let content: string;
+          try {
+            content = await bggptChat(cfg, messages, {
+              temperature: 0.2,
+              maxTokens: 8192,
+              signal: opts.abortSignal,
+            });
+          } catch (err) {
+            if ((err as Error)?.name === 'AbortError') return; // client gone — stop quietly
+            console.error('[assistant] model call failed', err);
+            providerErrored = true;
+            break;
+          }
+          messages.push({ role: 'assistant', content });
+
+          const { action } = parseAction(content);
+          if (!action) {
+            // Unparseable — nudge back to the protocol, bounded; else fall through to the fallback.
+            if (corrections < MAX_CORRECTIONS) {
+              corrections++;
+              messages.push({
+                role: 'user',
+                content:
+                  'Отговори със САМО ЕДИН валиден JSON обект според протокола (напр. ' +
+                  '{"action":"run_sql","sql":"…"} или {"action":"emit_report","title":"…","question":"…","blocks":[…]}), ' +
+                  'без друг текст и без код-блокове.',
+              });
+              continue;
+            }
+            break;
+          }
+
+          if (action.action === EMIT_REPORT_TOOL) {
+            writePhase(w, 'composing');
+            const r = finalizeReport(action.args, opts.ctx);
+            if (!r.ok) {
+              // Shape errors → hand them back so the model fixes the blocks (bounded), never leak to client.
+              if (corrections < MAX_CORRECTIONS) {
+                corrections++;
+                messages.push({
+                  role: 'user',
+                  content:
+                    'emit_report беше отхвърлен (невалидни блокове). Поправи и върни отново валиден ' +
+                    'JSON {"action":"emit_report", …}, като блоковете реферират съществуващи хендъли (R1…). ' +
+                    `Проблеми: ${JSON.stringify(r.errors).slice(0, 400)}`,
+                });
+                continue;
+              }
+              break;
+            }
+            opts.ctx.reportEmitted = true;
+            const storedId = await persistReport(opts.ctx, r, modelId);
+            writeReport(w, r.report, storedId);
+            emitted = true;
+            break;
+          }
+
+          // Any other action → a mid-turn tool. Run it and feed the result back as a user message.
+          writePhase(w, 'querying');
+          const result = await runTool(action.action, action.args, opts.ctx);
+          messages.push({
+            role: 'user',
+            content:
+              `РЕЗУЛТАТ от ${action.action}: ${result}\n` +
+              'Продължи със следващото JSON действие. Когато вече имаш нужните данни, върни ' +
+              '{"action":"emit_report", …} с блокове, рефериращи хендълите.',
           });
-          return;
         }
-        const storedId = await persistReport(opts.ctx, built, modelId);
-        const toolCallId = `fallback_${randomReportId()}`;
-        writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
-        writer.write({
-          type: 'tool-input-available',
-          toolCallId,
-          toolName: 'emit_report',
-          input: {},
-        });
-        writer.write({
-          type: 'tool-output-available',
-          toolCallId,
-          output: { ok: true as const, report: built.report, ...(storedId ? { storedId } : {}) },
-        });
-        opts.ctx.reportEmitted = true;
+
+        // ── Fallbacks — never end a turn on a blank transcript. ────────────────────────────────────
+        if (!emitted && !providerErrored) {
+          if (opts.ctx.results.length > 0) {
+            // Had bindable data but no valid report (budget/shape) → synthesize one server-side, bound
+            // through the same bindReport (server-owned values, never model-written).
+            const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
+            if (built.ok) {
+              const storedId = await persistReport(opts.ctx, built, modelId);
+              writeReport(w, built.report, storedId);
+              opts.ctx.reportEmitted = true;
+            } else {
+              console.warn('[assistant] fallback finalizer produced no valid report', {
+                errors: built.errors,
+                resultCount: opts.ctx.results.length,
+              });
+              writeText(w, EMPTY_COMPLETION_MESSAGE);
+            }
+          } else {
+            writeText(w, EMPTY_COMPLETION_MESSAGE);
+          }
+        }
+        if (providerErrored) writeText(w, PROVIDER_ERROR_MESSAGE);
       } catch (err) {
-        // The fallback is best-effort: never let it break the response the model already streamed.
-        console.error('[assistant] fallback finalizer failed', err);
+        // Never let the loop throw out of execute (would abort the body); surface a readable line.
+        console.error('[assistant] turn failed', err);
+        if (!emitted) writeText(w, PROVIDER_ERROR_MESSAGE);
+      } finally {
+        w.write({ type: 'finish-step' });
+        w.write({ type: 'finish' });
       }
     },
-    // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
-    // readable Bulgarian line instead of a broken connection. The SDK default redacts the error to
-    // "An error occurred." to avoid leaking server details — we log it server-side (Workers tail)
-    // and show our own message. A full rate-limit + circuit-breaker is the launch gate (README).
     onError: (error) => {
       console.error('[assistant] stream error', error);
-      return 'Асистентът временно не е достъпен. Опитай отново след малко.';
+      return PROVIDER_ERROR_MESSAGE;
     },
   });
-  // Only phases + prose + the resolved report reach the dock — the wrapped stream (model loop + any
-  // synthesized fallback report) runs through the allowlist filter; internals never leave the Worker.
+
+  // Only phases + prose + the resolved report reach the dock — internals never leave the Worker.
   return createUIMessageStreamResponse({ stream: stream.pipeThrough(createPhaseFilter()) });
 }

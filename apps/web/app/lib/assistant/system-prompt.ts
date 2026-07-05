@@ -31,14 +31,35 @@ export const EMIT_REPORT_POLICY =
   'ЗАДЪЛЖИТЕЛНО се връща чрез инструмента `emit_report`. Само уточняващи или мета отговори остават ' +
   'като обикновен текст. Чатът е control plane; продуктът е справката.';
 
-// Ordering rule paired with agent.ts forcing a tool call on the first step (toolChoice 'required'):
-// without it a weak 27B narrates the call as prose, or jumps straight to emit_report with no data to
-// bind. States the contract so the FORCED first call lands on run_sql, not emit_report.
+// The action protocol (spec §2). The BgGPT/mamay vLLM upstream is served WITHOUT tool-calling
+// (`tool_choice` → HTTP 400), so the model does NOT use native function-calling — it drives the loop by
+// emitting ONE JSON action object per turn, which the server parses (json-action.ts) and dispatches to
+// the same tools (tools.ts). This block is the load-bearing contract; keep it high-salience (weak model).
+export const JSON_ACTION_PROTOCOL =
+  'ПРОТОКОЛ (ЗАДЪЛЖИТЕЛЕН): Отговаряй със САМО ЕДИН JSON обект и нищо друго — без текст преди или след ' +
+  'него, без код-блокове (```), без разсъждения на глас. Всеки ход е един обект с поле "action". ' +
+  'Възможни действия:\n' +
+  '- {"action":"run_sql","sql":"SELECT …"} — изпълни един read-only SELECT/WITH…SELECT; резултатът се ' +
+  'връща под хендъл (R1, R2 …)\n' +
+  '- {"action":"find_entity","name":"…","kind":"authority"|"company"} — намери точното id на ' +
+  'възложител/изпълнител по име (толерантно към регистър и кирилица; ПОЛЗВАЙ вместо LIKE/= върху name)\n' +
+  '- {"action":"describe_schema"} — речникът на данните и задължителните правила\n' +
+  '- {"action":"semantic_search","query":"…"} — търсене по смисъл за кандидати\n' +
+  '- {"action":"reconcile_rollup","target":"…","grain":{…},"aggregate":{…},"rollup":{…}} — съгласувай ' +
+  'изчислен брой/сума с обобщен тотал\n' +
+  '- {"action":"emit_report","title":"…","question":"…","blocks":[…]} — финализирай справката (блоковете ' +
+  'реферират хендъли; виж ФОРМАТ НА БЛОКОВЕТЕ по-долу)\n' +
+  'След ВСЯКО действие сървърът връща „РЕЗУЛТАТ …" като съобщение; тогава върни следващия JSON обект. ' +
+  'Когато вече имаш нужните данни, върни emit_report.';
+
+// Ordering rule: the FIRST action for a data question must be run_sql (gather a handle), and emit_report
+// comes only AFTER a real result exists. Without it a weak 27–31B jumps straight to emit_report with no
+// data to bind and burns the step budget on retries.
 export const TOOL_WORKFLOW_RULE =
-  'РАБОТЕН ПОТОК: За въпрос с данни ВИНАГИ първо извикай `run_sql` (изпълни SELECT и получи хендъл ' +
-  'R1…), и едва СЛЕД като имаш реален резултат — `emit_report`, чиито блокове реферират хендъла. НЕ ' +
-  'извиквай `emit_report`, преди да имаш резултат от `run_sql`. НИКОГА не пиши SQL заявката или ' +
-  'извикването на инструмент като текст/код-блок — извиквай инструментите директно.';
+  'РАБОТЕН ПОТОК: За въпрос с данни ПЪРВО върни действие {"action":"run_sql", …} (получаваш хендъл ' +
+  'R1…), и едва СЛЕД като имаш реален резултат — {"action":"emit_report", …}, чиито блокове реферират ' +
+  'хендъла. НЕ връщай emit_report, преди да имаш резултат от run_sql. НИКОГА не пиши SQL заявката или ' +
+  'числа в проза — само чрез JSON действия и реферирани хендъли.';
 
 export const VALUES_BY_REFERENCE_RULE =
   'СТОЙНОСТИ: Никога не пиши числа сам. Блоковете на справката РЕФЕРЕНЦИРАТ хендъли към резултати от ' +
@@ -182,6 +203,7 @@ export function buildSystemPrompt(input: SystemPromptInput = {}): string {
     // weak model applies the resolved dates in its forced first tool call. Omitted when absent — no
     // temporal block, no fabricated date, for pure-aggregate questions.
     input.temporal ? renderTemporalContext(input.temporal) : '',
+    JSON_ACTION_PROTOCOL,
     EMIT_REPORT_POLICY,
     TOOL_WORKFLOW_RULE,
     VALUES_BY_REFERENCE_RULE,
