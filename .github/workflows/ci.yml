@@ -65,6 +65,13 @@ jobs:
       - name: Golden reports
         if: ${{ !cancelled() }}
         run: pnpm test:golden
+      # Docs integrity (#102): fail on a dangling docs reference in source or an
+      # unindexed doc. The checker self-tests first, so the gate is itself gated.
+      - name: Docs integrity
+        if: ${{ !cancelled() }}
+        run: |
+          pnpm check:docs:test
+          pnpm check:docs
       # Root-level tooling (scripts/*.mjs) lives outside the turbo/vitest workspaces, so `pnpm test` never
       # ran its node:test suites. Gate them here — the CI-provisioning + teardown tools (ensure-kv-namespace,
       # teardown-remote, reap-previews, load-eop) are deploy-critical and must stay covered.
