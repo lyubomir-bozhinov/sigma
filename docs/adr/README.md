@@ -15,6 +15,7 @@ Numbering is sequential. Add a new ADR the moment a decision is made — not ret
 | [0005](0005-host-scoped-tls-pinning.md) | Host-scoped TLS SPKI pinning for register.cacbg.bg | Accepted |
 | [0006](0006-crawler-and-persistence-architecture.md) | Crawler + persistence (raw cache → extract; R2 + D1; cron refresh) | Accepted |
 | [0007](0007-two-declaration-templates.md) | Two declaration templates — shares + participation + management + related persons | Accepted |
+| [0008](0008-match-output-layers-and-interpretation.md) | Match output layers (own vs control, temporal, own-institution) + interpretation caveats | Accepted |
 
 Related design docs: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
 [implementation-plans/phase0-related-persons-feasibility.md](../implementation-plans/phase0-related-persons-feasibility.md).

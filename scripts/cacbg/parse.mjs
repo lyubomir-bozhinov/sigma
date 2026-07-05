@@ -179,6 +179,9 @@ export function parseDeclaration(xml) {
   assertNoDoctype(xml);
   const doc = parser.parse(xml);
   if (doc?.PublicPerson) return parseAssets(doc.PublicPerson);
-  if (doc?.PublicPersonDekl2) return parseInterests(doc.PublicPersonDekl2);
+  // interests declaration ships in several template versions (PublicPersonDekl2, Dekl3, …) that differ
+  // only in table NUMBERING — parseInterests classifies tables by @_Description, so it handles them all.
+  const dekl = Object.keys(doc ?? {}).find((k) => /^PublicPersonDekl\d+$/.test(k));
+  if (dekl) return parseInterests(doc[dekl]);
   return { templateType: 'unknown', declarant: '', position: null, work: null, year: null, declarationType: null, controlHash: null, egnPresent: false, familyHoldingCount: 0, interests: [], relatedPersons: [] };
 }

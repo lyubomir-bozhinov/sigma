@@ -105,6 +105,14 @@ test('interests decl: related persons are SEPARATED (never in interests, name on
   assert.equal(d.relatedPersons[0].name, 'Мария Спасова Роднинска');
 });
 
+test('interests template versions (Dekl3) dispatch by root, classify by description not table number', () => {
+  // Dekl3 = same interests decl, tables renumbered 1-9. Management table is T2 here, not T16.
+  const dekl3 = interestsDecl.replace(/PublicPersonDekl2/g, 'PublicPersonDekl3').replace('Num="16"', 'Num="2"');
+  const d = parseDeclaration(dekl3);
+  assert.equal(d.templateType, 'interests');
+  assert.ok(d.interests.some((i) => i.kind === 'management' && i.entity === 'Велми Комерс ООД'));
+});
+
 test('unknown root returns an empty record, not an error', () => {
   const d = parseDeclaration('<?xml version="1.0"?><Something/>');
   assert.equal(d.templateType, 'unknown');
