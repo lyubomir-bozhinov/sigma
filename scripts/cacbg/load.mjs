@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken } from './classify.mjs';
+import { companyCandidates, declaredEiks } from './extract-companies.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DB = process.env.CACBG_DB || path.join(ROOT, 'data/work/backfill.sqlite');
@@ -43,11 +44,45 @@ const suppressed = new Set(savedSuppressions.map((s) => s.link_key));
 // --- bidder index + libel gate ------------------------------------------------------------------
 const bidders = db.prepare('SELECT id, name, eik_normalized eik, eik_valid valid, settlement FROM bidders').all();
 const byKey = new Map();
+const bidderByEik = new Map(); // valid winners, for declared-ЕИК-in-text matching
 for (const b of bidders) {
   const k = companyNameKey(b.name);
   if (!byKey.has(k)) byKey.set(k, new Map());
   byKey.get(k).set(b.eik ?? `name:${b.name}`, b);
+  if (b.eik && b.valid) bidderByEik.set(b.eik, b);
 }
+
+// Resolve a declared entity string to a single winner ЕИК, deterministically. Strongest signal wins:
+//   exact_name_key  — the clean declared name normalizes to exactly one winner ЕИК.
+//   declared_eik    — the official wrote the ЕИК in the text AND the winner's name also appears there
+//                     (cross-check blocks a typo'd ЕИК pointing at the wrong company).
+//   extracted_name  — a „NAME"-ФОРМА pulled from prose normalizes to exactly one winner ЕИК.
+// Returns {eik, method} | {ambiguous:true} | null. Never guesses across >1 ЕИК.
+function resolveEntity(entity) {
+  const key = companyNameKey(entity);
+  const m = byKey.get(key);
+  if (m) {
+    const eiks = new Set([...m.values()].filter((v) => v.eik && v.valid).map((v) => v.eik));
+    if (eiks.size === 1) return { eik: [...eiks][0], method: 'exact_name_key' };
+    if (eiks.size > 1) return { ambiguous: true };
+  }
+  for (const de of declaredEiks(entity)) {
+    const b = bidderByEik.get(de);
+    if (!b) continue;
+    const winnerKey = companyNameKey(b.name);
+    if (key.includes(winnerKey) || companyCandidates(entity).some((c) => companyNameKey(c) === winnerKey)) {
+      return { eik: de, method: 'declared_eik' };
+    }
+  }
+  for (const c of companyCandidates(entity)) {
+    const cm = byKey.get(companyNameKey(c));
+    if (!cm) continue;
+    const eiks = new Set([...cm.values()].filter((v) => v.eik && v.valid).map((v) => v.eik));
+    if (eiks.size === 1) return { eik: [...eiks][0], method: 'extracted_name' };
+  }
+  return null;
+}
+const METHOD_RANK = { exact_name_key: 3, declared_eik: 2, extracted_name: 1 };
 const strictKey = (s) => s.normalize('NFC').toUpperCase().replace(/[\s"„“”«».,\-]/g, '');
 let trueOverMerges = 0;
 for (const [, m] of byKey) {
@@ -72,16 +107,15 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
   insDecl.run(did, pid, h.xmlFile, h.controlHash ?? null, h.folder, h.year ?? null, h.template, h.category ?? '', h.institution ?? '', h.position ?? '', `https://register.cacbg.bg/${h.folder}/${h.xmlFile}`);
   const key = companyNameKey(h.entity);
   insDI.run(`di:${did}:${diN++}`, did, h.entity, key, h.kind, h.detail ?? '', h.timing ?? 'annual', h.seat ?? '');
-  // resolve
-  const m = byKey.get(key);
-  if (!m) { noMatch++; continue; }
-  const valid = [...m.values()].filter((v) => v.eik && v.valid);
-  const eiks = new Set(valid.map((v) => v.eik));
-  if (eiks.size !== 1) { quarantined++; continue; }
-  const eik = [...eiks][0];
+  // resolve (clean name → declared ЕИК → extracted-from-prose name)
+  const res = resolveEntity(h.entity);
+  if (!res || res.ambiguous) { if (res?.ambiguous) quarantined++; else noMatch++; continue; }
+  const eik = res.eik;
+  const bidder = bidderByEik.get(eik);
   const gid = `${pid}|${eik}`;
   let rec = agg.get(gid);
-  if (!rec) rec = agg.set(gid, { pid, eik, bidder: valid[0], person: h.person, key, kinds: new Set(), declYears: new Set(), seats: new Set(), institutions: new Set() }).get(gid);
+  if (!rec) rec = agg.set(gid, { pid, eik, bidder, person: h.person, key: companyNameKey(bidder.name), kinds: new Set(), declYears: new Set(), seats: new Set(), institutions: new Set(), method: res.method }).get(gid);
+  if (METHOD_RANK[res.method] > METHOD_RANK[rec.method]) rec.method = res.method; // strongest evidence wins
   rec.kinds.add(h.kind);
   const y = yr(h.year); if (Number.isFinite(y)) rec.declYears.add(y);
   if (h.seat) rec.seats.add(h.seat);
@@ -144,7 +178,7 @@ for (const rec of agg.values()) {
   const linkKey = `${rec.pid}|${rec.eik}`;
   const status = suppressed.has(linkKey) ? 'suppressed' : tier === 'C_hold' ? 'held' : 'published';
   const yrs = [...years];
-  insLink.run(`il:${linkKey}`, linkKey, rec.pid, rec.bidder.id, rec.eik, rec.key, 'exact_name_key', MATCHER_VERSION,
+  insLink.run(`il:${linkKey}`, linkKey, rec.pid, rec.bidder.id, rec.eik, rec.key, rec.method, MATCHER_VERSION,
     tier, relation, contemporaneous, ownInst, rec.kinds.size,
     declYears.length ? String(Math.min(...declYears)) : null, declYears.length ? String(Math.max(...declYears)) : null,
     cCount, hasValue ? cValue : null, yrs.length ? String(Math.min(...yrs)) : null, yrs.length ? String(Math.max(...yrs)) : null, status);
@@ -174,6 +208,7 @@ const S = {
   own_institution_locality: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='locality'").n,
   published_contract_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published'").v),
   published_own_institution_value_eur: Math.round(one("SELECT COALESCE(SUM(value_eur),0) v FROM interest_link_authorities ila JOIN interest_links il ON il.link_key=ila.link_key WHERE il.status='published' AND ila.own='exact'").v),
+  by_match_method: Object.fromEntries(q('SELECT match_method, COUNT(*) n FROM interest_links GROUP BY match_method').map((r) => [r.match_method, r.n])),
   trueOverMerge_LIBEL_GATE: trueOverMerges, noMatch, quarantined,
 };
 console.log(JSON.stringify(S, null, 2));
