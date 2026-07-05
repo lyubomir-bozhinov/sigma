@@ -98,7 +98,13 @@ So: normalize the declared full name (incl. legal form) → **exact-key match** 
 
 **The one real risk is normalization, not ambiguity.** The declared string and the ЕОП `contractor_name` are entered independently, so "exact match" means exact **after conservative normalization** (case/whitespace/quote/diacritic folding, Cyrillic canonicalization). Normalization **must NOT drop legally-distinguishing tokens** (legal form, ordinals) — national uniqueness guarantees identity only for the *full* фирма, so erasing the form could wrongly merge „АЛФА" ЕООД with „АЛФА" АД (distinct ЕИК). A conservative normalizer that preserves distinguishing tokens makes an exact-key match **= same entity = deterministic**. This is the sole libel surface, and it is **empirically measurable** — Phase 0 runs the normalizer on a labelled sample and measures any over-merge; **the bar is 0 false merges.**
 
-**Auto-published (deterministic, no human):** declared full name normalizes to a key matching **exactly one** `eik_valid=1` bidder. Registry uniqueness guarantees it is that entity. This is the majority path.
+**Auto-published (deterministic, no human):** declared full name normalizes to a key matching **exactly one** `eik_valid=1` bidder. This is the majority path.
+
+**Phase-0 empirical result (measured 2026-07-04, full 2020–2026 corpus):** ran the real pipeline — 73,603 declarations (2017–2025, 99% of fetchable) → 7,744 declared self-holdings → matched against 17,669 contract-winners.
+- **Libel gate PASSED: 0 true normalizer over-merges** (distinct name *strings* folded to one key) on the real winner corpus — the normalizer only ever folds presentation (case/space/quotes).
+- **Headline: 100 officials hold a declared stake in 104 companies that won public contracts** (160 holding-rows incl. annual re-filings). Worked example: a deputy regional governor of Русе declaring „Полис инженеринг" ЕООД, which won from Община Русе.
+- **Correction to the uniqueness assumption (point 2 above is not absolute):** 53 winner keys map to >1 real ЕИК. Cause is *never* the normalizer — it is (a) genuinely **shared generic names** (regional „Водоснабдяване и канализация" ЕООД, „В и К" ООД — municipal monopolies registered per-region, not nationally unique on the bare name) and (b) **source ЕИК typos** (one-digit-off ЕИК for the same фирма). So the deterministic rule is **single-key AND single-winner-ЕИК** (not single-key alone); this quarantined all 53 — **0 leaked into the auto bucket** in this corpus.
+- **Residual risk → a Phase-1 requirement:** a *generic* name with exactly one winner namesake passes the single-ЕИК guard yet may not be globally unique in TR. Before auto-publishing generic-named matches, add a **TR-wide name-uniqueness census** (or a leg-2 per-ЕИК confirmation); distinctive names auto-publish, generic names route to the census/human tail.
 
 **Human tail (the small residue only):**
 - declared name **truncated / missing legal form** → could map to >1 фирма → ambiguous;
@@ -145,6 +151,8 @@ JS resolver → deterministic exact-key matches (auto-published) + ambiguous tai
 ## 7. Architecture fit — honest about what's new
 
 Domain tables + rollups ride the existing pipeline (`normalize-raw.sql` → `precompute.sql` → `ship-domain` → **`assertIntegrity`**). **New infrastructure this genuinely adds** (the "no new infra" claim was wrong): a **resumable, rate-limited, cached crawler** over three external gov registers (one broken-TLS, one rate-limited, one HTML-only); a **JS resolver pass**; a **suppression/correction store** surviving re-import; and **source-schema-drift monitoring** (the integrity gate covers re-import drift, not upstream schema/availability drift across 2020–2026 × annual).
+
+**Refresh = scheduled Cron Worker (not a manual re-run).** The crawler runs as a Cloudflare **Cron-triggered Worker** (fan-out via **Queue**), same operational model as the EOP ingest. Closed years (frozen at source) live permanently in **R2** and are never re-fetched; the trigger only pulls the **current-year delta** — new `xml_file`s and any resubmission whose `control_hash` changed — via the `done`/ETag skip set, so a refresh is a few hundred fetches, not the ~135k full corpus. Cadence per §6.167 (withdrawn/amended declarations + officials leaving office must expire stale `interest_link`s, else a stale link implies a *current* conflict that has ended = live accuracy defect).
 
 **Workspace:** isolated fork worktree off synced `main`; verify on the fork's ephemeral env; product lands upstream via PR per proven phase.
 
