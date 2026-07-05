@@ -1,0 +1,20 @@
+# Architecture Decision Records — Свързани лица (related-persons / conflict-of-interest)
+
+ADRs capture the *why* behind non-obvious, hard-to-reverse decisions for the свързани-лица data
+foundation. One decision per file, Nygard format (Context → Decision → Consequences). Superseding
+happens by writing a new ADR that references the old one; old ADRs stay for the audit trail.
+
+Numbering is sequential. Add a new ADR the moment a decision is made — not retroactively.
+
+| ADR | Title | Status |
+|---|---|---|
+| [0001](0001-scope-and-certainty-bar.md) | Scope & certainty bar (public data, deterministic auto-publish) | Accepted |
+| [0002](0002-deterministic-name-to-eik-resolution.md) | Deterministic name→ЕИК via own bidder data + conservative normalizer | Accepted |
+| [0003](0003-name-uniqueness-guard-and-publish-tiers.md) | Name-uniqueness is not absolute → single-ЕИК guard + publish tiers | Accepted |
+| [0004](0004-pii-posture.md) | PII posture (raw in scratch only; third-party/family internal; EGN stripped) | Accepted |
+| [0005](0005-host-scoped-tls-pinning.md) | Host-scoped TLS SPKI pinning for register.cacbg.bg | Accepted |
+| [0006](0006-crawler-and-persistence-architecture.md) | Crawler + persistence (raw cache → extract; R2 + D1; cron refresh) | Accepted |
+| [0007](0007-two-declaration-templates.md) | Two declaration templates — shares + participation + management + related persons | Accepted |
+
+Related design docs: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
+[implementation-plans/phase0-related-persons-feasibility.md](../implementation-plans/phase0-related-persons-feasibility.md).

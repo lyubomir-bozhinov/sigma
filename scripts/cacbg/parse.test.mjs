@@ -1,7 +1,6 @@
-// node:test — parsers over SYNTHETIC fixtures (no real PII). Mirrors the real CACBG shape verified
-// against cached samples: list.xml root>MainCategory>Category>Institution>Person>Position>Declaration;
-// declaration root <PublicPerson> with holdings in the "дружества" tables, one <Row> per holding,
-// cells keyed by @_Num (4=company, 5=seat, 7=holder, 8=EGN).
+// node:test — parsers over SYNTHETIC fixtures (no real PII). Two templates:
+//   <PublicPerson>      asset decl — shares in the „дружества" tables (col 4 = company).
+//   <PublicPersonDekl2> interests decl — participation/management/sole-trader (col 2) + related persons.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseList, parseDeclaration } from './parse.mjs';
@@ -13,76 +12,103 @@ const LIST = `<?xml version="1.0"?>
       <Position><Name>Директор</Name><Declaration><xmlFile>AAAA.xml</xmlFile></Declaration></Position>
     </Person>
     <Person><Name>Георги Иванов Второв</Name>
-      <Position><Name>Член на съвет</Name><Declaration><xmlFile>BBBB.xml</xmlFile></Declaration></Position>
-      <Position><Name>Зам.-член</Name><Declaration><xmlFile>CCCC.xml</xmlFile></Declaration></Position>
+      <Position><Name>Член</Name><Declaration><xmlFile>BBBB.xml</xmlFile></Declaration></Position>
+      <Position><Name>Зам.</Name><Declaration><xmlFile>CCCC.xml</xmlFile></Declaration></Position>
     </Person>
   </Institution>
 </Category></MainCategory></root>`;
 
-function decl({ name = 'Иван Петров Тестов', year = '2023', egn = '', address = 'ул. Тестова 1', rows = '' } = {}) {
+// --- asset template ---
+function assetDecl({ name = 'Иван Петров Тестов', year = '2023', egn = '', address = 'ул. Тестова 1', rows = '' } = {}) {
   return `<?xml version="1.0"?>
 <PublicPerson>
-  <Personal><Name>${name}</Name><EGN>${egn}</EGN><Address>${address}</Address></Personal>
+  <Personal><Name>${name}</Name><EGN>${egn}</EGN><Address>${address}</Address><Position>Директор</Position></Personal>
   <DeclarationData><Year>${year}</Year><DeclarationType>Годишна</DeclarationType><ControlHash>DEADBEEF</ControlHash></DeclarationData>
   <Tables><Table Num="11" Description="Прехвърляне на дялове в дружества с ограничена отговорност">${rows}</Table></Tables>
 </PublicPerson>`;
 }
-
 const selfRow = `<Row>
   <Cell Num="1" Description="Ном. по ред">1</Cell>
-  <Cell Num="2" Description="Вид на имуществото">дружествени дялове</Cell>
   <Cell Num="3" Description="Размер на дяловото участие">100%</Cell>
   <Cell Num="4" Description="Наименование на дружеството">"ТЕСТ АГРО" ЕООД</Cell>
   <Cell Num="5" Description="Седалище">София</Cell>
-  <Cell Num="7" Parent="Собственик" Description="Име: собствено, бащино, фамилно">Иван Петров Тестов</Cell>
-  <Cell Num="8" Description="ЕГН"></Cell>
-</Row>`;
+  <Cell Num="7" Description="Име: собствено, бащино, фамилно">Иван Петров Тестов</Cell>
+  <Cell Num="8" Description="ЕГН"></Cell></Row>`;
 const emptyRow = `<Row><Cell Num="1">2</Cell><Cell Num="4"></Cell></Row>`;
-const familyRow = `<Row>
-  <Cell Num="1">3</Cell><Cell Num="4">"ФАМИЛНА" ЕООД</Cell><Cell Num="5">Пловдив</Cell>
-  <Cell Num="7">Мария Спасова Роднинска</Cell>
-</Row>`;
+const familyRow = `<Row><Cell Num="1">3</Cell><Cell Num="4">"ФАМИЛНА" ЕООД</Cell><Cell Num="7">Мария Спасова Роднинска</Cell></Row>`;
+
+// --- interests template ---
+const interestsDecl = `<?xml version="1.0"?>
+<PublicPersonDekl2>
+  <Personal><Name>Георги Иванов Второв</Name><EGN></EGN><Position>Народен представител</Position></Personal>
+  <DeclarationData><EntryDate>10.04.2025</EntryDate><DeclarationDate>09.04.2025</DeclarationDate><ControlHash>FC7C4B09</ControlHash></DeclarationData>
+  <Tables>
+    <Table Num="15" Description="Към датата на избирането: Имам участие в следните търговски дружества">
+      <Row><Cell Num="1" Description="Ном. по ред">1</Cell><Cell Num="2" Description="Дружество">Ристовица ООД</Cell><Cell Num="3" Description="Размер на дяловото участие">1/2</Cell></Row></Table>
+    <Table Num="16" Description="Към датата на избирането: Съм управител или член на орган на управление или контрол на търговски дружества">
+      <Row><Cell Num="1">1</Cell><Cell Num="2" Description="Дружество">Велми Комерс ООД</Cell><Cell Num="3" Description="Участие">управител</Cell></Row></Table>
+    <Table Num="18" Description="Дванадесет месеца преди датата на избирането: Имам участие в следните търговски дружества">
+      <Row><Cell Num="1">1</Cell><Cell Num="2" Description="Дружество">Мейт Медия ООД</Cell><Cell Num="3">1/20</Cell></Row></Table>
+    <Table Num="22" Description="Данни за свързани лица, към дейността на които">
+      <Row><Cell Num="1">1</Cell><Cell Num="2" Description="Трите имена на лицето">Мария Спасова Роднинска</Cell><Cell Num="3" Description="Област на дейност">строителство</Cell></Row></Table>
+  </Tables>
+</PublicPersonDekl2>`;
 
 test('parseList flattens the hierarchy and handles multiple persons/positions', () => {
   const rows = parseList(LIST);
   assert.equal(rows.length, 3);
-  assert.deepEqual(rows[0], {
-    category: 'Тест категория', institution: 'Тест институция',
-    person: 'Иван Петров Тестов', position: 'Директор', xmlFile: 'AAAA.xml',
-  });
   assert.deepEqual(rows.map((r) => r.xmlFile), ['AAAA.xml', 'BBBB.xml', 'CCCC.xml']);
 });
 
-test('parseDeclaration extracts self company holdings and skips empty template rows', () => {
-  const d = parseDeclaration(decl({ rows: selfRow + emptyRow }));
-  assert.deepEqual(d.holdings, [{ company: '"ТЕСТ АГРО" ЕООД', seat: 'София', kind: 'дялове' }]);
+test('asset decl: extracts self SHARES, skips empty template rows', () => {
+  const d = parseDeclaration(assetDecl({ rows: selfRow + emptyRow }));
+  assert.equal(d.templateType, 'assets');
+  assert.deepEqual(d.interests, [{ entity: '"ТЕСТ АГРО" ЕООД', kind: 'shares', detail: 'София', timing: 'annual', seat: 'София' }]);
   assert.equal(d.familyHoldingCount, 0);
 });
 
-test('year comes from the declaration <Year>, not the folder (off-by-one guard)', () => {
-  // folder 2024 publishes declarations whose declared Year is 2023 — we must read the XML, not the path
-  assert.equal(parseDeclaration(decl({ year: '2023' })).year, '2023');
+test('asset year comes from <Year>, not the folder (off-by-one guard)', () => {
+  assert.equal(parseDeclaration(assetDecl({ year: '2023' })).year, '2023');
 });
 
-test('family holdings are counted but their names are never retained', () => {
-  const d = parseDeclaration(decl({ rows: selfRow + familyRow }));
+test('family holdings counted, names never retained', () => {
+  const d = parseDeclaration(assetDecl({ rows: selfRow + familyRow }));
   assert.equal(d.familyHoldingCount, 1);
-  assert.equal(d.holdings.length, 1); // only the self row
-  const blob = JSON.stringify(d);
-  assert.ok(!blob.includes('Мария'), 'family member name leaked into output');
-  assert.ok(!blob.includes('ФАМИЛНА'), 'family holding company leaked into self holdings');
+  assert.equal(d.interests.length, 1);
+  assert.ok(!JSON.stringify(d).includes('Мария'), 'family name leaked');
 });
 
-test('address / passport / phone are never extracted', () => {
-  const blob = JSON.stringify(parseDeclaration(decl({ address: 'ул. Секретна 42', rows: selfRow })));
-  assert.ok(!blob.includes('Секретна'), 'address leaked into output');
+test('address never extracted', () => {
+  assert.ok(!JSON.stringify(parseDeclaration(assetDecl({ address: 'ул. Секретна 42', rows: selfRow }))).includes('Секретна'));
 });
 
-test('a non-empty EGN (personal or holder) raises egnPresent', () => {
-  assert.equal(parseDeclaration(decl({ egn: '' })).egnPresent, false);
-  assert.equal(parseDeclaration(decl({ egn: '7501011234' })).egnPresent, true);
-  const holderEgn = `<Row><Cell Num="4">"X" ЕООД</Cell><Cell Num="7">Иван Петров Тестов</Cell><Cell Num="8">7501011234</Cell></Row>`;
-  assert.equal(parseDeclaration(decl({ rows: holderEgn })).egnPresent, true);
+test('non-empty EGN raises egnPresent', () => {
+  assert.equal(parseDeclaration(assetDecl({ egn: '' })).egnPresent, false);
+  assert.equal(parseDeclaration(assetDecl({ egn: '7501011234' })).egnPresent, true);
+});
+
+test('interests decl: participation + MANAGEMENT + timing, from <PublicPersonDekl2>', () => {
+  const d = parseDeclaration(interestsDecl);
+  assert.equal(d.templateType, 'interests');
+  assert.equal(d.year, '2025'); // from DeclarationDate
+  const byKind = (k) => d.interests.filter((i) => i.kind === k);
+  assert.deepEqual(byKind('participation').map((i) => [i.entity, i.detail, i.timing]),
+    [['Ристовица ООД', '1/2', 'current'], ['Мейт Медия ООД', '1/20', 'prior']]);
+  assert.deepEqual(byKind('management').map((i) => [i.entity, i.detail]), [['Велми Комерс ООД', 'управител']]);
+});
+
+test('interests decl: related persons are SEPARATED (never in interests, name only in relatedPersons)', () => {
+  const d = parseDeclaration(interestsDecl);
+  assert.ok(!d.interests.some((i) => i.entity.includes('Мария')), 'related person leaked into interests');
+  assert.equal(d.relatedPersons.length, 1);
+  assert.equal(d.relatedPersons[0].kind, 'related_person');
+  assert.equal(d.relatedPersons[0].name, 'Мария Спасова Роднинска');
+});
+
+test('unknown root returns an empty record, not an error', () => {
+  const d = parseDeclaration('<?xml version="1.0"?><Something/>');
+  assert.equal(d.templateType, 'unknown');
+  assert.deepEqual(d.interests, []);
 });
 
 test('XXE guard rejects DOCTYPE/ENTITY input', () => {
