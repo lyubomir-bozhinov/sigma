@@ -5,9 +5,10 @@
 // `wrangler deploy` needs the real IDs — this script substitutes them from env vars and
 // writes a sibling `wrangler.deploy.<ext>` that the package `deploy` script passes via
 // `--config`. Optional deploy-time name env vars (`SIGMA_WEB_NAME`, `SIGMA_ETL_NAME`,
-// `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`, `SIGMA_CSV_CACHE_NAME`, `SIGMA_REPORTS_NAME`) explicitly
-// override resource names for alternate environments while leaving committed names unchanged when
-// unset.
+// `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`, `SIGMA_CSV_CACHE_NAME`, `SIGMA_REPORTS_NAME`,
+// `SIGMA_VECTORIZE_NAME`) explicitly override resource names for alternate environments while
+// leaving committed names unchanged when unset. Deploy-time freshness/kill-switch overrides
+// (`SIGMA_BUILD_ID`, `SIGMA_ASSISTANT_ENABLED`) stamp the assistant's committed defaults.
 //
 // usage: node scripts/wrangler-render.mjs <path/to/wrangler.toml|jsonc>
 
@@ -69,6 +70,7 @@ if (ext === '.json' || ext === '.jsonc') {
     d1Name: process.env.SIGMA_D1_NAME || '',
     csvCacheName: process.env.SIGMA_CSV_CACHE_NAME || '',
     reportsName: process.env.SIGMA_REPORTS_NAME || '',
+    vectorizeName: process.env.SIGMA_VECTORIZE_NAME || '',
     // Per-build dedup freshness `c` (commit sha at deploy). Committed value is the constant "dev"; without
     // a real per-build value the dedup cache's code-version leg is dead — a report-shape/FX code change
     // wouldn't bust cached reports, and dev + every preview (which share ONE sigma-dedup-dev namespace and
@@ -85,6 +87,7 @@ if (ext === '.json' || ext === '.jsonc') {
     names.d1Name ||
     names.csvCacheName ||
     names.reportsName ||
+    names.vectorizeName ||
     names.buildId ||
     names.assistantEnabled
   ) {
@@ -166,6 +169,12 @@ function renderJson(text, names) {
       if (names.csvCacheName && bucket.binding === 'CSV_CACHE')
         bucket.bucket_name = names.csvCacheName;
       if (names.reportsName && bucket.binding === 'REPORTS') bucket.bucket_name = names.reportsName;
+    }
+  }
+  // Rename the Vectorize index per environment (upstream): isolate each env's index by name.
+  if (names.vectorizeName && Array.isArray(obj.vectorize)) {
+    for (const index of obj.vectorize) {
+      if (index && typeof index === 'object') index.index_name = names.vectorizeName;
     }
   }
   // Stamp the real per-build dedup freshness `c` over the committed "dev" constant.

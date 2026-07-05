@@ -92,6 +92,8 @@ jobs:
       SIGMA_WORKFLOW_NAME: ${{ vars.SIGMA_WORKFLOW_NAME }}
       SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
+      SIGMA_REPORTS_NAME: ${{ vars.SIGMA_REPORTS_NAME }}
+      SIGMA_VECTORIZE_NAME: ${{ vars.SIGMA_VECTORIZE_NAME }}
       # Per-build dedup freshness `c` — wrangler-render stamps this over the committed "dev" so a code-only
       # deploy (report shape / FX / CPV logic) busts the report cache, and each env's build keys stay distinct.
       SIGMA_BUILD_ID: ${{ github.sha }}
@@ -141,6 +143,8 @@ jobs:
           check "$SIGMA_WORKFLOW_NAME"  sigma-refresh   SIGMA_WORKFLOW_NAME
           check "$SIGMA_D1_NAME"        sigma           SIGMA_D1_NAME
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
+          check "$SIGMA_REPORTS_NAME"   sigma-reports   SIGMA_REPORTS_NAME
+          check "$SIGMA_VECTORIZE_NAME" sigma-assistant SIGMA_VECTORIZE_NAME
           [ "$fail" = 0 ] || { echo "Refusing to deploy '${{ needs.detect.outputs.env }}' with production resource names."; exit 1; }
 
       # GitOps: enforce this environment's report-dedup KV namespace from git (idempotent create-if-absent)
