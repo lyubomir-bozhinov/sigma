@@ -25,9 +25,16 @@ labelled signals — deterministic unless marked heuristic:
 3. **Temporal validity.** Asset declarations are annual snapshots; a match is `contemporaneous` only when
    a contract year falls within the declared-holding year span. `after_last_decl` / `before_first_decl`
    are *not* claimed as current conflicts.
-4. **Own-institution overlap** — the strongest lead. **Deterministic** when the official's institution
-   name equals a buying authority; a **disclosed locality heuristic** (same town, e.g. Област-Русе ↔
-   Община Русе) otherwise, labelled `locality` and never presented as proof.
+4. **Own-institution overlap** — the strongest lead. Authority names are sometimes `;`-joined framework
+   blobs, so each is split into components. Verdict, strongest-wins: `exact` (deterministic name equality)
+   > `name_contains` (disclosed heuristic — a ≥12-char institution name that is a normalized substring of
+   an authority component, e.g. „Горна Малина" ⊂ „ОБЩИНА ГОРНА МАЛИНА") > `locality` (disclosed same-town
+   heuristic) > `none`. Only `exact` is presented as proof; the rest are labelled candidates.
+5. **Contract facts (deterministic quantification).** Each link carries the linked winner's
+   `contract_count`, `contract_value_eur` (SUM of `amount_eur`, the safe-to-sum canonical value;
+   value_suspect excluded), and contract-year span; a per-authority breakdown (`interest_link_authorities`)
+   records which public bodies bought, how much, and which is the official's own. This turns a bare link
+   into "official manages a company that won €X across N contracts, €Y of it from their own institution."
 
 **Interpretation caveat (must ride with every published lead):** a match is a *declared, factual* link,
 NOT a finding of wrongdoing. Some are legitimate **ex-officio** roles (e.g. a central-bank official on

@@ -63,6 +63,12 @@ CREATE TABLE interest_links (
   evidence_count    INTEGER NOT NULL DEFAULT 1,   -- # declared_interests supporting this link
   first_declared_year TEXT,
   last_declared_year  TEXT,
+  -- contract facts for the linked winner (deterministic; amount_eur is the SAFE-to-sum canonical value,
+  -- value_suspect contracts excluded). Quantifies how much public money the official's company received.
+  contract_count      INTEGER NOT NULL DEFAULT 0,
+  contract_value_eur  REAL,                        -- SUM(contracts.amount_eur); NULL if none summable
+  first_contract_year TEXT,
+  last_contract_year  TEXT,
   status            TEXT NOT NULL DEFAULT 'held', -- published | held | suppressed
   verified_by       TEXT,
   verified_at       TEXT,
@@ -71,6 +77,20 @@ CREATE TABLE interest_links (
 CREATE INDEX idx_interest_links_eik ON interest_links(eik);
 CREATE INDEX idx_interest_links_status ON interest_links(status);
 CREATE INDEX idx_interest_links_person ON interest_links(person_id);
+
+-- Per-buying-authority breakdown for each link: which public bodies bought from the official's company,
+-- how much, and whether the body is the official's OWN institution (the strongest conflict signal).
+-- Authority `name` in the winner data is sometimes a ';'-joined framework blob — split into components.
+CREATE TABLE interest_link_authorities (
+  link_key       TEXT NOT NULL REFERENCES interest_links(link_key),
+  authority_id   TEXT NOT NULL REFERENCES authorities(id),
+  authority_name TEXT NOT NULL,             -- the matched name component
+  contract_count INTEGER NOT NULL DEFAULT 0,
+  value_eur      REAL,
+  own            TEXT NOT NULL DEFAULT 'none', -- exact (deterministic) | locality (heuristic) | none
+  PRIMARY KEY (link_key, authority_id)
+);
+CREATE INDEX idx_ila_authority ON interest_link_authorities(authority_id);
 
 -- Contested/corrected links that MUST stay removed across refreshes (ADR-0001 correction path).
 CREATE TABLE link_suppressions (

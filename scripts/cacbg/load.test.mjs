@@ -33,9 +33,10 @@ before(() => {
     CREATE TABLE bidders(id TEXT PRIMARY KEY, name TEXT, eik_normalized TEXT, eik_valid INT, settlement TEXT);
     CREATE TABLE authorities(id TEXT PRIMARY KEY, name TEXT);
     CREATE TABLE tenders(id TEXT PRIMARY KEY, authority_id TEXT);
-    CREATE TABLE contracts(id TEXT PRIMARY KEY, tender_id TEXT, bidder_id TEXT, signed_at TEXT);
-    INSERT INTO authorities VALUES ('auth:1','ТЕСТ ВЕДОМСТВО'),('auth:2','ДРУГО ВЕДОМСТВО');
-    INSERT INTO tenders VALUES ('t1','auth:1'),('t2','auth:2');
+    CREATE TABLE contracts(id TEXT PRIMARY KEY, tender_id TEXT, bidder_id TEXT, signed_at TEXT, amount_eur REAL);
+    -- auth:3 is a ';'-joined framework blob whose component matches Иван's institution → tests the split
+    INSERT INTO authorities VALUES ('auth:1','ТЕСТ ВЕДОМСТВО'),('auth:2','ДРУГО ВЕДОМСТВО'),('auth:3','ОБЩИНА А; ТЕСТ ВЕДОМСТВО; ОБЩИНА Б');
+    INSERT INTO tenders VALUES ('t1','auth:1'),('t2','auth:2'),('t3','auth:3');
     -- distinctive winner (number token) → tier B
     INSERT INTO bidders VALUES ('eik:111111119','ДИСТИНКТ ТЕХ 7 ЕООД','111111119',1,'София');
     -- generic name shared by TWO ЕИК → collision, must be quarantined
@@ -43,8 +44,9 @@ before(() => {
     INSERT INTO bidders VALUES ('eik:333333338','Генерик ООД','333333338',1,'Варна');
     -- generic single-ЕИК winner with a seat → tier A when declared seat matches, tier C when not
     INSERT INTO bidders VALUES ('eik:444444447','СИЙ АД','444444447',1,'Бургас');
-    INSERT INTO contracts VALUES ('c1','t1','eik:111111119','2023-05-01'); -- ДИСТИНКТ sold to ТЕСТ ВЕДОМСТВО
-    INSERT INTO contracts VALUES ('c2','t2','eik:444444447','2022-03-01');
+    INSERT INTO contracts VALUES ('c1','t1','eik:111111119','2023-05-01',100000); -- ДИСТИНКТ ← ТЕСТ ВЕДОМСТВО
+    INSERT INTO contracts VALUES ('c3','t3','eik:111111119','2024-06-01',25000);  -- ДИСТИНКТ ← blob (own via split)
+    INSERT INTO contracts VALUES ('c2','t2','eik:444444447','2022-03-01',50000);
   `);
   db.close();
 
@@ -77,6 +79,14 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(ivan.relation, 'manages');
   assert.equal(ivan.own_institution, 'exact');
   assert.equal(ivan.contemporaneous, 1);
+  // contract facts: both of ДИСТИНКТ's contracts summed deterministically
+  assert.equal(ivan.contract_count, 2);
+  assert.equal(ivan.contract_value_eur, 125000);
+  assert.equal(ivan.first_contract_year, '2023');
+  // semicolon-blob authority matched by component split → own='exact', with its value
+  const blob = db.prepare("SELECT * FROM interest_link_authorities WHERE link_key=? AND authority_id='auth:3'").get(ivan.link_key);
+  assert.equal(blob.own, 'exact');
+  assert.equal(blob.value_eur, 25000);
 
   // collision name → no link at all
   assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links WHERE eik IN (?,?)').get('222222229', '333333338').n, 0);
