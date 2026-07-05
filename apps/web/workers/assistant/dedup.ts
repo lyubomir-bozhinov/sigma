@@ -177,7 +177,7 @@ function canonicalJson(value: unknown): string {
 }
 
 /** NFC-normalise, collapse internal whitespace, trim. Case is preserved (Cyrillic-meaning safe). */
-function normalizeText(value: string): string {
+export function normalizeText(value: string): string {
   return value.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 

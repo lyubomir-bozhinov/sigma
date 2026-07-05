@@ -43,6 +43,14 @@ jobs:
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
       # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
       SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+      # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the
+      # dev D1 (identical data version), so the build id is the ONLY discriminator — stamping the head sha
+      # keeps each preview's (and the dev env's) dedup keys distinct, so no preview can cross-serve reports.
+      SIGMA_BUILD_ID: ${{ github.event.pull_request.head.sha }}
+      # A preview exists to exercise the assistant, so opt it IN over the committed fail-dark "false"
+      # (wrangler-render stamps ASSISTANT_ENABLED). TURNSTILE_SECRET stays unset here, so the edge gate is a
+      # no-op — a preview has no bot-check widget.
+      SIGMA_ASSISTANT_ENABLED: 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -80,6 +88,16 @@ jobs:
           check "$SIGMA_D1_NAME"        sigma           SIGMA_D1_NAME
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || exit 1
+
+      # GitOps: enforce the shared dev report-dedup KV namespace from git (idempotent create-if-absent) and
+      # hand its id to wrangler-render via SIGMA_DEDUP_KV_ID. Previews share the single `sigma-dedup-dev`
+      # namespace with the dev env — the freshness token folded into every dedup key (dedup-request.ts)
+      # isolates entries per build/data version, so one shared namespace can never cross-serve reports.
+      - name: Ensure DEDUP_KV namespace (shared dev)
+        run: |
+          id="$(node scripts/ensure-kv-namespace.mjs sigma-dedup-dev)"
+          echo "::add-mask::$id"
+          echo "SIGMA_DEDUP_KV_ID=$id" >> "$GITHUB_ENV"
 
       - name: Deploy preview worker
         id: deploy

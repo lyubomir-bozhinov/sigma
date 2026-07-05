@@ -7,8 +7,8 @@
 // Producer-side adapters turn F2 single-flight outcomes into wire parts; this module is
 // the single source of truth for the Bulgarian user-facing copy. When the seam converges,
 // the *_PART / *Data / *Part / is*Part surface graduates verbatim into assistant-contract.
-import type { DedupLayer } from './dedup';
-import type { ProgressEvent, ProgressPhase, ResolveOutcome } from './single-flight';
+import type { DedupHit, DedupLayer } from './dedup';
+import type { ProgressEvent, ProgressPhase } from './single-flight';
 
 export const DEDUP_PART = 'data-dedup' as const;
 export const PROGRESS_PART = 'data-progress' as const;
@@ -56,17 +56,16 @@ export const PROGRESS_LABELS_BG: Record<ProgressPhase, string> = {
 };
 
 /**
- * Map an F2 resolve outcome to a `data-dedup` part. Returns `null` when the report was
- * freshly generated (nothing to signal) or when the outcome lacks a layer to attribute.
+ * Map a dedup cache hit (fast-path `resolveReport` or a coordinator `claim` 'hit') to a `data-dedup`
+ * part — the single stream part the route emits when it serves an existing report without generating.
  */
-export function dedupPart(outcome: ResolveOutcome): DedupPart | null {
-  if (!outcome.deduped || outcome.layer === undefined) return null;
+export function dedupPart(hit: DedupHit): DedupPart {
   return {
     type: DEDUP_PART,
     data: {
-      reportId: outcome.reportId,
-      createdAt: outcome.createdAt,
-      layer: outcome.layer,
+      reportId: hit.reportId,
+      createdAt: hit.createdAt,
+      layer: hit.layer,
       label: DEDUP_LABEL_BG,
     },
   };

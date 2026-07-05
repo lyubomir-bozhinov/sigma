@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { DedupLayer } from './dedup';
-import type { ProgressEvent, ProgressPhase, ResolveOutcome } from './single-flight';
+import type { DedupHit, DedupLayer } from './dedup';
+import type { ProgressEvent, ProgressPhase } from './single-flight';
 import {
   DEDUP_LABEL_BG,
   DEDUP_PART,
@@ -16,17 +16,11 @@ const ALL_LAYERS: DedupLayer[] = ['L0', 'L1', 'L2', 'L2.5', 'L3'];
 const ALL_PHASES: ProgressPhase[] = ['planning', 'querying', 'composing', 'binding'];
 
 describe('dedupPart', () => {
-  it('maps a deduped outcome to a data-dedup part with BG label', () => {
-    const outcome: ResolveOutcome = {
-      reportId: 'rep_1',
-      createdAt: '2026-06-26T10:00:00Z',
-      deduped: true,
-      layer: 'L2',
-    };
-    const part = dedupPart(outcome);
-    expect(part).not.toBeNull();
-    expect(part!.type).toBe(DEDUP_PART);
-    expect(part!.data).toEqual({
+  it('maps a cache hit to a data-dedup part with BG label', () => {
+    const hit: DedupHit = { reportId: 'rep_1', createdAt: '2026-06-26T10:00:00Z', layer: 'L2' };
+    const part = dedupPart(hit);
+    expect(part.type).toBe(DEDUP_PART);
+    expect(part.data).toEqual({
       reportId: 'rep_1',
       createdAt: '2026-06-26T10:00:00Z',
       layer: 'L2',
@@ -36,17 +30,9 @@ describe('dedupPart', () => {
 
   it('preserves the hit layer for every layer', () => {
     for (const layer of ALL_LAYERS) {
-      const part = dedupPart({ reportId: 'r', createdAt: 't', deduped: true, layer });
-      expect(part?.data.layer).toBe(layer);
+      const part = dedupPart({ reportId: 'r', createdAt: 't', layer });
+      expect(part.data.layer).toBe(layer);
     }
-  });
-
-  it('returns null for a freshly generated (non-deduped) outcome', () => {
-    expect(dedupPart({ reportId: 'r', createdAt: 't', deduped: false })).toBeNull();
-  });
-
-  it('returns null when a deduped outcome carries no layer to attribute', () => {
-    expect(dedupPart({ reportId: 'r', createdAt: 't', deduped: true })).toBeNull();
   });
 });
 

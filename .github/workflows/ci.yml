@@ -52,9 +52,22 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() }}
         run: pnpm typecheck
+      # `pnpm test` also runs the assistant adversarial suites — the two-layer SQL guard
+      # (sql-guard-adversarial), the EXPLAIN-opcode allowlist (sql-opcode-guard), and the
+      # prompt-injection boundary tests (system-prompt / tool-results / chat-input) — so a regression in
+      # any read-only / injection defence blocks merge (launch gate §9.9, issue #83).
       - name: Test
         if: ${{ !cancelled() }}
         run: pnpm test
+      # Launch gate §9.9 (issue #83): replays the golden report fixtures through the real bind/reconcile
+      # pipeline and asserts A–E2 (canonical amount_eur, default filters, rollup reconciliation, no prose
+      # figures). Blocking, so a model / schema / prompt change can't silently regress a published report.
       - name: Golden reports
         if: ${{ !cancelled() }}
         run: pnpm test:golden
+      # Root-level tooling (scripts/*.mjs) lives outside the turbo/vitest workspaces, so `pnpm test` never
+      # ran its node:test suites. Gate them here — the CI-provisioning + teardown tools (ensure-kv-namespace,
+      # teardown-remote, reap-previews, load-eop) are deploy-critical and must stay covered.
+      - name: Script tests
+        if: ${{ !cancelled() }}
+        run: node --test scripts/*.test.mjs

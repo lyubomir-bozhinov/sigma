@@ -25,6 +25,11 @@ describe('buildSystemPrompt', () => {
     expect(buildSystemPrompt()).toContain(RECONCILE_RULE);
   });
 
+  it('nudges the model away from prose markdown tables toward emit_report', () => {
+    // The dock now renders markdown, but a wide table belongs in a bound report, not chat prose.
+    expect(buildSystemPrompt()).toContain('маркдаун таблица');
+  });
+
   it('forbids disclosing SQL / column / tool internals in prose and report blocks (one folded rule)', () => {
     expect(buildSystemPrompt()).toContain(NO_INTERNAL_FIELDS_RULE);
   });

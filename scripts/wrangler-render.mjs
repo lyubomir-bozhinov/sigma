@@ -18,6 +18,9 @@ import { basename, dirname, extname, join } from 'node:path';
 // the values come from the environment at deploy time. Add a row to extend (e.g. a future KV).
 const SENTINELS = {
   '00000000-0000-0000-0000-000000000000': 'SIGMA_D1_ID', // D1 database_id (UUID v4 shape)
+  // DEDUP_KV namespace id (32-hex shape). Provisioned idempotently in CI by scripts/ensure-kv-namespace.mjs
+  // (one namespace per env — dev shared with previews, staging, prod), which exports SIGMA_DEDUP_KV_ID.
+  '00000000000000000000000000000000': 'SIGMA_DEDUP_KV_ID',
 };
 
 // Required at deploy: every rate limiter the worker relies on must be bound, and Cloudflare requires
@@ -66,8 +69,25 @@ if (ext === '.json' || ext === '.jsonc') {
     d1Name: process.env.SIGMA_D1_NAME || '',
     csvCacheName: process.env.SIGMA_CSV_CACHE_NAME || '',
     reportsName: process.env.SIGMA_REPORTS_NAME || '',
+    // Per-build dedup freshness `c` (commit sha at deploy). Committed value is the constant "dev"; without
+    // a real per-build value the dedup cache's code-version leg is dead — a report-shape/FX code change
+    // wouldn't bust cached reports, and dev + every preview (which share ONE sigma-dedup-dev namespace and
+    // the same dev D1 data version) would compute identical freshness tokens and cross-serve each other's
+    // reports. Injecting the sha makes each build's keys distinct, so the shared namespace is safe.
+    buildId: process.env.SIGMA_BUILD_ID || '',
+    // Master kill switch override (#83). Committed value is "false" (fail dark); an environment opts the
+    // assistant IN by setting SIGMA_ASSISTANT_ENABLED (preview + dev = "true"). Unset → committed "false"
+    // stays, so staging/production remain dark until deliberately flipped at go-live.
+    assistantEnabled: process.env.SIGMA_ASSISTANT_ENABLED || '',
   };
-  if (names.webName || names.d1Name || names.csvCacheName || names.reportsName) {
+  if (
+    names.webName ||
+    names.d1Name ||
+    names.csvCacheName ||
+    names.reportsName ||
+    names.buildId ||
+    names.assistantEnabled
+  ) {
     out = renderJson(out, names);
   }
   // Most rate limiters fail OPEN at runtime (apps/web/workers/rate-limit.ts), so a missing binding or a
@@ -148,6 +168,11 @@ function renderJson(text, names) {
       if (names.reportsName && bucket.binding === 'REPORTS') bucket.bucket_name = names.reportsName;
     }
   }
+  // Stamp the real per-build dedup freshness `c` over the committed "dev" constant.
+  if (names.buildId && obj.vars && typeof obj.vars === 'object') obj.vars.BUILD_ID = names.buildId;
+  // Opt this environment's assistant IN over the committed fail-dark "false".
+  if (names.assistantEnabled && obj.vars && typeof obj.vars === 'object')
+    obj.vars.ASSISTANT_ENABLED = names.assistantEnabled;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 

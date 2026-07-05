@@ -2,7 +2,7 @@
 // agent turn (the chat model via the AI Gateway + the read-only tool loop) and stream the result
 // back. The server is stateless (spec §5) — nothing per-user is persisted here.
 
-import type { UIMessage } from 'ai';
+import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from 'ai';
 import type { Route } from './+types/assistant.chat';
 import { runAssistant, type AgentEnv } from '../lib/assistant/agent';
 import {
@@ -11,11 +11,21 @@ import {
   type EmbeddingRunner,
   type VectorIndex,
 } from '../lib/assistant/rag';
-import { resolveRowsReadBudget, type ToolContext } from '../lib/assistant/tools';
+import {
+  resolveRowsReadBudget,
+  resolveSqlTimeoutMs,
+  type ToolContext,
+} from '../lib/assistant/tools';
 import { selectClientMessages } from '../lib/assistant/chat-input';
 import { firstPartyRejection } from '../lib/assistant/request-guard';
 import { turnstileRejection } from '../lib/assistant/turnstile';
 import { resolveTemporalContext } from '../lib/assistant/temporal';
+import { assistantEnabled } from '../lib/assistant/enabled';
+import { freshnessVersion } from '../lib/csv-export';
+import { freshnessToken, type DedupHit } from '../../workers/assistant/dedup';
+import { buildDedupRequest, type DedupRequest } from '../../workers/assistant/dedup-request';
+import { dedupPart } from '../../workers/assistant/dedup-stream';
+import { rateLimitBgGptGlobal } from '../../workers/bggpt-global-rate-limit';
 
 function latestUserText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -41,7 +51,40 @@ function messageTextChars(m: UIMessage): number {
     .reduce((n, p) => n + p.text.length, 0);
 }
 
+// Client dedup fields are a trust boundary (dedup.ts caller contract): bound + charset-check before they
+// key the cache. clientRequestId is an opaque idempotency token; filterContext is folded into the L1 key.
+const CLIENT_REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
+const MAX_FILTER_CONTEXT_CHARS = 512;
+
+function parseClientRequestId(value: unknown): string | undefined {
+  return typeof value === 'string' && CLIENT_REQUEST_ID_RE.test(value) ? value : undefined;
+}
+
+function parseFilterContext(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= MAX_FILTER_CONTEXT_CHARS ? trimmed : undefined;
+}
+
+// A standalone UI-message stream carrying ONLY the `data-dedup` part — served when an existing report
+// satisfies the turn. One curated part, so it needs no phase filter (that seam strips the model's tool
+// traffic; there is none here). The dock renders the "reuse existing report" affordance from it (3c).
+function dedupResponse(hit: DedupHit): Response {
+  const stream = createUIMessageStream<UIMessage>({
+    execute: ({ writer }) => {
+      writer.write(dedupPart(hit));
+    },
+  });
+  return createUIMessageStreamResponse({ stream });
+}
+
 export async function action({ request, context }: Route.ActionArgs) {
+  // Launch gate FIRST — a dark assistant does no work, spends nothing, and reveals no behaviour. Checked
+  // before the CSRF guard / body read so a held-back or killed endpoint is the cheapest possible reject.
+  if (!assistantEnabled(context.cloudflare.env.ASSISTANT_ENABLED)) {
+    return Response.json({ error: 'Асистентът не е активен.' }, { status: 503 });
+  }
+
   // First-party guard BEFORE buffering the body: a cross-site page must not be able to start a paid BgGPT
   // turn from a victim's browser (CSRF → denial-of-wallet). Requiring application/json forces a preflight
   // on any cross-origin fetch (never green-lit) and blocks <form> CSRF (review #80, lyubomir-bozhinov).
@@ -70,12 +113,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
     return Response.json({ error: 'историята е твърде голяма' }, { status: 413 });
   }
-  let parsed: { messages?: UIMessage[] };
+  let parsed: { messages?: UIMessage[]; clientRequestId?: unknown; filterContext?: unknown };
   try {
-    parsed = JSON.parse(raw) as { messages?: UIMessage[] };
+    parsed = JSON.parse(raw) as typeof parsed;
   } catch {
     return Response.json({ error: 'невалиден JSON' }, { status: 400 });
   }
+  // Optional dedup fields (sent by the dock from 3c; absent today). Validated at this boundary.
+  const clientRequestId = parseClientRequestId(parsed.clientRequestId);
+  const filterContext = parseFilterContext(parsed.filterContext);
   // Keep only the user/assistant turns the dock sends, most-recent first — drops any client-supplied
   // `system`/`tool` message that would otherwise reach BgGPT as a second system instruction (review #80,
   // red-team R1). See selectClientMessages for why filtering precedes the recency slice.
@@ -120,6 +166,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     // calls. `LIMIT` caps only returned rows; D1 bills on rows scanned.
     rowsRead: 0,
     rowsReadBudget: resolveRowsReadBudget(env.D1_ROWS_READ_BUDGET),
+    // Per-query wall-time bound for run_sql (§9.4, gate #83).
+    sqlTimeoutMs: resolveSqlTimeoutMs(env.RUN_SQL_TIMEOUT_MS),
     // R2 bucket for report persistence (Lane C4). Optional — absent until the REPORTS binding is deployed.
     reports: env.REPORTS,
   };
@@ -143,7 +191,81 @@ export async function action({ request, context }: Route.ActionArgs) {
     ? (resolveTemporalContext(question, new Date()) ?? undefined)
     : undefined;
 
+  // ── Report dedup (Lane F) ──────────────────────────────────────────────────────────────────────
+  // Collapse concurrent identical questions onto ONE generation and serve an existing report when the
+  // underlying data is unchanged. Fully optional: with the KV / DO bindings absent (local dev, an
+  // unprovisioned deploy) the assistant still runs — every turn just generates. Fail toward regeneration
+  // on every uncertain branch (a GC'd artifact, a driver crash, a stale freshness token all → regenerate).
+  const flightNs = env.REPORT_SINGLE_FLIGHT;
+  let dedup: DedupRequest | null = null;
+  let freshness = '';
+  if (env.DEDUP_KV && flightNs && question) {
+    // Reuse csv-export's exact derivation of `home_totals.refreshed_at` so both caches invalidate in
+    // lockstep. `freshnessVersion` returns the sentinel 'v0' when the data version is UNKNOWN (home_totals
+    // absent / unrefreshed — a bootstrap or ETL-gap window). Under a fixed epoch a report cached now would
+    // still validate after the data changes but before refreshed_at updates → a stale serve (strict
+    // review). So when the version is unknown we DON'T dedup: every request generates (fail toward
+    // regeneration) until a real refreshed_at lands.
+    const dataVersion = await freshnessVersion(env.DB);
+    if (dataVersion !== 'v0') {
+      freshness = freshnessToken({ refreshedAt: dataVersion, buildId: env.BUILD_ID ?? 'dev' });
+      dedup = buildDedupRequest({
+        clientRequestId,
+        prompt: question,
+        // L1 dedup is restricted to an explicitly-resolved, SETTLED period. `period` absent (all-time / no
+        // date phrase) → skip L1. A still-settling period (recencyCaveat: „за 2026" mid-year) → skip L1, so
+        // a NAMED partial window is never served from a within-epoch-stale cache. „2025" in 2026 → dedups.
+        period: temporal?.primary,
+        periodSettling: temporal?.primary.recencyCaveat,
+        filterContext,
+        freshness,
+      });
+    }
+  }
+
+  const cfCtx = context.cloudflare.ctx;
+  const isProd = import.meta.env.PROD;
   try {
+    if (flightNs && dedup && dedup.doName) {
+      const { payloads } = dedup;
+      const stub = flightNs.get(flightNs.idFromName(dedup.doName));
+      const claim = await stub.claimAndWait(dedup.signals, freshness);
+      if (claim.kind === 'hit' || claim.kind === 'ready') {
+        // 'ready' = a concurrent driver just generated it; attribute it to the layer the DO collapsed on
+        // (the doName prefix — L0 when L1 was unsafe), for accurate telemetry, not a hardcoded 'L1'.
+        // A cache hit is FREE — it never consults the global breaker (else a viral report link would trip
+        // the DoW cap on requests that cost nothing to serve, defeating this whole dedup lane).
+        const layer =
+          claim.kind === 'hit' ? claim.layer : dedup.doName.startsWith('L0|') ? 'L0' : 'L1';
+        return dedupResponse({ reportId: claim.reportId, createdAt: claim.createdAt, layer });
+      }
+      // This branch generates (paid) → consult the account-wide breaker BEFORE the model call (#135).
+      const denied = await rateLimitBgGptGlobal(request, env.BGGPT_CIRCUIT_BREAKER, isProd);
+      if (denied) return denied;
+      // 'driver' → generate and broker the result to any waiters. 'regenerate' (rare: a prior driver
+      // crashed/timed out) → just regenerate uncoordinated; the next identical turn re-warms the cache.
+      // ponytail: regenerate skips the KV write — self-heals on the next driver, not worth a 2nd path.
+      const onSettled =
+        claim.kind === 'driver'
+          ? (result: { reportId: string; createdAt: string } | null): void => {
+              cfCtx.waitUntil(
+                (result ? stub.complete(payloads, freshness, result) : stub.fail()).catch(() => {}),
+              );
+            }
+          : undefined;
+      return await runAssistant({
+        env: env as unknown as AgentEnv,
+        ctx,
+        messages,
+        schemaContext,
+        temporal,
+        abortSignal: request.signal,
+        onSettled,
+      });
+    }
+    // Dedup disabled (no KV/DO binding, or no safe key) → generate; still gate on the global breaker.
+    const denied = await rateLimitBgGptGlobal(request, env.BGGPT_CIRCUIT_BREAKER, isProd);
+    if (denied) return denied;
     return await runAssistant({
       env: env as unknown as AgentEnv,
       ctx,

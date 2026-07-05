@@ -34,6 +34,29 @@
   // assistant route degrades to a 503 rather than crashing.
   "ai": { "binding": "AI" },
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "sigma-assistant" }],
+  // AI assistant dedup (Lane F — docs/spec/ai-assistant-dedup.md).
+  //  • DEDUP_KV — freshness-validated report cache (L0/L1/L2/L2.5). `id` is a local-dev placeholder;
+  //    scripts/wrangler-render.mjs substitutes the real per-env id (SIGMA_DEDUP_KV_ID) at deploy (same
+  //    pattern as SIGMA_D1_ID). CI provisions the namespace idempotently before deploy —
+  //    scripts/ensure-kv-namespace.mjs, one per env (dev shared with previews, staging, prod). Locally the
+  //    placeholder is fine: miniflare keys state by it, and a missing binding just disables dedup.
+  //  • REPORT_SINGLE_FLIGHT — one coordinator per freshness-folded key so concurrent identical questions
+  //    collapse onto one generation (Option 2: the driver generates in-request, the DO brokers waiters).
+  //    SQLite-backed (uses storage alarms for driver-crash release).
+  "kv_namespaces": [{ "binding": "DEDUP_KV", "id": "00000000000000000000000000000000" }],
+  //  • BGGPT_CIRCUIT_BREAKER — one global instance (`idFromName('global')`) counting paid BgGPT turns for
+  //    the account-wide RPM cap (#135). The per-IP limiter can't stop a distributed Denial-of-Wallet; this
+  //    opens the breaker once BGGPT_RATE_LIMIT_RPM is spent for the minute. In-memory window (no storage).
+  "durable_objects": {
+    "bindings": [
+      { "name": "REPORT_SINGLE_FLIGHT", "class_name": "ReportSingleFlight" },
+      { "name": "BGGPT_CIRCUIT_BREAKER", "class_name": "BgGptCircuitBreaker" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ReportSingleFlight"] },
+    { "tag": "v2", "new_sqlite_classes": ["BgGptCircuitBreaker"] },
+  ],
   // Public config for the assistant. All model traffic is routed through the Cloudflare AI Gateway
   // (spec §9.5) — MANDATORY, fail closed: with AI_GATEWAY_BASE_URL empty the assistant returns 503
   // rather than calling the provider directly. Set it per-environment to the gateway's OpenAI-compatible
@@ -48,7 +71,8 @@
     "AI_GATEWAY_ID": "sigma-assistant",
     "ASSISTANT_MODEL": "google/gemma-4-31b-it",
     "MAX_STEPS": "6",
-    // Reserved for the launch-gate global circuit-breaker — declared but NOT yet read by any code.
+    // Account-wide BgGPT RPM cap enforced by the BGGPT_CIRCUIT_BREAKER DO (#135): read via
+    // resolveGlobalRpm() in workers/assistant/bggpt-circuit-breaker.ts, checked on every paid turn.
     "BGGPT_RATE_LIMIT_RPM": "120",
     // Per-turn D1 rows-read budget — Denial-of-Wallet guard (issue #122). D1 bills on rows READ, not
     // returned, and LIMIT caps only returned rows; once a chat turn's cumulative rows_read crosses
@@ -59,6 +83,22 @@
     // never here); while it is unset the edge gate (turnstile.ts) is a no-op — dev/preview/staging run
     // without it, and it only activates once the secret is set (launch gate, spec §7/§8).
     "TURNSTILE_SITE_KEY": "",
+    // Per-query wall-time bound (ms) for the assistant's run_sql (§9.4, launch gate #83). Races the D1
+    // await so one pathological query can't hold a turn open; clamped to [1000, 30000]. D1 can't cancel
+    // the query itself (it still bills), so this bounds worker wait, not DB cost — that's the rows-read budget.
+    "RUN_SQL_TIMEOUT_MS": "10000",
+    // Freshness `c` (code/config version) for the dedup token (Lane F) — busts the report cache when
+    // report shape / CPV taxonomy / FX logic ship without a data change. This committed "dev" is the
+    // local-dev constant; at deploy wrangler-render.mjs stamps the commit sha (SIGMA_BUILD_ID) so each build
+    // gets a distinct `c` — required for the shared sigma-dedup-dev namespace to isolate dev vs previews.
+    "BUILD_ID": "dev",
+    // ⚠️ LAUNCH GATE (#83) — master kill switch for the assistant. Default OFF (fail dark): PRODUCTION is
+    // off by default and stays off until the #83 gates clear (read-only D1 #134, global BgGPT
+    // circuit-breaker #135, per-query timeout) and someone flips it at go-live. Previews (always) and any
+    // deploy env with the SIGMA_ASSISTANT_ENABLED variable set to "true" (dev now, staging at go-live) opt
+    // IN via wrangler-render, which stamps this var at deploy. The route reads it via assistantEnabled(); an
+    // unset OR non-truthy var is OFF. Killing the live endpoint is clearing that var + redeploy.
+    "ASSISTANT_ENABLED": "false",
   },
   "unsafe": {
     "bindings": [
@@ -86,9 +126,9 @@
       },
       {
         // Per-IP throttle for POST /assistant/chat — each call runs embeddings + the BgGPT agent loop
-        // (review #80). Tight, since it is far costlier than a page view. A global (account-wide) budget
-        // / circuit-breaker is a launch-gate TODO: BGGPT_RATE_LIMIT_RPM (below) is declared for it but
-        // not yet read — only this per-IP limiter is active today.
+        // (review #80). Tight, since it is far costlier than a page view. The account-wide budget is the
+        // separate BGGPT_CIRCUIT_BREAKER DO enforcing BGGPT_RATE_LIMIT_RPM (checked on the paid path); this
+        // is the per-IP layer.
         "name": "ASSISTANT_RATE_LIMITER",
         "type": "ratelimit",
         // namespace_id must be unique per limiter — a duplicate silently disables one (no deploy error).

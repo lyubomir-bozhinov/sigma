@@ -92,6 +92,14 @@ jobs:
       SIGMA_WORKFLOW_NAME: ${{ vars.SIGMA_WORKFLOW_NAME }}
       SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
+      # Per-build dedup freshness `c` — wrangler-render stamps this over the committed "dev" so a code-only
+      # deploy (report shape / FX / CPV logic) busts the report cache, and each env's build keys stay distinct.
+      SIGMA_BUILD_ID: ${{ github.sha }}
+      # Master kill-switch override (#83), per-environment: set the SIGMA_ASSISTANT_ENABLED *variable* to
+      # "true" on the environments that should serve the assistant (dev now; staging at go-live). Unset →
+      # wrangler-render leaves the committed fail-dark "false", so production stays dark until deliberately
+      # flipped. Killing a live assistant is then just clearing this var + redeploy (or the runtime flag).
+      SIGMA_ASSISTANT_ENABLED: ${{ vars.SIGMA_ASSISTANT_ENABLED }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -135,17 +143,32 @@ jobs:
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || { echo "Refusing to deploy '${{ needs.detect.outputs.env }}' with production resource names."; exit 1; }
 
+      # GitOps: enforce this environment's report-dedup KV namespace from git (idempotent create-if-absent)
+      # and hand its id to wrangler-render via SIGMA_DEDUP_KV_ID. One namespace per real env — dev (shared
+      # with the ephemeral previews), staging, prod — kept distinct by title so no env can touch another's
+      # cache. `production` maps to the short `prod` suffix; dev/staging use the env name verbatim.
+      - name: Ensure DEDUP_KV namespace
+        if: steps.guard.outputs.ok == 'true' && success()
+        run: |
+          case "${{ needs.detect.outputs.env }}" in
+            production) title=sigma-dedup-prod ;;
+            *)          title="sigma-dedup-${{ needs.detect.outputs.env }}" ;;
+          esac
+          id="$(node scripts/ensure-kv-namespace.mjs "$title")"
+          echo "::add-mask::$id"
+          echo "SIGMA_DEDUP_KV_ID=$id" >> "$GITHUB_ENV"
+
       - name: Typecheck
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.guard.outputs.ok == 'true' && success()
         run: pnpm typecheck
 
       # `run deploy`, not `deploy` — bare `pnpm deploy` is a pnpm built-in, not our package script.
       - name: Deploy explorer (sigma)
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.guard.outputs.ok == 'true' && success()
         run: pnpm --filter @sigma/web run deploy
 
       - name: Initialize LOG_IP_KEY secret if absent
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.guard.outputs.ok == 'true' && success()
         run: |
           # LOG_IP_KEY is long-lived so IP HMAC tokens remain stable for same-client correlation.
           # Never overwrite it; a new blue-green worker name starts without a key and correlation
@@ -190,5 +213,5 @@ jobs:
           printf '%s' "$key" | pnpm --filter @sigma/web exec wrangler secret put LOG_IP_KEY --name "$SIGMA_WEB_NAME"
 
       - name: Deploy refresh Workflow (sigma-etl)
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.guard.outputs.ok == 'true' && success()
         run: pnpm --filter @sigma/etl run deploy

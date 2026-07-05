@@ -183,6 +183,21 @@ describe('resolveTemporalContext — freshness (recency caveat)', () => {
     const ctx = resolveTemporalContext('миналия месец', JUL_2); // June, ended 2026-07-01
     expect(ctx!.primary.recencyCaveat).toBe(true);
   });
+
+  // The explicit-year branch (detectPrimary step 9) — the user's canonical „за 2025" / „за 2026" forms.
+  // recencyCaveat drives the dedup settling gate (dedup-request.ts): a settled year dedups, a current/
+  // partial year does not. Distinct code path from the relative „тази/миналата година" cases above.
+  it('does NOT flag an explicit settled year („за 2025") — safe to dedup', () => {
+    const ctx = resolveTemporalContext('топ 3 възложители за 2025', JUL_2);
+    expect(ctx!.primary.key).toBe('explicit-year');
+    expect(ctx!.primary.recencyCaveat).toBe(false);
+  });
+
+  it('flags an explicit CURRENT/partial year („за 2026") — must not dedup', () => {
+    const ctx = resolveTemporalContext('топ 3 възложители за 2026', JUL_2);
+    expect(ctx!.primary.key).toBe('explicit-year');
+    expect(ctx!.primary.recencyCaveat).toBe(true);
+  });
 });
 
 describe('resolveTemporalContext — common table + anchor', () => {
