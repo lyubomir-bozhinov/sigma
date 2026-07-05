@@ -539,6 +539,69 @@ describe('null values in chart blocks (review #80)', () => {
       expect(out.report.blocks[0].points[0]!.period).toBe('2024-01');
     }
   });
+
+  it('hard-errors a timeseries block with a missing value column', () => {
+    const r: QueryResult[] = [
+      { handle: 'R1', columns: ['month', 'total'], rows: [['2024-01', 5]] },
+    ];
+    const out = bindReport(
+      emit([
+        { type: 'timeseries', resultId: 'R1', periodCol: 'month', valueCol: 'nonexistent_col' },
+      ]),
+      r,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.join(' ')).toMatch(/no column "nonexistent_col"/);
+  });
+
+  it('resolves a flows block into edges, dropping null-valued rows', () => {
+    const r: QueryResult[] = [
+      {
+        handle: 'R1',
+        columns: ['payer', 'payee', 'amount_eur'],
+        rows: [
+          ['Министерство на финансите', 'Фирма ЕООД', 5000],
+          ['Община Пловдив', 'Друга фирма', null], // value_suspect — dropped, not charted as zero
+        ],
+      },
+    ];
+    const out = bindReport(
+      emit([
+        { type: 'flows', resultId: 'R1', fromCol: 'payer', toCol: 'payee', valueCol: 'amount_eur' },
+      ]),
+      r,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]?.type === 'flows') {
+      const edges = out.report.blocks[0].edges;
+      expect(edges).toHaveLength(1);
+      expect(edges[0]).toEqual({
+        from: 'Министерство на финансите',
+        to: 'Фирма ЕООД',
+        valueEur: 5000,
+      });
+    }
+  });
+
+  it('hard-errors a flows block with a missing value column so the model retries', () => {
+    const r: QueryResult[] = [
+      { handle: 'R1', columns: ['payer', 'payee', 'amount_eur'], rows: [['A', 'B', 5]] },
+    ];
+    const out = bindReport(
+      emit([
+        {
+          type: 'flows',
+          resultId: 'R1',
+          fromCol: 'payer',
+          toCol: 'payee',
+          valueCol: 'nonexistent_col',
+        },
+      ]),
+      r,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.join(' ')).toMatch(/no column "nonexistent_col"/);
+  });
 });
 
 describe('findProseNumbers', () => {
