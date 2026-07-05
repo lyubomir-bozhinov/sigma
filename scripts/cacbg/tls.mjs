@@ -28,7 +28,7 @@ const agent = new https.Agent({ keepAlive: true, maxSockets: 4, rejectUnauthoriz
  * GET a register.cacbg.bg URL with leaf-SPKI pinning. Rejects on pin mismatch BEFORE reading the body.
  * @returns {Promise<{status:number, headers:object, body:Buffer}>}
  */
-export function getPinned(url, { headers = {} } = {}) {
+export function getPinned(url, { headers = {}, timeoutMs = 30000 } = {}) {
   const u = new URL(url);
   if (u.hostname !== CACBG_HOST) throw new Error(`getPinned refuses non-CACBG host: ${u.hostname}`);
   return new Promise((resolve, reject) => {
@@ -42,6 +42,9 @@ export function getPinned(url, { headers = {} } = {}) {
         res.on('error', reject);
       },
     );
+    // No default socket timeout: a connection the server accepts but never answers would hang this slot
+    // forever. Bound it and surface as an error so politeGet's retry/backoff handles it like any 5xx.
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`request timeout after ${timeoutMs}ms: ${url}`)));
     req.on('socket', (socket) => {
       const verify = () => {
         const cert = socket.getPeerX509Certificate?.();
