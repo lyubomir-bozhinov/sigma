@@ -26,6 +26,12 @@ freshness = `d:${normalize(home_totals.refreshed_at)}|c:${BUILD_ID}`
 
 > Assumption: precompute writes one `refreshed_at` per run atomically (it does — single script rebuilding all rollups). If ETL ever refreshes tables independently, `d` must become per-table. Document any such change here.
 
+## 1.1 L1 caches settled periods only
+
+The freshness token is a **single global** version and invalidates the cache **every epoch**. So a question whose answer includes the still-growing present — a current/partial period („за 2026" mid-year) or an all-time / no-period question — gets **no durable cross-epoch reuse** from L1 anyway, while carrying the risk that a within-epoch data change not yet reflected in `refreshed_at` serves a stale under-count of a **named** window. The master invariant's guarantee is therefore scoped, by design, to **fixed-period** questions (§0).
+
+L1 (`buildDedupRequest`, `dedup-request.ts`) enforces this: it dedups **iff** the turn resolved an explicit period whose data is no longer settling — `temporal.ts`'s `recencyCaveat === false` (a fully-elapsed window past the ingest-lag horizon, e.g. „2025" asked in 2026). A settling period, or no resolved period at all, **skips L1** and regenerates (falling through to L0 when a `clientRequestId` is present). Rationale and trade-offs: [ADR 0001](../adr/0001-report-dedup-settled-periods-only.md).
+
 ## 2. F1 — `dedup.ts` (pure module, KV-backed, unblocked)
 
 Lives in `apps/web/workers/assistant/dedup.ts` — the team backend lane (same dir as Lane E), **not** `app/lib/assistant` (nedda76's lane). Pure module over an injected KV namespace; buildable and unit-testable today without the orchestrator.
@@ -35,7 +41,7 @@ Each layer key is `SHA-256(<canonical field encoding>)` — reuse the **length-p
 | Layer | Keyed on | Purpose | Folds freshness | TTL |
 |---|---|---|---|---|
 | L0 client idempotency | `clientRequestId` (uuid per submit) | same submission retried / double-click | hit validates stored report's token | 24h |
-| L1 prompt-hash (optional fast-path) | `normalize(prompt) + filterContext` | catches verbatim-identical prompts pre-SQL | yes | 7d |
+| L1 prompt-hash (optional fast-path) | `normalize(prompt) + filterContext` (incl. resolved period bounds); **settled periods only** — see §1.1 | catches verbatim-identical prompts pre-SQL | yes | 7d |
 | **L2 resolved-SQL (primary key)** | `canonicalSql + canonicalParams` | same query plan → same report; the workhorse | yes | 7d |
 | **L2.5 result-fingerprint (strongest)** | stable hash of result rows (canonical, sorted) | different SQL/prompt → identical data → dedups the LLM compose step | yes | 7d |
 | L3 tool-memo | `toolName + canonicalArgs` | memoize tool calls within/across a run | yes | 10m |

@@ -29,7 +29,8 @@ export interface SystemPromptInput {
 export const EMIT_REPORT_POLICY =
   'ПОЛИТИКА ЗА СПРАВКИ: Всеки отговор, който съдържа число, класация, сравнение или разбивка, ' +
   'ЗАДЪЛЖИТЕЛНО се връща чрез инструмента `emit_report`. Само уточняващи или мета отговори остават ' +
-  'като обикновен текст. Чатът е control plane; продуктът е справката.';
+  'като обикновен текст. В обикновения текст НИКОГА не форматирай многоредови данни като маркдаун ' +
+  'таблица (с „|") — за таблици извикай `emit_report`. Чатът е control plane; продуктът е справката.';
 
 // Ordering rule paired with agent.ts forcing a tool call on the first step (toolChoice 'required'):
 // without it a weak 27B narrates the call as prose, or jumps straight to emit_report with no data to

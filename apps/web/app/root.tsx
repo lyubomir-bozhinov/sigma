@@ -20,6 +20,7 @@ import { SiteHeader } from './components/SiteHeader';
 import { SiteFooter } from './components/SiteFooter';
 import { AccessibilityWidget } from './components/AccessibilityWidget';
 import { AssistantDock } from './lib/assistant-dock/AssistantDock';
+import { assistantEnabled } from './lib/assistant/enabled';
 import { PageHeader } from './components/PageHeader';
 import { getCoverageMeta } from './lib/coverage';
 import { withDbRetry } from './lib/retry';
@@ -50,7 +51,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   // Wrapped like the leaf loaders: this chrome read runs on every route, so a transient D1 fault
   // here would 500 the whole page (incl. the entity pages this PR targets) without the retry.
   const coverage = await withDbRetry(() => getCoverageMeta(context.cloudflare.env.DB));
-  return { ...coverage, origin: url.origin };
+  // Master launch gate (#83): expose it to the client so the dock launcher is hidden on a dark deploy —
+  // no launcher that would only 503 on click. The route enforces the same gate server-side (defence in depth).
+  const assistantOn = assistantEnabled(context.cloudflare.env.ASSISTANT_ENABLED);
+  return { ...coverage, origin: url.origin, assistantEnabled: assistantOn };
 }
 
 // Scroll-restoration key for list pages. Filters and sort live in the query string under a stable
@@ -190,7 +194,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
         endYear={loaderData.coverageEndYear}
       />
       <AccessibilityWidget />
-      <AssistantDock />
+      {loaderData.assistantEnabled && <AssistantDock />}
     </>
   );
 }

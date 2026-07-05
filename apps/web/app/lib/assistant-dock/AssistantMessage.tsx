@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai';
+import { MarkdownBlock } from '~/components/MarkdownBlock';
 
 // Return the visible text of a message — conversational prose only.
 //
@@ -65,9 +66,10 @@ export const messageText = (message: UIMessage): string => {
 };
 
 /**
- * One conversational message (user or assistant prose). The text is rendered as plain text — React
- * escapes it and CSS preserves whitespace, so model output can never inject markup (no raw HTML, no
- * `dangerouslySetInnerHTML`). Report cards are rendered separately by the transcript.
+ * One conversational message. ASSISTANT prose is rendered through MarkdownBlock (a safe subset — bold,
+ * italic, code, links, lists, hr, tables — as React elements only: no raw HTML, no
+ * `dangerouslySetInnerHTML`, link hrefs allow-listed). USER echo stays verbatim plain text so what the
+ * user typed is shown exactly. Report cards are rendered separately by the transcript.
  */
 export const AssistantMessage = ({ message }: { message: UIMessage }) => {
   const text = messageText(message);
@@ -77,7 +79,11 @@ export const AssistantMessage = ({ message }: { message: UIMessage }) => {
       className={`assistant-message assistant-message--${message.role}`}
       data-role={message.role}
     >
-      <p className="assistant-message__text">{text}</p>
+      {message.role === 'assistant' ? (
+        <MarkdownBlock md={text} className="assistant-message__text" />
+      ) : (
+        <p className="assistant-message__text">{text}</p>
+      )}
     </div>
   );
 };
