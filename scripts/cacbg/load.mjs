@@ -82,6 +82,14 @@ function resolveEntity(entity) {
   }
   return null;
 }
+// Is this name key backed by exactly one valid winner ЕИК across the whole bidder set? The distinctiveness
+// tier rests on this being true; declared_eik/extracted_name bypass the resolver's own single-ЕИК guard,
+// so the tier layer must re-assert global name-uniqueness itself.
+const nameGloballyUnique = (key) => {
+  const m = byKey.get(key);
+  if (!m) return false;
+  return new Set([...m.values()].filter((v) => v.eik && v.valid).map((v) => v.eik)).size === 1;
+};
 const METHOD_RANK = { exact_name_key: 3, declared_eik: 2, extracted_name: 1 };
 const strictKey = (s) => s.normalize('NFC').toUpperCase().replace(/[\s"„“”«».,\-]/g, '');
 let trueOverMerges = 0;
@@ -169,7 +177,12 @@ for (const rec of agg.values()) {
     if (r.eur != null) a.value += r.eur;
   }
   const seatOk = [...rec.seats].some((s) => seatConfirmed(s, rec.bidder.settlement));
-  const tier = publishTier({ seatOk, distinctiveness: nameDistinctiveness(rec.key) });
+  // A globally non-unique winner name (e.g. „Водоснабдяване и канализация ЕАД" → 2 valid ЕИК in
+  // different towns) can NEVER ride the name-distinctive tier, even when the ЕИК itself is certain
+  // (declared_eik). B_distinctive's premise is "the name alone identifies the company"; a colliding
+  // name violates it. Such a link publishes only if the declared SEAT disambiguates (A_seat), else held.
+  const nameUnique = nameGloballyUnique(rec.key);
+  const tier = publishTier({ seatOk, distinctiveness: nameUnique ? nameDistinctiveness(rec.key) : 'generic' });
   const contemporaneous = [...years].some((cy) => temporalStatus(declYears, cy) === 'contemporaneous') ? 1 : 0;
   // link-level own_institution = strongest per-authority verdict (exact > name_contains > locality > none)
   let ownInst = 'none';

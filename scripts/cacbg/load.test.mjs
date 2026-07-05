@@ -47,6 +47,9 @@ before(() => {
     INSERT INTO contracts VALUES ('c1','t1','eik:111111119','2023-05-01',100000); -- ДИСТИНКТ ← ТЕСТ ВЕДОМСТВО
     INSERT INTO contracts VALUES ('c3','t3','eik:111111119','2024-06-01',25000);  -- ДИСТИНКТ ← blob (own via split)
     INSERT INTO contracts VALUES ('c2','t2','eik:444444447','2022-03-01',50000);
+    -- both colliding ГЕНЕРИК ЕИК are real winners → declared_eik can resolve a certain ЕИК behind an ambiguous name
+    INSERT INTO contracts VALUES ('c4','t2','eik:222222229','2023-07-01',70000);
+    INSERT INTO contracts VALUES ('c5','t2','eik:333333338','2023-08-01',80000);
   `);
   db.close();
 
@@ -59,6 +62,11 @@ before(() => {
     { folder: '2024', xmlFile: 'C.xml', year: '2023', template: 'assets', category: '', institution: 'Y', person: 'Петър Николов', position: '', entity: 'СИЙ АД', kind: 'shares', detail: '10%', timing: 'annual', seat: 'Бургас', controlHash: 'H3' },
     // Георги owns the same generic winner but NO seat → tier C held
     { folder: '2024', xmlFile: 'D.xml', year: '2023', template: 'assets', category: '', institution: 'Z', person: 'Георги Стоянов', position: '', entity: 'СИЙ АД', kind: 'shares', detail: '5%', timing: 'annual', seat: '', controlHash: 'H4' },
+    // Стефан writes a CERTAIN ЕИК (222222229) behind a COLLIDING name, no seat → declared_eik resolves the
+    // right company, but the name maps to 2 ЕИК → cannot be name-distinctive → HELD (the fix under test)
+    { folder: '2024', xmlFile: 'E.xml', year: '2023', template: 'assets', category: '', institution: 'W', person: 'Стефан Колев', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 222222229', kind: 'shares', detail: '20%', timing: 'annual', seat: '', controlHash: 'H5' },
+    // Радка writes the other certain ЕИК (333333338) AND its town Варна → seat disambiguates the collision → A_seat
+    { folder: '2024', xmlFile: 'F.xml', year: '2023', template: 'assets', category: '', institution: 'V', person: 'Радка Илиева', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 333333338', kind: 'shares', detail: '30%', timing: 'annual', seat: 'Варна', controlHash: 'H6' },
   ];
   fs.writeFileSync(path.join(STAGING, 'holdings.jsonl'), holdings.map((h) => JSON.stringify(h)).join('\n') + '\n');
   fs.writeFileSync(path.join(STAGING, 'related.jsonl'), '');
@@ -88,8 +96,11 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(blob.own, 'exact');
   assert.equal(blob.value_eur, 25000);
 
-  // collision name → no link at all
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links WHERE eik IN (?,?)').get('222222229', '333333338').n, 0);
+  // bare collision name (no ЕИК in text) → quarantined, Мария gets no link
+  assert.equal(link('222222229', 'Мария Иванова'), undefined);
+  assert.equal(link('333333338', 'Мария Иванова'), undefined);
+  // the only links onto the colliding ЕИК come from declared_eik (Стефан/Радка), never exact_name_key
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM interest_links WHERE eik IN (?,?) AND match_method='exact_name_key'").get('222222229', '333333338').n, 0);
 
   const petar = link('444444447', 'Петър Николов');
   assert.equal(petar.publish_tier, 'A_seat'); // generic name rescued by seat match
@@ -98,6 +109,17 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   const georgi = link('444444447', 'Георги Стоянов');
   assert.equal(georgi.publish_tier, 'C_hold'); // generic, no seat → held
   assert.equal(georgi.status, 'held');
+
+  // certain ЕИК (declared_eik) but colliding name, no seat → HELD, never name-distinctive
+  const stefan = link('222222229', 'Стефан Колев');
+  assert.equal(stefan.match_method, 'declared_eik'); // ЕИК resolution IS certain
+  assert.equal(stefan.publish_tier, 'C_hold');       // …but the name maps to 2 ЕИК → not distinctive
+  assert.equal(stefan.status, 'held');
+  // seat disambiguates the same colliding name → publishable as A_seat
+  const radka = link('333333338', 'Радка Илиева');
+  assert.equal(radka.match_method, 'declared_eik');
+  assert.equal(radka.publish_tier, 'A_seat');
+  assert.equal(radka.status, 'published');
   db.close();
 });
 
@@ -113,7 +135,7 @@ test('re-run is idempotent and honors link_suppressions (contested link stays re
   db = open();
   assert.equal(db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status, 'suppressed');
   // idempotent: still exactly the same number of links + persons after a clean rebuild
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 3);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 4);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 5);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 6);
   db.close();
 });
