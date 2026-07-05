@@ -31,3 +31,12 @@ export function safeYear(year) {
   if (!/^20\d{2}$/.test(y)) throw new Error(`unsafe year: ${year}`);
   return y;
 }
+
+// A declaration-set folder id from the register index. Not just a year: the register uses suffixed
+// folders (2021_nc, 2019e, 2024f1, 2025y, 2018h). Constrain to a starts-with-year + short alnum/_
+// shape so a hostile index can't inject a path segment.
+export function safeFolder(folder) {
+  const f = String(folder);
+  if (!/^20\d{2}[A-Za-z0-9_]{0,8}$/.test(f)) throw new Error(`unsafe folder: ${folder}`);
+  return f;
+}

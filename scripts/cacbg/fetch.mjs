@@ -8,20 +8,19 @@
 // upstream; addresses/family are dropped by extract.mjs, never persisted to the structured staging.
 //
 // Usage:
-//   node scripts/cacbg/fetch.mjs                     # all discovered folders
-//   node scripts/cacbg/fetch.mjs --years 2025 --limit 300
-//   node scripts/cacbg/fetch.mjs --concurrency 6
+//   node scripts/cacbg/fetch.mjs                        # all folders discovered from the register index
+//   node scripts/cacbg/fetch.mjs --folders 2021_nc,2025y # restrict to a subset
+//   node scripts/cacbg/fetch.mjs --limit 300 --concurrency 6
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getPinned, CACBG_HOST } from './tls.mjs';
 import { parseList } from './parse.mjs';
-import { assertScratchIgnored, SCRATCH, safeXmlFile, safeYear } from './guard.mjs';
+import { assertScratchIgnored, SCRATCH, safeXmlFile, safeFolder } from './guard.mjs';
 
 const BASE = `https://${CACBG_HOST}`;
 const RAW = path.join(SCRATCH, 'raw');
-const CANDIDATE_YEARS = ['2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026'];
 
 const arg = (name, def) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -52,15 +51,19 @@ function atomicWrite(file, buf) {
   fs.renameSync(tmp, file);
 }
 
-async function discoverFolders(years) {
-  const found = [];
-  for (const y of years) {
-    const res = await politeGet(`${BASE}/${safeYear(y)}/list.xml`, { tries: 2 }).catch(() => null);
-    if (res && res.status === 200) found.push(y);
-    else console.log(`  folder ${y}: ${res ? res.status : 'error'} (skipped)`);
-    await sleep(150);
+// Discover EVERY declaration-set folder from the register's own root index, rather than guessing that
+// folder == year. The register splits a year across suffixed folders (2021_nc/_nonc/f1 compliance sets,
+// 2019e local elections, 2018h, *y end-of-year republications) — a year-only guess silently drops them.
+// Parse href="<folder>/index.html" out of the index HTML; safeFolder rejects anything off-shape.
+async function discoverFolders() {
+  const res = await politeGet(`${BASE}/`, { tries: 3 });
+  if (res.status !== 200) throw new Error(`index ${BASE}/ → ${res.status}`);
+  const html = res.body.toString('utf8');
+  const seen = new Set();
+  for (const m of html.matchAll(/href="([A-Za-z0-9_]+)\/index\.html"/gi)) {
+    try { seen.add(safeFolder(m[1])); } catch { /* skip off-shape hrefs (nav, external) */ }
   }
-  return found;
+  return [...seen];
 }
 
 async function pool(items, concurrency, worker) {
@@ -72,13 +75,15 @@ async function pool(items, concurrency, worker) {
 
 async function run() {
   assertScratchIgnored();
-  const years = (arg('years', '') ? arg('years', '').split(',') : CANDIDATE_YEARS).map(safeYear);
   const limit = arg('limit', '') ? Number(arg('limit', '')) : Infinity;
   const concurrency = Number(arg('concurrency', '6'));
 
-  console.log(`Discovering folders among ${years.join(', ')} …`);
-  const folders = await discoverFolders(years);
-  console.log(`Folders to crawl: ${folders.join(', ') || '(none)'}`);
+  // Default: discover every folder from the register index. --folders 2021_nc,2025y restricts to a subset.
+  const override = arg('folders', '');
+  const folders = override
+    ? override.split(',').map((f) => safeFolder(f.trim()))
+    : (console.log('Discovering folders from register index …'), await discoverFolders());
+  console.log(`Folders to crawl (${folders.length}): ${folders.join(', ') || '(none)'}`);
 
   const stats = { folders: {}, fetched: 0, cached: 0, missing: 0, errors: 0 };
   for (const folder of folders) {

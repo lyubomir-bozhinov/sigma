@@ -19,9 +19,16 @@ function run() {
   fs.mkdirSync(STAGING, { recursive: true });
   const holdingsOut = fs.createWriteStream(path.join(STAGING, 'holdings.jsonl'));
   const relatedOut = fs.createWriteStream(path.join(STAGING, 'related.jsonl'));
-  const stats = { decls: 0, assets: 0, interests: 0, unknown: 0, egnHits: 0, holdings: 0, related: 0, byKind: {} };
+  const stats = { decls: 0, assets: 0, interests: 0, unknown: 0, egnHits: 0, holdings: 0, related: 0, dupSkipped: 0, byKind: {} };
 
-  const folders = fs.existsSync(RAW) ? fs.readdirSync(RAW).filter((f) => /^20\d{2}$/.test(f)).sort() : [];
+  // Same declaration is republished across sets (filing set + end-of-year *y + compliance nc/nonc). It
+  // carries the SAME ControlHash (content hash) everywhere, so dedup globally by ControlHash — first
+  // folder wins — or holdings/evidence double-count. A corrected re-filing has a DIFFERENT hash and is
+  // legitimately kept (the loader aggregates per person→company). Bare-year/filing folders sort before
+  // their *y republication, so the primary copy is the one retained.
+  const seenHash = new Set();
+  const folderRe = /^20\d{2}[A-Za-z0-9_]{0,8}$/;
+  const folders = fs.existsSync(RAW) ? fs.readdirSync(RAW).filter((f) => folderRe.test(f)).sort() : [];
   for (const folder of folders) {
     const dir = path.join(RAW, folder);
     const listPath = path.join(dir, 'list.xml');
@@ -35,6 +42,10 @@ function run() {
     for (const file of fs.readdirSync(dir)) {
       if (file === 'list.xml' || !file.endsWith('.xml')) continue;
       const d = parseDeclaration(fs.readFileSync(path.join(dir, file), 'utf8'));
+      if (d.controlHash) {
+        if (seenHash.has(d.controlHash)) { stats.dupSkipped++; continue; } // republished declaration
+        seenHash.add(d.controlHash);
+      }
       stats.decls++;
       stats[d.templateType] = (stats[d.templateType] ?? 0) + 1;
       if (d.egnPresent) stats.egnHits++;

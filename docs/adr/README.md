@@ -19,6 +19,7 @@ Numbering is sequential. Add a new ADR the moment a decision is made — not ret
 | [0009](0009-tr-name-uniqueness-census.md) | TR name-uniqueness census — promotes globally-unique tier-C matches | Accepted |
 | [0010](0010-free-text-entity-resolution.md) | Free-text entity resolution — declared ЕИК + prose company extraction | Accepted |
 | [0011](0011-name-collision-tier-gate.md) | Name-collision tier gate — a non-unique name can't be name-distinctive, even with a certain ЕИК | Accepted |
+| [0012](0012-folder-discovery-and-republication-dedup.md) | Discover declaration-set folders from the register index; dedup republications by ControlHash | Accepted |
 
 Related design docs: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
 [implementation-plans/phase0-related-persons-feasibility.md](../implementation-plans/phase0-related-persons-feasibility.md).
