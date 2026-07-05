@@ -212,8 +212,11 @@ export async function action({ request, context }: Route.ActionArgs) {
       dedup = buildDedupRequest({
         clientRequestId,
         prompt: question,
-        temporalResolved: temporal !== undefined,
+        // L1 dedup is restricted to an explicitly-resolved, SETTLED period. `period` absent (all-time / no
+        // date phrase) → skip L1. A still-settling period (recencyCaveat: „за 2026" mid-year) → skip L1, so
+        // a NAMED partial window is never served from a within-epoch-stale cache. „2025" in 2026 → dedups.
         period: temporal?.primary,
+        periodSettling: temporal?.primary.recencyCaveat,
         filterContext,
         freshness,
       });

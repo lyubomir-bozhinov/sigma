@@ -1,7 +1,7 @@
 // Pure request-shaping for the report dedup lane (F): turn one chat turn's identity + resolved temporal
 // bounds into the dedup signals, the record payloads, and a stable single-flight key. Kept out of the
-// route so the #97-critical decisions — fold the RESOLVED period bounds into L1, and skip L1 when a
-// relative date phrase is unresolved — are unit-testable without the Worker/DO harness.
+// route so the correctness-critical decision — restrict L1 to an explicitly-resolved, SETTLED period (fold
+// its absolute bounds in; skip everything else) — is unit-testable without the Worker/DO harness.
 
 import { normalizeText, type DedupPayload, type ResolveSignals } from './dedup';
 
@@ -17,20 +17,6 @@ const escapeDoField = (value: string): string => value.replace(/\\/g, '\\\\').re
 export interface PeriodBounds {
   sinceIso: string;
   untilIso: string;
-}
-
-// Period nouns / day words. If the question contains one but temporal.ts did NOT resolve it to absolute
-// bounds, L1 caching (keyed on prompt text) is unsafe: the same wording asked across a period boundary
-// within ONE data-freshness epoch could serve the wrong period (#97). We then skip L1 (keep L0). Broad by
-// intent — a false positive only costs a dedup miss (regenerate), never a wrong answer (fail toward regen).
-// MUST cover every unit temporal.ts can match-but-fail-to-resolve — including rolling days (`последните сто
-// дни`, an uncounted word → temporal returns null): the `дни|ден` stems close that gap (strict review).
-const RELATIVE_HINT = /седмиц|месец|тримесеч|годин|дни|ден|дена|днес|вчера/i;
-
-/** True when the question looks time-relative yet no absolute period was resolved — L1 is then unsafe. */
-export function hasUnresolvedRelativeDate(question: string, temporalResolved: boolean): boolean {
-  if (temporalResolved) return false;
-  return RELATIVE_HINT.test(question);
 }
 
 /**
@@ -55,10 +41,21 @@ export interface DedupRequestInput {
   clientRequestId?: string;
   /** The server-authoritative user question (bounded upstream). */
   prompt: string;
-  /** Whether temporal.ts resolved a period for this question. */
-  temporalResolved: boolean;
-  /** The resolved primary period bounds, folded into L1. */
+  /**
+   * The resolved primary period bounds — REQUIRED for L1. `undefined` means temporal.ts pinned no period
+   * (all-time / no date phrase, or a relative phrase it couldn't resolve): the answer then spans the
+   * still-growing present, so L1 is skipped and the turn regenerates (falls through to L0-if-present).
+   */
   period?: PeriodBounds;
+  /**
+   * The resolved period is still SETTLING — its (exclusive) end is recent enough that its data is still
+   * mutating (an open/current period like „2026" mid-year, or a just-closed one still in ingest lag).
+   * This is temporal.ts's `recencyCaveat`. When set we skip L1: the freshness token (a single global
+   * `home_totals.refreshed_at`) does NOT invalidate within a data epoch (route comment: "data changes
+   * before refreshed_at updates → a stale serve"), so an L1 hit would serve a report that under-counts a
+   * NAMED partial period. A fully-settled period (e.g. „2025" asked in 2026) is `false` → safe to dedup.
+   */
+  periodSettling?: boolean;
   /** FE-supplied facet context (3c); folded into L1. */
   filterContext?: string;
   /** The current freshness token (data + build) — folded into the single-flight key. */
@@ -84,9 +81,17 @@ export function buildDedupRequest(input: DedupRequestInput): DedupRequest {
     payloads.push({ layer: 'L0', clientRequestId: input.clientRequestId });
   }
 
+  // L1 (cross-time report reuse) is safe ONLY when the answer is stable: a non-empty prompt AND an
+  // explicitly-resolved period (`input.period`) whose data is no longer settling. Everything else skips
+  // L1 and regenerates each turn (falling through to L0-if-present):
+  //   • no period at all — all-time / no date phrase / an unresolvable relative phrase (#97). The answer
+  //     spans the still-growing present, and the global freshness token does NOT invalidate within a data
+  //     epoch, so an L1 hit could serve a stale under-count.
+  //   • a settling period („за 2026" mid-year) — same within-epoch staleness, on a NAMED partial window.
+  // A fully-settled period („2025" asked in 2026) is the one safe case. Skipping only ever costs a
+  // regenerate, never a wrong answer (fail toward regeneration).
   const l1Safe =
-    input.prompt.trim().length > 0 &&
-    !hasUnresolvedRelativeDate(input.prompt, input.temporalResolved);
+    input.prompt.trim().length > 0 && input.period !== undefined && !input.periodSettling;
   let filterContext = '';
   if (l1Safe) {
     filterContext = canonicalFilterContext(input.period, input.filterContext);
