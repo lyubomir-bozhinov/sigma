@@ -47,6 +47,38 @@ describe('isSafeHref', () => {
   });
 });
 
+describe('isSafeHref — adversarial (public XSS surface)', () => {
+  it('refuses protocol-relative URLs that resolve to an external origin', () => {
+    // `//host` and `\\host` are NOT relative paths — a browser loads them from another origin. The
+    // explicit `^[/\\]{2}` reject is the only guard; without it the scheme check below is bypassed.
+    expect(isSafeHref('//evil.com/x')).toBe(false);
+    expect(isSafeHref('\\\\evil.com\\x')).toBe(false);
+    expect(isSafeHref('/\\evil.com')).toBe(false); // mixed slash/backslash still parses as //host
+  });
+
+  it('refuses a scheme split by tab/newline/control chars (URL-normalised then rejected)', () => {
+    // A browser strips in-scheme tabs/newlines before dispatching an href, so `java<TAB>script:` runs
+    // as javascript:. The WHATWG URL parser normalises the same way, so these land as javascript: and
+    // are rejected — the string-level scheme scan alone would miss them.
+    expect(isSafeHref('java\tscript:alert(1)')).toBe(false);
+    expect(isSafeHref('java\nscript:alert(1)')).toBe(false);
+    expect(isSafeHref('javascript:alert(1)')).toBe(false); // C0 control prefix
+  });
+
+  it('refuses uppercased/mixed-case dangerous schemes', () => {
+    expect(isSafeHref('JAVASCRIPT:alert(1)')).toBe(false);
+    expect(isSafeHref('JavaScript:alert(1)')).toBe(false);
+    expect(isSafeHref('VBScript:msgbox(1)')).toBe(false);
+  });
+
+  it('treats a colon after the first path separator as a relative path, not a scheme', () => {
+    // `a/foo:bar` — the `/` precedes the `:`, so the whole string is a relative path a browser resolves
+    // against the origin (never a scheme). Must stay allowed so real paths with colons are not blocked.
+    expect(isSafeHref('a/foo:bar')).toBe(true);
+    expect(isSafeHref('path?x:y')).toBe(true);
+  });
+});
+
 describe('sanitizeLinkHref', () => {
   it('returns the href unchanged when safe', () => {
     expect(sanitizeLinkHref('https://example.com')).toBe('https://example.com');

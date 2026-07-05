@@ -4,26 +4,30 @@ export const RATE_LIMIT_PERIOD_SECONDS = 60;
 export const RATE_LIMIT_FALLBACK_KEY = 'unknown-client';
 
 export function normalizedPathname(request: Request): string {
-  const pathname = new URL(request.url).pathname;
-
-  // Collapse duplicate slashes BEFORE the equality check: `//assistant/chat` would otherwise slip the
-  // path match and bypass the only limiter on the paid endpoint if the router still routes it (review
-  // #80, ydimitrof). `/\/{2,}/` → single slash; the trailing-slash strip stays.
+  const raw = new URL(request.url).pathname;
+  // Decode percent-encoding first (falling back to the raw path on a malformed sequence) so a single
+  // normalization chain then applies to both branches.
+  let pathname: string;
   try {
-    return (
-      decodeURIComponent(pathname)
-        .toLowerCase()
-        .replace(/\/{2,}/g, '/')
-        .replace(/\/+$/, '') || '/'
-    );
+    pathname = decodeURIComponent(raw);
   } catch {
-    return (
-      pathname
-        .toLowerCase()
-        .replace(/\/{2,}/g, '/')
-        .replace(/\/+$/, '') || '/'
-    );
+    pathname = raw;
   }
+
+  return (
+    pathname
+      .toLowerCase()
+      // React Router v7 single-fetch (ssr:true) serves EVERY route at its `/<path>.data` twin, dispatched
+      // to the SAME loader/action. Strip the suffix (mirroring RR's own getNormalizedPath) so a path-keyed
+      // limiter can't be bypassed by posting to the twin — e.g. `POST /assistant/chat.data` would otherwise
+      // skip the per-IP limiter while running the identical paid agent loop (sigma's recurring `.data`
+      // under-protection class; strict review 2026-07). One trailing `.data` only (RR appends exactly one).
+      .replace(/\.data$/, '')
+      // Collapse duplicate slashes BEFORE the equality check: `//assistant/chat` would otherwise slip the
+      // path match and bypass the limiter if the router still routes it (review #80, ydimitrof).
+      .replace(/\/{2,}/g, '/')
+      .replace(/\/+$/, '') || '/'
+  );
 }
 
 export function rateLimitKey(request: Request): string {

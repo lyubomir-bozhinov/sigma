@@ -42,6 +42,25 @@ export function resolveRowsReadBudget(raw: string | undefined): number {
   return Math.min(Math.floor(n), MAX_ROWS_READ_BUDGET);
 }
 
+// Per-query wall-time bound for run_sql (spec §9.4, launch gate #83). D1 exposes NO cancellable
+// per-query timeout — a timed-out query still completes and bills server-side — so this races the AWAIT:
+// it stops ONE pathological query from holding the turn's worker time open (and stacking toward the
+// 60s settle backstop), complementing the reactive rows-read budget (#122) which bounds CUMULATIVE cost.
+// Default generous for analytics aggregates, capped well under D1's ~30s platform ceiling. Tunable via
+// RUN_SQL_TIMEOUT_MS; the ceiling guards a mis-set (untrusted) config.
+export const DEFAULT_SQL_TIMEOUT_MS = 10_000;
+const MAX_SQL_TIMEOUT_MS = 30_000;
+
+/**
+ * Resolve the per-query timeout from the (untrusted) env string: fall back to the default on a
+ * missing / non-numeric / < 1 value, and clamp to [1_000, MAX_SQL_TIMEOUT_MS].
+ */
+export function resolveSqlTimeoutMs(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_SQL_TIMEOUT_MS;
+  return Math.min(Math.max(Math.floor(n), 1_000), MAX_SQL_TIMEOUT_MS);
+}
+
 /** Provenance record for one server-executed result set. Populated by run_sql; used when persisting. */
 export interface ExecutedSource {
   handle: string;
@@ -65,6 +84,9 @@ export interface ToolContext {
   // DEFAULT_ROWS_READ_BUDGET). The orchestrator resets both per chat turn, alongside `results`.
   rowsRead?: number;
   rowsReadBudget?: number;
+  // Per-query wall-time bound for run_sql (§9.4, gate #83), resolved from RUN_SQL_TIMEOUT_MS by the route.
+  // Races the D1 await so one pathological query can't hold the turn open; defaults to DEFAULT_SQL_TIMEOUT_MS.
+  sqlTimeoutMs?: number;
   // The actual latest user message text, set by the chat route. bindReport uses it as the
   // server-authoritative report question instead of the model's echo — see BindOptions (review #80).
   userQuestion?: string;
@@ -74,6 +96,9 @@ export interface ToolContext {
   // Set true by emit_report once a VALID (ok:true) report is produced this turn. Read by the agent loop's
   // step planner (chooseToolChoice) so it stops force-finalizing once a report exists.
   reportEmitted?: boolean;
+  // Set by the persist path (emit_report or the fallback finalizer) to the report actually written to R2
+  // this turn. Read by runAssistant's onSettled to hand the dedup driver its {reportId, createdAt} (Lane F).
+  persistedReport?: { reportId: string; createdAt: string };
 }
 
 export interface AssistantTool {
@@ -119,6 +144,10 @@ const runSqlTool: AssistantTool = {
     // Three-layer read-only guard (spec §9.4): a cheap structural check (L1), a fail-closed AST parse
     // that also enforces the table allowlist, rejects cross-joins/recursion and bounds the outer LIMIT
     // (L2), then an EXPLAIN-opcode check on the live binding that the COMPILED plan is read-only (L3).
+    // Read-only gate #134: the CODE side is these three layers (L3 inspects the compiled VDBE plan and
+    // fails closed on any write opcode — physical, not parser-trust). A physically read-only D1 BINDING is
+    // not expressible in wrangler (D1 has no per-binding permission scope), so the residual defence — a
+    // read-only D1 credential — is an INFRA provisioning step, tracked on #134, not code.
     const guard = assertReadOnlySelect(str(args.sql));
     if (!guard.ok) return `Заявката е отхвърлена: ${guard.reason}.`;
     const scoped = guardSelect(guard.sql);
@@ -136,10 +165,20 @@ const runSqlTool: AssistantTool = {
     // a query that already passed L1/L2/G1.
     const plan = await assertReadOnlyPlan(ctx.db, sql);
     if (!plan.ok) return `Заявката е отхвърлена: ${plan.reason}.`;
+    const timeoutMs = ctx.sqlTimeoutMs ?? DEFAULT_SQL_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const { results, meta } = await ctx.db
-        .prepare(sql)
-        .all<Record<string, string | number | null>>();
+      const exec = ctx.db.prepare(sql).all<Record<string, string | number | null>>();
+      // If the timeout wins the race, `exec` still settles later with no race handler — swallow it so a
+      // post-timeout rejection isn't unhandled (the query already ran + billed server-side; we stopped
+      // waiting). §9.4: bound ONE query's wall time; the rows-read budget bounds cumulative cost.
+      exec.catch(() => {});
+      const { results, meta } = await Promise.race([
+        exec,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('run_sql exceeded time budget')), timeoutMs);
+        }),
+      ]);
       // Account the scan cost (rows READ, not returned) against the turn budget; absent in unit mocks.
       // `meta.rows_read` is the LAST attempt only, so multiply by `total_attempts`: a query D1 auto-
       // retried scanned the table on every attempt, and under-billing retried full scans would let the
@@ -152,9 +191,14 @@ const runSqlTool: AssistantTool = {
       return forModel(qr);
     } catch (e) {
       // Don't echo the raw D1 error to the model/report — it can leak schema/internal detail. Log it
-      // server-side and hand the model a generic, retry-able message (review #80).
+      // server-side and hand the model a generic, retry-able message (review #80). A timeout lands here
+      // too (generic message — never disclose the query stalled), logged distinctly for ops.
       console.error('[assistant] run_sql failed', e);
       return 'Грешка при изпълнение на заявката.';
+    } finally {
+      // Clear the timer on the fast path so a still-pending timeout can't fire after the race settled
+      // (its rejection would be unhandled) or keep the isolate alive.
+      if (timer) clearTimeout(timer);
     }
   },
 };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SingleFlight, type Generator, type ProgressEvent } from './single-flight';
+import { SingleFlight, type ProgressEvent, type GeneratorResult } from './single-flight';
 import {
   freshnessToken,
   record,
@@ -18,236 +18,176 @@ class FakeKv implements DedupKv {
   }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 /** Flush microtasks AND the real async crypto in resolveLive (a macrotask boundary). */
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const FRESH = freshnessToken({ refreshedAt: '2026-06-24T00:00:00Z', buildId: 'b1' });
 const SIGNALS: ResolveSignals = { sql: 's', params: [] };
-const RECORD_AS: DedupPayload = { layer: 'L2', sql: 's', params: [] };
+const RECORD_AS: DedupPayload[] = [{ layer: 'L2', sql: 's', params: [] }];
+const REPORT: GeneratorResult = { reportId: 'rep_1', createdAt: '2026-06-24T01:00:00Z' };
 const alwaysPresent = async () => true;
 
-describe('SingleFlight — collapse', () => {
-  it('runs the generator exactly once under N concurrent calls for one key', async () => {
+describe('SingleFlight — claim (driver vs waiter)', () => {
+  it('the first claim is the driver, the rest are waiters', async () => {
+    const sf = new SingleFlight({ kv: new FakeKv(), r2Exists: alwaysPresent });
+    const first = await sf.claim(SIGNALS, FRESH);
+    const second = await sf.claim(SIGNALS, FRESH);
+    expect(first.role).toBe('driver');
+    expect(second.role).toBe('waiter');
+  });
+
+  it('exactly one driver under two interleaved claims (atomic check-and-set)', async () => {
+    const sf = new SingleFlight({ kv: new FakeKv(), r2Exists: alwaysPresent });
+    const [a, b] = await Promise.all([sf.claim(SIGNALS, FRESH), sf.claim(SIGNALS, FRESH)]);
+    expect(new Set([a.role, b.role])).toEqual(new Set(['driver', 'waiter']));
+  });
+
+  it('a waiter resolves with the driver’s report when the driver completes', async () => {
+    const sf = new SingleFlight({ kv: new FakeKv(), r2Exists: alwaysPresent });
+    await sf.claim(SIGNALS, FRESH); // driver
+    const waiter = await sf.claim(SIGNALS, FRESH);
+    if (waiter.role !== 'waiter') throw new Error('expected waiter');
+
+    await sf.complete(RECORD_AS, FRESH, REPORT);
+    await expect(waiter.result).resolves.toMatchObject({ reportId: 'rep_1' });
+  });
+
+  it('after completion a fresh claim is a live cache hit, not a new driver', async () => {
     const kv = new FakeKv();
-    const gate = deferred<{ reportId: string; createdAt: string }>();
-    let calls = 0;
-    const gen: Generator = async () => {
-      calls += 1;
-      return gate.promise;
-    };
     const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    await sf.claim(SIGNALS, FRESH); // driver
+    await sf.complete(RECORD_AS, FRESH, REPORT);
 
-    const runs = [
-      sf.run(FRESH, SIGNALS, RECORD_AS, gen),
-      sf.run(FRESH, SIGNALS, RECORD_AS, gen),
-      sf.run(FRESH, SIGNALS, RECORD_AS, gen),
-    ];
-    await flush();
-    gate.resolve({ reportId: 'rep_1', createdAt: '2026-06-24T01:00:00Z' });
-    const outs = await Promise.all(runs);
-
-    expect(calls).toBe(1); // broken collapse would generate three times
-    // All three callers observe one identical generation — the #97 no-divergence guarantee.
-    // We deliberately do NOT assert the `deduped` flag here: a caller whose key derivation lands
-    // after the leader records legitimately reuses that same report (identical numbers, cache path).
-    // Asserting all-collapsed raced the real crypto in resolveLive and was flaky under load.
-    expect(outs.map((o) => o.reportId)).toEqual(['rep_1', 'rep_1', 'rep_1']);
-    expect(new Set(outs.map((o) => o.createdAt)).size).toBe(1);
+    const next = await sf.claim(SIGNALS, FRESH);
+    expect(next).toMatchObject({ role: 'hit', reportId: 'rep_1', layer: 'L2' });
   });
 });
 
-describe('SingleFlight — cache fast path', () => {
-  it('serves a live cache hit without generating', async () => {
+describe('SingleFlight — live cache hit', () => {
+  it('claim returns a hit without designating a driver', async () => {
     const kv = new FakeKv();
-    await record(kv, RECORD_AS, FRESH, { reportId: 'rep_0', createdAt: 't' });
-    let calls = 0;
-    const gen: Generator = async () => {
-      calls += 1;
-      return { reportId: 'never', createdAt: 't' };
-    };
+    await record(kv, RECORD_AS[0], FRESH, REPORT);
     const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
-
-    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
-    expect(out).toMatchObject({ reportId: 'rep_0', deduped: true, layer: 'L2' });
-    expect(calls).toBe(0);
+    const out = await sf.claim(SIGNALS, FRESH);
+    expect(out).toMatchObject({ role: 'hit', reportId: 'rep_1', layer: 'L2' });
   });
 
-  it('regenerates when the cached report’s R2 artifact is gone', async () => {
+  it('a KV hit whose R2 artifact is gone is a miss → driver', async () => {
     const kv = new FakeKv();
-    await record(kv, RECORD_AS, FRESH, { reportId: 'rep_0', createdAt: 't' });
-    let calls = 0;
-    const gen: Generator = async () => {
-      calls += 1;
-      return { reportId: 'rep_new', createdAt: 't2' };
-    };
+    await record(kv, RECORD_AS[0], FRESH, REPORT);
     const sf = new SingleFlight({ kv, r2Exists: async () => false });
-
-    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
-    expect(out).toMatchObject({ reportId: 'rep_new', deduped: false });
-    expect(calls).toBe(1);
+    const out = await sf.claim(SIGNALS, FRESH);
+    expect(out.role).toBe('driver');
   });
 
-  it('records the fresh report so the next call dedups', async () => {
+  it('an r2Exists throw is a miss → driver (fail toward regeneration)', async () => {
     const kv = new FakeKv();
-    const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
-    const ok: Generator = async () => ({ reportId: 'rep_1', createdAt: 't' });
-
-    await sf.run(FRESH, SIGNALS, RECORD_AS, ok);
-    const explode: Generator = async () => {
-      throw new Error('should not generate again');
-    };
-    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, explode);
-    expect(out).toMatchObject({ reportId: 'rep_1', deduped: true });
-  });
-});
-
-describe('SingleFlight — fail toward regeneration', () => {
-  it('propagates a generator throw and lets the next request regenerate', async () => {
-    const kv = new FakeKv();
-    const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
-    let calls = 0;
-    const boom: Generator = async () => {
-      calls += 1;
-      throw new Error('boom');
-    };
-    await expect(sf.run(FRESH, SIGNALS, RECORD_AS, boom)).rejects.toThrow('boom');
-
-    const ok: Generator = async () => {
-      calls += 1;
-      return { reportId: 'rep_ok', createdAt: 't' };
-    };
-    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, ok);
-    expect(out.reportId).toBe('rep_ok');
-    expect(calls).toBe(2);
-  });
-});
-
-describe('SingleFlight — progress', () => {
-  it('broadcasts progress to the leader and a late waiter (catch-up)', async () => {
-    const kv = new FakeKv();
-    const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
-    const gate = deferred<{ reportId: string; createdAt: string }>();
-    const planning: ProgressEvent = { phase: 'planning', label: 'P' };
-    const gen: Generator = async (emit) => {
-      emit(planning);
-      return gate.promise;
-    };
-
-    const leaderEvents: ProgressEvent[] = [];
-    const waiterEvents: ProgressEvent[] = [];
-
-    const leader = sf.run(FRESH, SIGNALS, RECORD_AS, gen, (e) => leaderEvents.push(e));
-    await flush(); // leader has emitted 'planning' and stored it as lastProgress
-    const waiter = sf.run(FRESH, SIGNALS, RECORD_AS, gen, (e) => waiterEvents.push(e));
-    await flush();
-
-    gate.resolve({ reportId: 'rep_1', createdAt: 't' });
-    const [a, b] = await Promise.all([leader, waiter]);
-
-    expect(leaderEvents).toContainEqual(planning);
-    expect(waiterEvents).toContainEqual(planning); // received via late-waiter catch-up
-    expect(a.reportId).toBe('rep_1');
-    expect(b.reportId).toBe('rep_1');
-  });
-
-  it('a throwing subscriber does not break generation or starve other waiters', async () => {
-    const kv = new FakeKv();
-    const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
-    const gate = deferred<{ reportId: string; createdAt: string }>();
-    const gen: Generator = async (emit) => {
-      emit({ phase: 'planning', label: 'P' });
-      return gate.promise;
-    };
-    const good: ProgressEvent[] = [];
-    const leader = sf.run(FRESH, SIGNALS, RECORD_AS, gen, () => {
-      throw new Error('bad subscriber');
-    });
-    await flush();
-    const waiter = sf.run(FRESH, SIGNALS, RECORD_AS, gen, (e) => good.push(e));
-    await flush();
-    gate.resolve({ reportId: 'rep_1', createdAt: 't' });
-
-    const [a, b] = await Promise.all([leader, waiter]);
-    expect(a.reportId).toBe('rep_1');
-    expect(b.reportId).toBe('rep_1');
-    expect(good).toContainEqual({ phase: 'planning', label: 'P' });
-  });
-});
-
-describe('SingleFlight — write failures are safe', () => {
-  const failPut: DedupKv = {
-    get: async () => null,
-    put: async () => {
-      throw new Error('kv down');
-    },
-  };
-
-  it('swallows a failed cache write and still returns the report', async () => {
-    const sf = new SingleFlight({ kv: failPut, r2Exists: alwaysPresent });
-    const gen: Generator = async () => ({ reportId: 'rep_1', createdAt: 't' });
-    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
-    expect(out).toMatchObject({ reportId: 'rep_1', deduped: false });
-  });
-
-  it('a lost write only causes the next request to regenerate — numbers never diverge', async () => {
-    const sf = new SingleFlight({ kv: failPut, r2Exists: alwaysPresent });
-    let calls = 0;
-    const gen: Generator = async () => {
-      calls += 1;
-      return { reportId: `rep_${calls}`, createdAt: 't' };
-    };
-    await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
-    await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
-    expect(calls).toBe(2); // nothing persisted ⇒ regenerated; worst case is a duplicate, never a contradiction
-  });
-});
-
-describe('SingleFlight — r2Exists failure falls toward regeneration', () => {
-  it('treats an r2Exists throw (not just a false) as a miss and regenerates', async () => {
-    const kv = new FakeKv();
-    await record(kv, RECORD_AS, FRESH, { reportId: 'rep_0', createdAt: 't' });
-    let calls = 0;
-    const gen: Generator = async () => {
-      calls += 1;
-      return { reportId: 'rep_new', createdAt: 't2' };
-    };
+    await record(kv, RECORD_AS[0], FRESH, REPORT);
     const sf = new SingleFlight({
       kv,
       r2Exists: async () => {
         throw new Error('r2 unreachable');
       },
     });
-    const out = await sf.run(FRESH, SIGNALS, RECORD_AS, gen);
-    expect(out).toMatchObject({ reportId: 'rep_new', deduped: false });
-    expect(calls).toBe(1);
+    const out = await sf.claim(SIGNALS, FRESH);
+    expect(out.role).toBe('driver');
+  });
+});
+
+describe('SingleFlight — fail toward regeneration', () => {
+  it('fail() rejects waiters and the next claim regenerates', async () => {
+    const sf = new SingleFlight({ kv: new FakeKv(), r2Exists: alwaysPresent });
+    await sf.claim(SIGNALS, FRESH); // driver
+    const waiter = await sf.claim(SIGNALS, FRESH);
+    if (waiter.role !== 'waiter') throw new Error('expected waiter');
+
+    sf.fail(new Error('driver crashed'));
+    await expect(waiter.result).rejects.toThrow('driver crashed');
+
+    const next = await sf.claim(SIGNALS, FRESH);
+    expect(next.role).toBe('driver'); // regenerates
+  });
+});
+
+describe('SingleFlight — recording', () => {
+  it('records every supplied layer so any of them dedups next time', async () => {
+    const kv = new FakeKv();
+    const sf = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    await sf.claim({ clientRequestId: 'c1' }, FRESH); // driver
+    const layers: DedupPayload[] = [
+      { layer: 'L0', clientRequestId: 'c1' },
+      { layer: 'L1', prompt: 'топ 10', filterContext: 'f' },
+      { layer: 'L2.5', resultFingerprint: 'fp' },
+    ];
+    await sf.complete(layers, FRESH, REPORT);
+
+    const byL0 = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    const byL1 = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    const byL25 = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    expect((await byL0.claim({ clientRequestId: 'c1' }, FRESH)).role).toBe('hit');
+    expect((await byL1.claim({ prompt: 'топ 10', filterContext: 'f' }, FRESH)).role).toBe('hit');
+    expect((await byL25.claim({ resultFingerprint: 'fp' }, FRESH)).role).toBe('hit');
+  });
+
+  it('swallows a failed cache write and still resolves waiters', async () => {
+    const failPut: DedupKv = {
+      get: async () => null,
+      put: async () => {
+        throw new Error('kv down');
+      },
+    };
+    const sf = new SingleFlight({ kv: failPut, r2Exists: alwaysPresent });
+    await sf.claim(SIGNALS, FRESH); // driver
+    const waiter = await sf.claim(SIGNALS, FRESH);
+    if (waiter.role !== 'waiter') throw new Error('expected waiter');
+    await sf.complete(RECORD_AS, FRESH, REPORT); // record throws internally, swallowed
+    await expect(waiter.result).resolves.toMatchObject({ reportId: 'rep_1' });
   });
 });
 
 describe('SingleFlight — cross-isolate KV backstop', () => {
   it('a second instance dedups on the first instance’s recorded report', async () => {
-    const kv = new FakeKv(); // one shared store stands in for KV seen by two isolates
+    const kv = new FakeKv();
     const a = new SingleFlight({ kv, r2Exists: alwaysPresent });
     const b = new SingleFlight({ kv, r2Exists: alwaysPresent });
+    expect((await a.claim(SIGNALS, FRESH)).role).toBe('driver');
+    await a.complete(RECORD_AS, FRESH, REPORT);
+    expect(await b.claim(SIGNALS, FRESH)).toMatchObject({ role: 'hit', reportId: 'rep_1' });
+  });
+});
 
-    const first = await a.run(FRESH, SIGNALS, RECORD_AS, async () => ({
-      reportId: 'rep_1',
-      createdAt: 't',
-    }));
-    expect(first.deduped).toBe(false);
+describe('SingleFlight — progress', () => {
+  it('postProgress reaches a subscribed waiter, with late catch-up', async () => {
+    const sf = new SingleFlight({ kv: new FakeKv(), r2Exists: alwaysPresent });
+    await sf.claim(SIGNALS, FRESH); // driver
+    const planning: ProgressEvent = { phase: 'planning', label: 'P' };
+    sf.postProgress(planning); // before the waiter subscribes
 
-    const second = await b.run(FRESH, SIGNALS, RECORD_AS, async () => {
-      throw new Error('must not regenerate — should hit the KV backstop');
+    const waiter = await sf.claim(SIGNALS, FRESH);
+    if (waiter.role !== 'waiter') throw new Error('expected waiter');
+    const seen: ProgressEvent[] = [];
+    waiter.subscribe((e) => seen.push(e)); // catch-up delivers the last event immediately
+    const composing: ProgressEvent = { phase: 'composing', label: 'C' };
+    sf.postProgress(composing);
+
+    expect(seen).toContainEqual(planning); // catch-up
+    expect(seen).toContainEqual(composing); // live
+    await sf.complete(RECORD_AS, FRESH, REPORT);
+  });
+
+  it('a throwing subscriber does not starve other waiters', async () => {
+    const sf = new SingleFlight({ kv: new FakeKv(), r2Exists: alwaysPresent });
+    await sf.claim(SIGNALS, FRESH); // driver
+    const w1 = await sf.claim(SIGNALS, FRESH);
+    const w2 = await sf.claim(SIGNALS, FRESH);
+    if (w1.role !== 'waiter' || w2.role !== 'waiter') throw new Error('expected waiters');
+    w1.subscribe(() => {
+      throw new Error('bad subscriber');
     });
-    expect(second).toMatchObject({ reportId: 'rep_1', deduped: true, layer: 'L2' });
+    const good: ProgressEvent[] = [];
+    w2.subscribe((e) => good.push(e));
+    sf.postProgress({ phase: 'querying', label: 'Q' });
+    expect(good).toContainEqual({ phase: 'querying', label: 'Q' });
+    await sf.complete(RECORD_AS, FRESH, REPORT);
   });
 });

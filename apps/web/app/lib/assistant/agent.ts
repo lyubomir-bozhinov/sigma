@@ -191,13 +191,13 @@ async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: s
   }
 }
 
-/** Persist a resolved report to R2 and return its ID. Returns null on any write failure. */
+/** Persist a resolved report to R2 and return its id + createdAt. Returns null on any write failure. */
 export async function persistReport(
   ctx: ToolContext,
   report: ResolvedReport,
   modelId: string,
   verification?: VerificationOutcome,
-): Promise<string | null> {
+): Promise<{ reportId: string; createdAt: string } | null> {
   if (!ctx.reports) return null;
   const id = randomReportId();
   const stored = {
@@ -236,7 +236,7 @@ export async function persistReport(
         createdAt: stored.createdAt,
       },
     });
-    return id;
+    return { reportId: id, createdAt: stored.createdAt };
   } catch (err) {
     console.error('[assistant] failed to persist report to R2', err);
     return null;
@@ -277,8 +277,13 @@ function buildToolSet(
       // bound/sanitized this report. Plain lookups resolve as 'skipped' with zero LLM cost; verifyReport
       // never throws, so a verifier failure degrades to its fail-closed strip, not a failed tool call.
       const verified = await verify(r.report);
-      const storedId = await persistReport(ctx, verified.report, modelId, verified);
-      return { ok: true as const, report: verified.report, ...(storedId ? { storedId } : {}) };
+      const persisted = await persistReport(ctx, verified.report, modelId, verified);
+      if (persisted) ctx.persistedReport = persisted;
+      return {
+        ok: true as const,
+        report: verified.report,
+        ...(persisted ? { storedId: persisted.reportId } : {}),
+      };
     },
   });
   return set;
@@ -294,6 +299,12 @@ export interface RunAssistantOptions {
   // prompt so the model uses absolute dates instead of guessing relative periods from its stale prior.
   temporal?: TemporalContext;
   abortSignal?: AbortSignal; // wire `request.signal` so a disconnect cancels the model loop (review #80)
+  /**
+   * Fired EXACTLY ONCE when generation settles, with the persisted report `{reportId, createdAt}` or
+   * `null` (empty/error/abort). The dedup driver wires this to `ReportSingleFlight.complete/fail` so
+   * waiters are woken (or released to regenerate). Fire-and-forget on the caller side (`ctx.waitUntil`).
+   */
+  onSettled?: (result: { reportId: string; createdAt: string } | null) => void;
 }
 
 /**
@@ -395,94 +406,104 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   // renders a normal report chip; values are bound through bindReport (server-owned, never model-written).
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
-      // Drop reasoning/sources at source too — defense-in-depth with the phase filter downstream.
-      writer.merge(result.toUIMessageStream({ sendReasoning: false, sendSources: false }));
-      // Wait for the model loop to settle before the last-resort finalizer, but never indefinitely.
-      // onFinish/onError resolve `modelFinished` and in practice one always fires (incl. on abort), so
-      // this timer is pure defense-in-depth: if the SDK ever failed to settle, the wrapper would keep the
-      // response stream open forever. On backstop we BAIL without synthesizing — the loop's state is
-      // indeterminate, so writing could race the still-open merged stream. Timer is cleared on the normal
-      // path so it can't keep the isolate alive.
-      const SETTLE_BACKSTOP_MS = 60_000;
-      let backstopTimer: ReturnType<typeof setTimeout> | undefined;
-      let settledCleanly = false;
-      await Promise.race([
-        modelFinished.then(() => {
-          settledCleanly = true;
-        }),
-        new Promise<void>((resolve) => {
-          backstopTimer = setTimeout(resolve, SETTLE_BACKSTOP_MS);
-        }),
-      ]);
-      if (backstopTimer) clearTimeout(backstopTimer);
-      if (!settledCleanly) {
-        console.error(
-          '[assistant] model stream did not settle within backstop — skipping fallback',
-          {
-            backstopMs: SETTLE_BACKSTOP_MS,
-          },
-        );
-        return;
-      }
-      // Skip the fallback when the model finalized its own report, or errored (a provider failure already
-      // surfaced its own message — don't paste a report over it).
-      if (modelErrored || opts.ctx.reportEmitted) return;
-      // No bindable data this turn → the fallback finalizer has nothing to synthesize from. If the model
-      // also produced no prose, the turn would otherwise be BLANK (empty completion). Write an explicit
-      // affordance so the dock shows guidance instead of an empty transcript. A legit prose-only answer
-      // (produced text, e.g. a clarifying reply) is left untouched.
-      if (opts.ctx.results.length === 0) {
-        if (!modelProducedText) {
-          console.warn('[assistant] empty completion — no report, no data, no prose', {
-            finishReason: modelFinishReason,
-          });
-          const textId = `empty_${randomReportId()}`;
-          writer.write({ type: 'text-start', id: textId });
-          writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
-          writer.write({ type: 'text-end', id: textId });
-        }
-        return;
-      }
       try {
-        const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
-        if (!built.ok) {
-          // We had bindable data yet still couldn't synthesize a valid report (e.g. bindReport rejected
-          // the shape). Log it — otherwise this „had data, still no report" case fails invisibly.
-          console.warn('[assistant] fallback finalizer produced no valid report', {
-            errors: built.errors,
-            resultCount: opts.ctx.results.length,
-          });
-          return;
-        }
-        if (built.warnings.length > 0)
-          console.warn(
-            '[assistant] partial fallback report: missing display columns rendered as null',
+        // Drop reasoning/sources at source too — defense-in-depth with the phase filter downstream.
+        writer.merge(result.toUIMessageStream({ sendReasoning: false, sendSources: false }));
+        // Wait for the model loop to settle before the last-resort finalizer, but never indefinitely.
+        // onFinish/onError resolve `modelFinished` and in practice one always fires (incl. on abort), so
+        // this timer is pure defense-in-depth: if the SDK ever failed to settle, the wrapper would keep the
+        // response stream open forever. On backstop we BAIL without synthesizing — the loop's state is
+        // indeterminate, so writing could race the still-open merged stream. Timer is cleared on the normal
+        // path so it can't keep the isolate alive.
+        const SETTLE_BACKSTOP_MS = 60_000;
+        let backstopTimer: ReturnType<typeof setTimeout> | undefined;
+        let settledCleanly = false;
+        await Promise.race([
+          modelFinished.then(() => {
+            settledCleanly = true;
+          }),
+          new Promise<void>((resolve) => {
+            backstopTimer = setTimeout(resolve, SETTLE_BACKSTOP_MS);
+          }),
+        ]);
+        if (backstopTimer) clearTimeout(backstopTimer);
+        if (!settledCleanly) {
+          console.error(
+            '[assistant] model stream did not settle within backstop — skipping fallback',
             {
-              warnings: built.warnings,
+              backstopMs: SETTLE_BACKSTOP_MS,
             },
           );
-        // Same ④ pass as the model path — the fallback's prose is deterministic (report-fallback.ts),
-        // so this resolves as 'skipped' without an LLM call; running it anyway keeps the invariant
-        // simple: no report reaches persist/stream unverified.
-        const verified = await verify(built.report);
-        const storedId = await persistReport(opts.ctx, verified.report, modelId, verified);
-        const toolCallId = `fallback_${randomReportId()}`;
-        writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
-        writer.write({
-          type: 'tool-input-available',
-          toolCallId,
-          toolName: 'emit_report',
-          input: {},
-        });
-        writer.write({
-          type: 'tool-output-available',
-          toolCallId,
-          output: { ok: true as const, report: verified.report, ...(storedId ? { storedId } : {}) },
-        });
-        opts.ctx.reportEmitted = true;
-      } catch (err) {
-        // The fallback is best-effort: never let it break the response the model already streamed.
-        console.error('[assistant] fallback finalizer failed', err);
+          return;
+        }
+        // Skip the fallback when the model finalized its own report, or errored (a provider failure already
+        // surfaced its own message — don't paste a report over it).
+        if (modelErrored || opts.ctx.reportEmitted) return;
+        // No bindable data this turn → the fallback finalizer has nothing to synthesize from. If the model
+        // also produced no prose, the turn would otherwise be BLANK (empty completion). Write an explicit
+        // affordance so the dock shows guidance instead of an empty transcript. A legit prose-only answer
+        // (produced text, e.g. a clarifying reply) is left untouched.
+        if (opts.ctx.results.length === 0) {
+          if (!modelProducedText) {
+            console.warn('[assistant] empty completion — no report, no data, no prose', {
+              finishReason: modelFinishReason,
+            });
+            const textId = `empty_${randomReportId()}`;
+            writer.write({ type: 'text-start', id: textId });
+            writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
+            writer.write({ type: 'text-end', id: textId });
+          }
+          return;
+        }
+        try {
+          const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
+          if (!built.ok) {
+            // We had bindable data yet still couldn't synthesize a valid report (e.g. bindReport rejected
+            // the shape). Log it — otherwise this „had data, still no report" case fails invisibly.
+            console.warn('[assistant] fallback finalizer produced no valid report', {
+              errors: built.errors,
+              resultCount: opts.ctx.results.length,
+            });
+            return;
+          }
+          if (built.warnings.length > 0)
+            console.warn(
+              '[assistant] partial fallback report: missing display columns rendered as null',
+              {
+                warnings: built.warnings,
+              },
+            );
+          // Same ④ pass as the model path — the fallback's prose is deterministic (report-fallback.ts),
+          // so this resolves as 'skipped' without an LLM call; running it anyway keeps the invariant
+          // simple: no report reaches persist/stream unverified.
+          const verified = await verify(built.report);
+          const persisted = await persistReport(opts.ctx, verified.report, modelId, verified);
+          if (persisted) opts.ctx.persistedReport = persisted;
+          const toolCallId = `fallback_${randomReportId()}`;
+          writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
+          writer.write({
+            type: 'tool-input-available',
+            toolCallId,
+            toolName: 'emit_report',
+            input: {},
+          });
+          writer.write({
+            type: 'tool-output-available',
+            toolCallId,
+            output: {
+              ok: true as const,
+              report: verified.report,
+              ...(persisted ? { storedId: persisted.reportId } : {}),
+            },
+          });
+          opts.ctx.reportEmitted = true;
+        } catch (err) {
+          // The fallback is best-effort: never let it break the response the model already streamed.
+          console.error('[assistant] fallback finalizer failed', err);
+        }
+      } finally {
+        // Exactly-once settle signal for the dedup driver — all exit paths above route through here.
+        opts.onSettled?.(opts.ctx.persistedReport ?? null);
       }
     },
     // Graceful degradation (§7): a provider outage / rate-limit / timeout surfaces mid-stream as a
