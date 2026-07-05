@@ -43,7 +43,10 @@ const table = (cell: string): ResolvedBlock => ({
 });
 // The mandatory guardrail-D methodology callout — structural, must survive stripping and fail-closed.
 const methodologyCallout = (): ResolvedBlock =>
-  callout('Как е изчислено', 'Броим amount_eur по подписани договори за CPV 45*, signed_at в 2023.');
+  callout(
+    'Как е изчислено',
+    'Броим amount_eur по подписани договори за CPV 45*, signed_at в 2023.',
+  );
 
 /** A plain lookup: one totals block, neutral prose. Must never trigger the verifier. */
 const plainLookup = () =>
@@ -142,7 +145,9 @@ describe('needsVerification', () => {
       ],
       format: 'money',
     };
-    expect(needsVerification(report([timeseries, text('Ръст на разходите по години.')]))).toBe(true);
+    expect(needsVerification(report([timeseries, text('Ръст на разходите по години.')]))).toBe(
+      true,
+    );
   });
 
   it('a methodology-titled callout does not, by itself, satisfy the ranking-shape rule', () => {

@@ -82,7 +82,8 @@ export function needsVerification(report: ResolvedReport): boolean {
       // The mandatory „Как е изчислено" sourcing callout is boilerplate the editorial skeleton appends
       // after every chart — it is not ranking commentary, so on its own it must not force a verifier
       // call (else every visual report pays the LLM cost). Its text still feeds the lexicon scan below.
-      if (!isMethodologyCalloutTitle(b.title) && (b.title + b.md).trim().length > 0) hasProse = true;
+      if (!isMethodologyCalloutTitle(b.title) && (b.title + b.md).trim().length > 0)
+        hasProse = true;
     } else if (b.type === 'bar' || b.type === 'flows' || b.type === 'timeseries') {
       hasRankingChart = true;
     }
