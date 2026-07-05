@@ -13,6 +13,7 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  generateText,
   jsonSchema,
   stepCountIs,
   streamText,
@@ -26,6 +27,8 @@ import { EMIT_REPORT_TOOL } from '../assistant-contract/stream';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
 import { buildFallbackReport } from './report-fallback';
+import { verifyReport, type GenerateFn, type VerificationOutcome } from './verifier';
+import type { ResolvedReport } from './report-schema';
 import type { TemporalContext } from './temporal';
 
 export interface AgentEnv {
@@ -115,6 +118,35 @@ function buildModel(env: AgentEnv) {
   return provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
 }
 
+// Verifier (role ④) call budget: one tool-less generateText per verified report, hard-capped in time
+// so a slow gateway can never stall the emit_report tool result (the fail-closed path in verifyReport
+// then strips the risk prose rather than blocking the turn).
+const VERIFIER_TIMEOUT_MS = 20_000;
+
+// The injected LLM call for verifyReport — same gateway-mandatory model as the main loop (§9.5),
+// tool-less by construction. Verdicts only need a few hundred tokens; the low cap bounds cost and
+// makes a steered long-form answer structurally impossible to return in full. Exactly ONE call:
+// `maxRetries: 0` (the AI SDK counts retries on top of the initial call, so `1` would allow two
+// gateway calls — doubling worst-case spend under the 120 RPM budget). The per-call timeout is
+// combined with the turn's abort signal so a client disconnect cancels the verifier too.
+function buildVerifierGenerate(env: AgentEnv, turnSignal?: AbortSignal): GenerateFn {
+  const model = buildModel(env);
+  return async ({ system, prompt }) => {
+    const timeout = AbortSignal.timeout(VERIFIER_TIMEOUT_MS);
+    const abortSignal = turnSignal ? AbortSignal.any([turnSignal, timeout]) : timeout;
+    const result = await generateText({
+      model,
+      system,
+      prompt,
+      temperature: 0,
+      maxRetries: 0,
+      maxOutputTokens: 1024,
+      abortSignal,
+    });
+    return result.text;
+  };
+}
+
 // Shown when the model returns a completely empty turn — no report, no run_sql data to synthesize from,
 // and no prose (an empty completion / finishReason 'other'). Guarantees the dock never renders a blank
 // turn in that case. Mirrors the client-side NO_ANSWER_FALLBACK wording (AssistantTranscript.tsx).
@@ -160,10 +192,11 @@ async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: s
 }
 
 /** Persist a resolved report to R2 and return its id + createdAt. Returns null on any write failure. */
-async function persistReport(
+export async function persistReport(
   ctx: ToolContext,
-  report: ReturnType<typeof finalizeReport> & { ok: true },
+  report: ResolvedReport,
   modelId: string,
+  verification?: VerificationOutcome,
 ): Promise<{ reportId: string; createdAt: string } | null> {
   if (!ctx.reports) return null;
   const id = randomReportId();
@@ -171,7 +204,7 @@ async function persistReport(
     schemaVersion: 1,
     id,
     createdAt: new Date().toISOString(),
-    report: report.report,
+    report,
     provenance: {
       question: ctx.userQuestion ?? '',
       sources: ctx.sources,
@@ -179,13 +212,26 @@ async function persistReport(
       freshness: await fetchFreshness(ctx.db),
       model: modelId,
       promptVersion: PROMPT_VERSION,
+      // Role-④ audit trail (additive — absent on pre-verifier reports): what the verifier decided and
+      // which claim ids it stripped/flagged, so a published report's missing prose is explainable.
+      ...(verification
+        ? {
+            verification: {
+              status: verification.status,
+              strippedClaimIds: verification.strippedClaimIds,
+              uncertainClaimIds: verification.uncertainClaimIds,
+              // Diagnostic-only; server-side audit trail (report.tsx strips provenance before hydration).
+              ...(verification.errors ? { errors: verification.errors } : {}),
+            },
+          }
+        : {}),
     },
   };
   try {
     await ctx.reports.put(`report/${id}.json`, JSON.stringify(stored), {
       httpMetadata: { contentType: 'application/json' },
       customMetadata: {
-        title: report.report.title,
+        title: report.title,
         question: ctx.userQuestion ?? '',
         createdAt: stored.createdAt,
       },
@@ -197,7 +243,11 @@ async function persistReport(
   }
 }
 
-function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
+function buildToolSet(
+  ctx: ToolContext,
+  modelId: string,
+  verify: (report: ResolvedReport) => Promise<VerificationOutcome>,
+): ToolSet {
   const set: ToolSet = {};
   for (const t of ASSISTANT_TOOLS) {
     set[t.name] = tool({
@@ -216,14 +266,22 @@ function buildToolSet(ctx: ToolContext, modelId: string): ToolSet {
     execute: async (input: unknown) => {
       const r = finalizeReport(input, ctx);
       if (!r.ok) return { ok: false as const, errors: r.errors };
+      if (r.warnings.length > 0)
+        console.warn('[assistant] partial report: missing display columns rendered as null', {
+          warnings: r.warnings,
+        });
       // Record that a valid report exists this turn, so chooseToolChoice stops force-finalizing on the
       // remaining steps (a legitimate multi-query flow that already emitted must not be re-forced).
       ctx.reportEmitted = true;
-      const persisted = await persistReport(ctx, r, modelId);
+      // Role ④ (verifier.ts): risk-scaled and behind every deterministic gate — bindReport has already
+      // bound/sanitized this report. Plain lookups resolve as 'skipped' with zero LLM cost; verifyReport
+      // never throws, so a verifier failure degrades to its fail-closed strip, not a failed tool call.
+      const verified = await verify(r.report);
+      const persisted = await persistReport(ctx, verified.report, modelId, verified);
       if (persisted) ctx.persistedReport = persisted;
       return {
         ok: true as const,
-        report: r.report,
+        report: verified.report,
         ...(persisted ? { storedId: persisted.reportId } : {}),
       };
     },
@@ -258,6 +316,10 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
   const maxSteps = resolveMaxSteps(opts.env.MAX_STEPS);
   const messages = await convertToModelMessages(opts.messages);
   const modelId = opts.env.ASSISTANT_MODEL || DEFAULT_MODEL;
+  // Role ④ — one verifier closure per turn; verifyReport itself decides (deterministically) whether a
+  // given report warrants the extra LLM call.
+  const verifierGenerate = buildVerifierGenerate(opts.env, opts.abortSignal);
+  const verify = (report: ResolvedReport) => verifyReport(report, verifierGenerate);
 
   // Resolves when the model loop (all steps + tool executions) is fully finished, so the last-resort
   // finalizer below runs only after the model has had every chance to emit its own report. `onError`
@@ -292,7 +354,7 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       temporal: opts.temporal,
     }),
     messages,
-    tools: buildToolSet(opts.ctx, modelId),
+    tools: buildToolSet(opts.ctx, modelId, verify),
     stopWhen: stepCountIs(maxSteps),
     // Force a real tool call on the FIRST step (then let the loop run free). Weaker chat models under the
     // streamed loop otherwise narrate the call as prose (writes ```sql / `[run_sql(...)]` instead of
@@ -404,7 +466,18 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
             });
             return;
           }
-          const persisted = await persistReport(opts.ctx, built, modelId);
+          if (built.warnings.length > 0)
+            console.warn(
+              '[assistant] partial fallback report: missing display columns rendered as null',
+              {
+                warnings: built.warnings,
+              },
+            );
+          // Same ④ pass as the model path — the fallback's prose is deterministic (report-fallback.ts),
+          // so this resolves as 'skipped' without an LLM call; running it anyway keeps the invariant
+          // simple: no report reaches persist/stream unverified.
+          const verified = await verify(built.report);
+          const persisted = await persistReport(opts.ctx, verified.report, modelId, verified);
           if (persisted) opts.ctx.persistedReport = persisted;
           const toolCallId = `fallback_${randomReportId()}`;
           writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
@@ -419,7 +492,7 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
             toolCallId,
             output: {
               ok: true as const,
-              report: built.report,
+              report: verified.report,
               ...(persisted ? { storedId: persisted.reportId } : {}),
             },
           });
