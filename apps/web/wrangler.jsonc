@@ -38,15 +38,21 @@
   // (spec §9.5) — MANDATORY, fail closed: with AI_GATEWAY_BASE_URL empty the assistant returns 503
   // rather than calling the provider directly. Set it per-environment to the gateway's OpenAI-compatible
   // upstream endpoint, e.g. (account f6308e22233e69cba80ed57bdb6d5f44):
-  //   https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openrouter/v1
+  //   https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-bggpt/v1
+  // BgGPT (api.mamay.ai) is not a built-in AI Gateway provider, so it is wired as a Custom Provider
+  // (slug `bggpt`, base_url https://api.mamay.ai). The gateway uses only the ORIGIN of the provider's
+  // base_url and appends the path after `custom-bggpt/`, so the `/v1` prefix must live in this URL — the
+  // OpenAI SDK's `<base>/chat/completions` then resolves upstream to https://api.mamay.ai/v1/chat/completions
+  // (verified end-to-end 2026-07). Provider created (slug `bggpt`); until it exists the assistant route
+  // 503s (same provisioning-gate posture as the other resources above).
   // AI_GATEWAY_ID is the gateway slug (<gateway> above); it routes the Workers AI RAG embeddings
   // through the same gateway. ASSISTANT_MODEL selects the model (provider-scoped id) — swap models by
-  // editing it alone. ASSISTANT_API_KEY is a SECRET (not here). Left empty in source so a deploy must
-  // opt in explicitly.
+  // editing it alone. ASSISTANT_API_KEY is a SECRET (not here): the BgGPT/mamay key, forwarded upstream
+  // as `Authorization: Bearer`. Left empty in source so a deploy must opt in explicitly.
   "vars": {
-    "AI_GATEWAY_BASE_URL": "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/openrouter/v1",
+    "AI_GATEWAY_BASE_URL": "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/custom-bggpt/v1",
     "AI_GATEWAY_ID": "sigma-assistant",
-    "ASSISTANT_MODEL": "google/gemma-4-31b-it",
+    "ASSISTANT_MODEL": "bggpt-gemma4-31b-it-bg-gptq-w4a16",
     "MAX_STEPS": "6",
     // Reserved for the launch-gate global circuit-breaker — declared but NOT yet read by any code.
     "BGGPT_RATE_LIMIT_RPM": "120",
