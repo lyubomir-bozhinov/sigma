@@ -25,6 +25,9 @@ function assertNoDoctype(xml) {
   if (/<!doctype|<!entity/i.test(xml)) throw new Error('XXE guard: DOCTYPE/ENTITY not allowed');
 }
 const asArray = (x) => (x == null ? [] : Array.isArray(x) ? x : [x]);
+// Empty XML elements (<Name/>) parse to {} — String({}) would yield '[object Object]', so collapse any
+// object/null/undefined to '' and trim the rest. The single coercion for every scalar field we persist.
+const flat = (v) => (v == null || typeof v === 'object' ? '' : String(v).trim());
 function cellText(cell) {
   if (cell == null) return '';
   const t = typeof cell === 'object' ? cell['#text'] : cell;
@@ -56,15 +59,16 @@ export function parseList(xml) {
   const out = [];
   for (const main of asArray(root?.MainCategory)) {
     for (const cat of asArray(main?.Category)) {
-      const category = cat?.['@_Name'] ?? '';
+      const category = flat(cat?.['@_Name']);
       for (const inst of asArray(cat?.Institution)) {
-        const institution = inst?.['@_Name'] ?? '';
+        const institution = flat(inst?.['@_Name']);
         for (const person of asArray(inst?.Person)) {
-          const name = person?.Name ?? '';
+          const name = flat(person?.Name);
           for (const pos of asArray(person?.Position)) {
-            const position = pos?.Name ?? '';
+            const position = flat(pos?.Name);
             for (const decl of asArray(pos?.Declaration)) {
-              if (decl?.xmlFile) out.push({ category, institution, person: name, position, xmlFile: decl.xmlFile });
+              const xmlFile = flat(decl?.xmlFile);
+              if (xmlFile) out.push({ category, institution, person: name, position, xmlFile });
             }
           }
         }
@@ -78,7 +82,7 @@ export function parseList(xml) {
 function parseAssets(pp) {
   const personal = pp.Personal ?? {};
   const dd = pp.DeclarationData ?? {};
-  const declarant = String(personal.Name ?? '').trim();
+  const declarant = flat(personal.Name);
   let egnPresent = String(personal.EGN ?? '').trim().length > 0;
   const interests = [];
   let familyHoldingCount = 0;
@@ -103,8 +107,8 @@ function parseAssets(pp) {
   return {
     templateType: 'assets',
     declarant,
-    position: String(personal.Position ?? '').trim() || null,
-    work: String(personal.Work ?? '').trim() || null,
+    position: flat(personal.Position) || null,
+    work: flat(personal.Work) || null,
     year: year4(dd.Year),
     declarationType: dd.DeclarationType != null ? String(dd.DeclarationType).trim() : null,
     controlHash: dd.ControlHash != null ? String(dd.ControlHash).trim() : null,
@@ -119,7 +123,7 @@ function parseAssets(pp) {
 function parseInterests(ppd) {
   const personal = ppd.Personal ?? {};
   const dd = ppd.DeclarationData ?? {};
-  const declarant = String(personal.Name ?? '').trim();
+  const declarant = flat(personal.Name);
   const egnPresent = String(personal.EGN ?? '').trim().length > 0;
   const interests = [];
   const relatedPersons = []; // third-party people — INTERNAL only (§8)
@@ -157,8 +161,8 @@ function parseInterests(ppd) {
   return {
     templateType: 'interests',
     declarant,
-    position: String(personal.Position ?? '').trim() || null,
-    work: String(personal.Work ?? '').trim() || null,
+    position: flat(personal.Position) || null,
+    work: flat(personal.Work) || null,
     year: year4(dd.DeclarationDate) ?? year4(dd.EntryDate),
     declarationType: 'interests',
     controlHash: dd.ControlHash != null ? String(dd.ControlHash).trim() : null,
