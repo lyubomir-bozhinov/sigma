@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import type { UIMessage } from 'ai';
 import { CONDENSE_THRESHOLD, condenseForPost, KEEP_RECENT, RECAP_MAX_CHARS } from './condense';
+import { selectClientMessages } from '../assistant/chat-input';
 
 function msg(id: string, role: 'user' | 'assistant', text: string): UIMessage {
   return { id, role, parts: [{ type: 'text', text }] } as UIMessage;
 }
+
+const reportMessage = (id: string): UIMessage =>
+  ({
+    id,
+    role: 'assistant',
+    parts: [
+      { type: 'text', text: '| Изпълнител | преамбюл' },
+      {
+        type: 'tool-emit_report',
+        state: 'output-available',
+        output: {
+          ok: true,
+          report: {
+            title: 'Топ 5 възложители по разходи (2024)',
+            blocks: [
+              { type: 'totals', items: [{ label: 'Общо', value: 1200000, format: 'number' }] },
+            ],
+          },
+        },
+      },
+    ],
+  }) as unknown as UIMessage;
 
 describe('condenseForPost', () => {
   it('returns the messages unchanged when at or under the threshold', () => {
@@ -139,5 +162,58 @@ describe('condenseForPost', () => {
     expect(recapText.length).toBeLessThanOrEqual(RECAP_MAX_CHARS);
     expect(recapText).toContain('въпрос 59');
     expect(recapText).not.toContain('въпрос 0 ');
+  });
+
+  it('condenses at exactly CONDENSE_THRESHOLD+1 — the first triggering length', () => {
+    // At CONDENSE_THRESHOLD (12) the history goes out verbatim (covered above); +1 is the smallest
+    // input that condenses. older = the first (13 - KEEP_RECENT) turns, recent = the last KEEP_RECENT.
+    const n = CONDENSE_THRESHOLD + 1;
+    const msgs = Array.from({ length: n }, (_, i) => msg(`m${i}`, 'user', `turn ${i}`));
+    const out = condenseForPost(msgs);
+
+    expect(out).toHaveLength(KEEP_RECENT + 1);
+    expect(out[0].id).toBe(`recap-m${n - KEEP_RECENT - 1}`);
+    expect(out.slice(1)).toEqual(msgs.slice(-KEEP_RECENT));
+    // Exactly (n - KEEP_RECENT) older turns are gisted into bullets — no more, no fewer.
+    const bullets = (out[0].parts[0] as { text: string }).text.split('\n').slice(1);
+    expect(bullets).toHaveLength(n - KEEP_RECENT);
+  });
+
+  it('a report turn inside the recent window is passed through verbatim, not gisted', () => {
+    // The last KEEP_RECENT messages are returned by reference (messages.slice(-KEEP_RECENT)). A report
+    // there must keep its tool-emit_report part intact — only OLDER reports are reduced to a text gist.
+    const report = reportMessage('recent-report');
+    const msgs = [
+      ...Array.from({ length: 6 }, (_, i) => msg(`old${i}`, 'user', `old ${i}`)),
+      ...Array.from({ length: KEEP_RECENT - 1 }, (_, i) => msg(`m${i}`, 'user', `t${i}`)),
+      report,
+    ];
+    const out = condenseForPost(msgs);
+
+    // Same object, untouched — the verbatim path, distinct from the recap path.
+    expect(out.at(-1)).toBe(report);
+    expect(
+      (out.at(-1) as UIMessage).parts.some(
+        (p) => (p as { type: string }).type === 'tool-emit_report',
+      ),
+    ).toBe(true);
+  });
+
+  it('the synthetic recap survives the server trust boundary (selectClientMessages)', () => {
+    // condenseForPost runs client-side; the server independently re-sanitises via selectClientMessages
+    // (drops non-user/assistant roles + non-text parts). The recap is role=assistant with one text part,
+    // so it MUST survive — otherwise compression silently no-ops and the model loses all older context.
+    const msgs = Array.from({ length: 16 }, (_, i) =>
+      msg(`m${i}`, i % 2 === 0 ? 'user' : 'assistant', `turn ${i}`),
+    );
+    const server = selectClientMessages(condenseForPost(msgs), 24);
+
+    expect(server[0].id).toMatch(/^recap-/);
+    expect(server[0].role).toBe('assistant');
+    expect((server[0].parts[0] as { text: string }).text).toContain(
+      'Резюме на по-стария разговор:',
+    );
+    // The whole condensed thread survives (1 recap + KEEP_RECENT), none evicted by the server boundary.
+    expect(server).toHaveLength(KEEP_RECENT + 1);
   });
 });
