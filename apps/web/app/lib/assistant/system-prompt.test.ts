@@ -65,13 +65,24 @@ describe('buildSystemPrompt', () => {
     expect(NO_DATA_RULE).toContain('НЕ измисляй');
   });
 
-  it('keeps the recency caveat authoritative over the no-data answer for recent periods', () => {
+  it('keeps quotes out of the copy-verbatim no-data sentence (PR #51 review)', () => {
+    // Wrapping the sentence in „…" inside a "starts exactly with" clause invites a compliant model
+    // to echo the quotes, diverging from the three hardcoded surfaces of the same message.
+    expect(NO_DATA_RULE).not.toContain(
+      '„Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+    );
+    expect(NO_DATA_RULE).toContain('без кавички');
+  });
+
+  it('carries an explicit exception deferring the no-data answer to the freshness caveat', () => {
     // A recent period with late-arriving data is NOT "no data" — the temporal caveat must keep
-    // precedence, and the no-data rule must explicitly defer to it.
+    // precedence. The rule states that deference explicitly (an ИЗКЛЮЧЕНИЕ clause naming the
+    // freshness warning), and the caveat itself still renders for a recent period.
     const temporal = resolveTemporalContext('този месец', JUL_2)!;
     const p = buildSystemPrompt({ temporal });
     expect(p).toContain('ВНИМАНИЕ (свежест)');
-    expect(NO_DATA_RULE).toContain('свежест');
+    expect(NO_DATA_RULE).toContain('ИЗКЛЮЧЕНИЕ');
+    expect(NO_DATA_RULE).toContain('предупреждение за свежест');
   });
 
   it('hardens the prompt-injection boundary: embedded "instructions" in data are framed as data to ignore', () => {
