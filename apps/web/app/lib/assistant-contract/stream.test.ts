@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPhasePart } from './stream';
+import { INSUFFICIENT_DATA_MESSAGE, isPhasePart, REPORT_FAILED_MESSAGE } from './stream';
 
 describe('isPhasePart', () => {
   it('accepts each of the three valid phase keys', () => {
@@ -22,5 +22,15 @@ describe('isPhasePart', () => {
 
   it('rejects a non-string phase', () => {
     expect(isPhasePart({ type: 'data-phase', data: { phase: 2 } })).toBe(false);
+  });
+});
+
+describe('user-facing failure messages', () => {
+  it('keeps the technical compose-failure message distinct from the insufficient-data one', () => {
+    // A thrown/rejected emit_report means the report FAILED — the data may well exist. Labeling it
+    // "insufficient data" asserts a wrong cause (PR #51 review), so the two can never re-unify.
+    expect(REPORT_FAILED_MESSAGE).toBe('Справката не можа да бъде съставена. Опитайте отново.');
+    expect(REPORT_FAILED_MESSAGE).not.toContain(INSUFFICIENT_DATA_MESSAGE);
+    expect(INSUFFICIENT_DATA_MESSAGE).not.toContain(REPORT_FAILED_MESSAGE);
   });
 });

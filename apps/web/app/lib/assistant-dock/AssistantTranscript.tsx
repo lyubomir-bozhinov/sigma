@@ -5,7 +5,11 @@ import { addToReportIndex } from './storage';
 import { AssistantMessage, messageText } from './AssistantMessage';
 import { AssistantPhaseLine } from './AssistantPhaseLine';
 import { ReportChip } from './ReportChip';
-import type { AssistantPhase } from '../assistant-contract/stream';
+import {
+  INSUFFICIENT_DATA_MESSAGE,
+  REPORT_FAILED_MESSAGE,
+  type AssistantPhase,
+} from '../assistant-contract/stream';
 
 interface AssistantTranscriptProps {
   messages: UIMessage[];
@@ -25,7 +29,7 @@ interface AssistantTranscriptProps {
 // model ran out of tool steps before composing an answer. Actionable, so the reader isn't left with a
 // blank turn (the root fix is elsewhere; this is the last-resort safety net).
 const NO_ANSWER_FALLBACK =
-  'Не успях да съставя справка за този въпрос в наличните стъпки. Опитайте по-конкретно — напр. ' +
+  `${INSUFFICIENT_DATA_MESSAGE} Опитайте по-конкретно — напр. ` +
   'посочете възложител, период или сектор.';
 
 // Slack (px) for "still at the bottom": absorbs sub-pixel rounding and the few px a streamed token adds
@@ -163,7 +167,7 @@ export const AssistantTranscript = ({
                 that lands a moment later. Only show it once the turn has settled (or for an earlier
                 turn that genuinely ended on ok:false). While busy the pending indicator shows instead. */}
               {report && !report.ok && !(busy && index === messages.length - 1) ? (
-                <p className="assistant-transcript__error">Справката не можа да бъде съставена.</p>
+                <p className="assistant-transcript__error">{REPORT_FAILED_MESSAGE}</p>
               ) : null}
               {showNoAnswer ? (
                 <p className="assistant-transcript__error">{NO_ANSWER_FALLBACK}</p>
