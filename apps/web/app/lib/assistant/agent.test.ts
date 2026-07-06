@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chooseToolChoice, persistReport, resolveMaxSteps } from './agent';
+import {
+  chooseToolChoice,
+  EMPTY_COMPLETION_MESSAGE,
+  persistReport,
+  resolveMaxSteps,
+} from './agent';
+import { INSUFFICIENT_DATA_MESSAGE } from '../assistant-contract/stream';
 import type { ToolContext } from './tools';
 import type { ResolvedReport } from './report-schema';
 import type { VerificationOutcome } from './verifier';
@@ -143,5 +149,15 @@ describe('persistReport — role ④ audit trail', () => {
     const noVer = JSON.parse(puts[1].body);
     expect('verification' in noVer.provenance).toBe(false);
     expect(noVer.schemaVersion).toBe(1);
+  });
+});
+
+describe('EMPTY_COMPLETION_MESSAGE', () => {
+  it('starts with the canonical insufficient-data sentence (single source in the contract)', () => {
+    expect(EMPTY_COMPLETION_MESSAGE.startsWith(INSUFFICIENT_DATA_MESSAGE)).toBe(true);
+  });
+
+  it('keeps an actionable tail so the user knows how to rephrase', () => {
+    expect(EMPTY_COMPLETION_MESSAGE).toContain('по-конкретно');
   });
 });

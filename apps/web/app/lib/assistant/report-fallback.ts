@@ -2,8 +2,8 @@
 //
 // The weak chat model sometimes gathers real data (one or more run_sql results) but never produces a
 // VALID emit_report within the step budget — it puts a number in prose (correctly gated), gets the block
-// shape wrong, or simply runs out of steps. The turn then dead-ends on „Справката не можа да бъде
-// съставена" even though the answer is sitting in `ctx.results`. This module synthesizes a minimal,
+// shape wrong, or simply runs out of steps. The turn then dead-ends on the insufficient-data failure
+// line (INSUFFICIENT_DATA_MESSAGE) even though the answer is sitting in `ctx.results`. This module synthesizes a minimal,
 // SERVER-OWNED report from those results so the turn always finalizes with the real figures.
 //
 // Integrity is preserved end-to-end: the blocks are authored here but bound through the SAME `bindReport`

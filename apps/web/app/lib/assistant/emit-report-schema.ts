@@ -164,7 +164,7 @@ export function validateEmitShape(rawInput: unknown): ShapeResult {
 // discriminated `oneOf` (keyed on the `type` const) so the model fills the RIGHT fields. A shallow
 // {type}-only schema made a weak 27B emit bare blocks ({type:'table'} with no resultId/columns;
 // totals with no items; even an invalid format 'eur') that fail validateEmitShape on every retry →
-// the dock shows "Справката не можа да бъде съставена". validateEmitShape stays the server-side source
+// the dock shows the insufficient-data failure line (INSUFFICIENT_DATA_MESSAGE). validateEmitShape stays the server-side source
 // of truth; this just steers the model to a valid shape on the FIRST try. Local probe (forced
 // emit_report against the real model): shallow schema 0/5 valid → this oneOf schema 5/5.
 const REF_SCHEMA = {
