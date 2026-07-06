@@ -1,9 +1,9 @@
 // Maps a mid-stream model-loop failure to the user-facing Bulgarian line carried in the SSE `error`
 // chunk. Server-side counterpart of assistant-dock/errors.ts, which classifies pre-stream HTTP
 // statuses — a mid-generation failure arrives AFTER the response is already 200, so there is no
-// status to map; only the thrown error object. The global BgGPT cap lives in AI Gateway and fires
-// at model-call time (spec: ai-assistant-agent-team.md §4), so a 429 here means "shared quota
-// exhausted mid-turn" and gets the distinct shed message; everything else stays generic so no
+// status to map; only the thrown error object. The account-wide BgGPT cap is enforced by the
+// BgGptCircuitBreaker DO (ADR-0009); a 429 here is AI Gateway surfacing shared-quota exhaustion
+// mid-turn, so it gets the distinct shed message; everything else stays generic so no
 // provider/internal detail leaks to the user.
 
 import { APICallError, RetryError } from 'ai';
