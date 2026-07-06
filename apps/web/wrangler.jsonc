@@ -61,7 +61,9 @@
   // (spec §9.5) — MANDATORY, fail closed: with AI_GATEWAY_BASE_URL empty the assistant returns 503
   // rather than calling the provider directly. Set it per-environment to the gateway's OpenAI-compatible
   // upstream endpoint, e.g. (account <account-id>):
-  //   https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openrouter/v1
+  //   https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-bggpt/v1
+  // BgGPT (api.mamay.ai) is not a built-in AI Gateway provider, so it is wired as a Custom Provider
+  // (slug `bggpt`); the gateway uses only the provider base_url's ORIGIN, so the `/v1` lives in the URL.
   // AI_GATEWAY_ID is the gateway slug (<gateway> above); it routes the Workers AI RAG embeddings
   // through the same gateway. ASSISTANT_MODEL selects the model (provider-scoped id) — swap models by
   // editing it alone. ASSISTANT_API_KEY is a SECRET (not here). Left empty in source so a deploy must
@@ -71,7 +73,7 @@
     // concrete gateway URL + slug on -contracts; upstream deploys configure their own per environment.
     "AI_GATEWAY_BASE_URL": "",
     "AI_GATEWAY_ID": "",
-    "ASSISTANT_MODEL": "google/gemma-4-31b-it",
+    "ASSISTANT_MODEL": "bggpt-gemma4-31b-it-bg-gptq-w4a16",
     "MAX_STEPS": "6",
     // Account-wide BgGPT RPM cap enforced by the BGGPT_CIRCUIT_BREAKER DO (#135): read via
     // resolveGlobalRpm() in workers/assistant/bggpt-circuit-breaker.ts, checked on every paid turn.
