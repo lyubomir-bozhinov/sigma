@@ -54,7 +54,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   // Master launch gate (#83): expose it to the client so the dock launcher is hidden on a dark deploy —
   // no launcher that would only 503 on click. The route enforces the same gate server-side (defence in depth).
   const assistantOn = assistantEnabled(context.cloudflare.env.ASSISTANT_ENABLED);
-  return { ...coverage, origin: url.origin, assistantEnabled: assistantOn };
+  // Public Turnstile site key (H3): the dock renders the invisible bot-gate widget with it. Empty ⇒
+  // no widget, no token — the server gate is a no-op in that state too.
+  const turnstileSiteKey = context.cloudflare.env.TURNSTILE_SITE_KEY || null;
+  return { ...coverage, origin: url.origin, assistantEnabled: assistantOn, turnstileSiteKey };
 }
 
 // Scroll-restoration key for list pages. Filters and sort live in the query string under a stable
@@ -194,7 +197,9 @@ export default function App({ loaderData }: Route.ComponentProps) {
         endYear={loaderData.coverageEndYear}
       />
       <AccessibilityWidget />
-      {loaderData.assistantEnabled && <AssistantDock />}
+      {loaderData.assistantEnabled && (
+        <AssistantDock turnstileSiteKey={loaderData.turnstileSiteKey} />
+      )}
     </>
   );
 }
