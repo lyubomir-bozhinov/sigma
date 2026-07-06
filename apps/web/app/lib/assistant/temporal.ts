@@ -41,6 +41,17 @@ export interface ResolvedPeriod {
   grain: TemporalGrain;
   /** The period is recent enough that ingest lag may leave it empty/partial — disclose freshness. */
   recencyCaveat: boolean;
+  /**
+   * The bounds are ABSOLUTE (from explicit calendar tokens in the question — a year, an ISO date, or an
+   * ISO range) AND fully in the past (not clamped to-date). Such bounds never drift with the clock, so the
+   * period is safe to reuse across time — this is the dedup-eligibility signal (ADR-0010). A clock-relative
+   * phrase („този месец", „последните 30 дни") or an explicit period still running (clamped to tomorrow, e.g.
+   * „за 2026" mid-year) is NOT stable and must regenerate. Distinct from `recencyCaveat`, which is a
+   * disclosure-only freshness flag: a settled explicit range can be stable (dedup-safe) yet still recent
+   * (carry a caveat). The freshness token (data version) remains the backstop that busts a reused report
+   * whenever the underlying data refreshes.
+   */
+  stableBounds: boolean;
 }
 
 export interface TemporalContext {
@@ -176,6 +187,18 @@ const clampEnd = (untilIso: string, sinceIso: string, a: Anchor): string =>
 /** A period gets the freshness caveat when its (exclusive) end is within the ingest-lag window of today. */
 const isRecent = (untilIso: string, a: Anchor): boolean => untilIso > a.lagThresholdIso;
 
+// Keys whose bounds come from EXPLICIT calendar tokens in the question (a year, an ISO date/month, or an
+// ISO/year range) rather than the injected clock — so they never drift as time passes. Combined with the
+// not-clamped check in `period()`, this is the dedup-stability signal (ADR-0010). Every relative phrase
+// (this/last month, last-N-days, …) is deliberately absent, so it is treated as clock-relative.
+const ABSOLUTE_KEYS: ReadonlySet<string> = new Set([
+  'explicit-year',
+  'explicit-range',
+  'explicit-month',
+  'explicit-day',
+  'range', // „между YYYY и YYYY" — fixed endpoint years
+]);
+
 function period(
   key: string,
   phrase: string,
@@ -186,7 +209,19 @@ function period(
   a: Anchor,
 ): ResolvedPeriod {
   const untilIso = clampEnd(untilRawIso, sinceIso, a);
-  return { key, phrase, label, sinceIso, untilIso, grain, recencyCaveat: isRecent(untilIso, a) };
+  // Clamped means the end was cut to tomorrow (period still running) → clock-relative → not dedup-stable.
+  const clamped = untilIso !== untilRawIso;
+  const stableBounds = ABSOLUTE_KEYS.has(key) && !clamped;
+  return {
+    key,
+    phrase,
+    label,
+    sinceIso,
+    untilIso,
+    grain,
+    recencyCaveat: isRecent(untilIso, a),
+    stableBounds,
+  };
 }
 
 // --- Common pre-resolved periods (always computed, independent of the question) ---
@@ -264,10 +299,85 @@ function commonPeriods(a: Anchor): ResolvedPeriod[] {
   ];
 }
 
+// --- Explicit calendar tokens (absolute, dedup-stable): ISO date ranges, single ISO dates, ISO months ---
+
+/** True for a real `YYYY-MM-DD` — rejects `2026-13-40` and Feb/leap overflow via a round-trip. */
+function isValidIsoDate(s: string): boolean {
+  const [y, mo, d] = s.split('-').map(Number);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, mo - 1, d, 12));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+const ISO_D = '(\\d{4}-\\d{2}-\\d{2})';
+
+// Two full ISO dates joined by a range connector. A bare `-` counts only when whitespace-flanked, so an
+// ISO date's own hyphens never split it; an en/em dash may hug the dates (the starter-prompt format
+// „2026-06-26–2026-07-03"). „от D до D" / „между D и D" are the spoken forms.
+const ISO_RANGE_PATTERNS: readonly RegExp[] = [
+  new RegExp(`от\\s+${ISO_D}\\s+до\\s+${ISO_D}`),
+  new RegExp(`между\\s+${ISO_D}\\s+и\\s+${ISO_D}`),
+  new RegExp(`${ISO_D}\\s*[–—]\\s*${ISO_D}`),
+  new RegExp(`${ISO_D}\\s+(?:до|-)\\s+${ISO_D}`),
+];
+
+/**
+ * Recognise an explicit calendar period written with digits — an ISO date RANGE, a single ISO day, or an
+ * ISO month (`YYYY-MM`). Absolute, and (when fully past) dedup-stable. Tried before the relative/year
+ * branches so „подписани в периода 2026-06-26–2026-07-03" resolves deterministically instead of being left
+ * to the model's stale prior. Returns null when no explicit ISO token is present. (ADR-0010)
+ */
+function detectExplicitCalendar(q: string, a: Anchor): ResolvedPeriod | null {
+  // Ranges first — a range endpoint must not be mistaken for a single day.
+  for (const re of ISO_RANGE_PATTERNS) {
+    const m = q.match(re);
+    if (m && isValidIsoDate(m[1]) && isValidIsoDate(m[2])) {
+      const lo = minIso(m[1], m[2]);
+      const hi = m[1] === lo ? m[2] : m[1];
+      return period(
+        'explicit-range',
+        `${lo}–${hi}`,
+        `${lo} – ${hi}`,
+        lo,
+        addDaysIso(hi, 1),
+        'range',
+        a,
+      );
+    }
+  }
+  // Single ISO day, not embedded in a longer digit/hyphen run (a range/id fragment never reaches here).
+  const day = q.match(new RegExp(`(?<![\\d-])${ISO_D}(?![\\d-])`));
+  if (day && isValidIsoDate(day[1])) {
+    return period('explicit-day', day[1], day[1], day[1], addDaysIso(day[1], 1), 'day', a);
+  }
+  // ISO month „2026-06" — `YYYY-MM` not followed by `-DD` or another digit.
+  const month = q.match(/(?<![\d-])((?:19|20)\d{2})-(0[1-9]|1[0-2])(?![-\d])/);
+  if (month) {
+    const y = Number(month[1]);
+    const mo = Number(month[2]);
+    const tag = `${month[1]}-${month[2]}`;
+    return period(
+      'explicit-month',
+      tag,
+      tag,
+      monthStartIso(y, mo),
+      monthStartIso(y, mo + 1),
+      'month',
+      a,
+    );
+  }
+  return null;
+}
+
 // --- Primary-phrase detection (whitelist; relative phrases win over a bare explicit year) ---
 
 function detectPrimary(q: string, a: Anchor, common: ResolvedPeriod[]): ResolvedPeriod | null {
   const byKey = (k: string): ResolvedPeriod => common.find((p) => p.key === k)!;
+
+  // 0. Explicit ISO calendar tokens (date range / single date / month) — absolute + dedup-stable; tried
+  //    before every other branch so a written-out range/date resolves deterministically (ADR-0010).
+  const explicit = detectExplicitCalendar(q, a);
+  if (explicit) return explicit;
 
   // 1. Explicit range: „между 2021 и 2023" — inclusive of BOTH endpoint years (half-open upper = year2+1).
   const range = q.match(/между\s+((?:19|20)\d{2})\s+и\s+((?:19|20)\d{2})/);
@@ -362,11 +472,12 @@ function detectPrimary(q: string, a: Anchor, common: ResolvedPeriod[]): Resolved
     return period('yesterday', 'вчера', y, y, a.todayIso, 'day', a);
   }
 
-  // 9. Explicit calendar year: „през 2023", „за 2024", or a bare 4-digit year — LAST, so a relative
-  //    phrase is never shadowed by a stray year token. The year must not be adjacent to a digit or a
-  //    hyphen, so a 4-digit run inside a procurement id („00087-2020-0027") never injects a filter.
-  //    (review: ydimitrof)
-  const year = q.match(/(?<![\d-])((?:19|20)\d{2})(?![\d-])/);
+  // 9. Explicit calendar year: „през 2023", „за 2024", „2025-та година", or a bare 4-digit year — LAST, so
+  //    a relative phrase is never shadowed by a stray year token. Not preceded by a digit/hyphen (so a year
+  //    inside a procurement id „00087-2020-0027" never matches) and not followed by a digit or a `-digit`
+  //    (so an ISO date „2025-01" or range endpoint is excluded) — but a trailing Bulgarian ordinal suffix
+  //    „-та"/„-a" is allowed, since „2025-та" is the common spoken form for a year. (review: ydimitrof, lb)
+  const year = q.match(/(?<![\d-])((?:19|20)\d{2})(?!\d)(?!-\d)/);
   if (year) {
     const y = Number(year[1]);
     return period('explicit-year', `${y}`, `${y}`, yearStartIso(y), yearStartIso(y + 1), 'year', a);

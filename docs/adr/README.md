@@ -14,4 +14,5 @@
 | [0004](0004-style-src-unsafe-inline.md) | `style-src` запазва `'unsafe-inline'` (CSP) | Прието |
 | [0005](0005-blue-green-d1-rollback.md) | Blue/green D1 слотове за rollback на refresh | Прието |
 | [0006](0006-eop-wins-dedup.md) | Dedup на два източника: EOP печели по `contract_number` | Прието |
-| [0007](0007-report-dedup-settled-periods-only.md) | Report dedup (Lane F) само за изрично разрешени, приключени периоди | Прието |
+| [0007](0007-report-dedup-settled-periods-only.md) | Report dedup (Lane F) само за изрично разрешени, приключени периоди | Прието (уточнено от [0010](0010-dedup-gates-on-stable-bounds.md)) |
+| [0010](0010-dedup-gates-on-stable-bounds.md) | Dedup гейт по стабилни граници (не recency) + разпознаване на ISO диапазони | Прието |
