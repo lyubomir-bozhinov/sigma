@@ -100,4 +100,19 @@ describe('prepareChatBody', () => {
       MAX_BYTES,
     );
   });
+
+  it('under byte pressure the recent window wins over the recap (recency precedence)', () => {
+    // A recent window heavier than MAX_BYTES: condenseForPost emits [recap, ...last 10], then trimMessages
+    // drops front-first. The recap sits at index 0, so it is evicted BEFORE any recent turn. This is the
+    // deliberate precedence — material numbers re-derive server-side, so the verbatim recent turns are the
+    // higher-value context. Invariants: never over cap, never empty, newest turn always retained.
+    const msgs = Array.from({ length: 40 }, (_, i) => msg(`m${i}`, 'x'.repeat(30 * 1024)));
+    const { messages } = prepareChatBody(msgs);
+
+    const bytes = new TextEncoder().encode(JSON.stringify(messages)).length;
+    expect(bytes).toBeLessThanOrEqual(MAX_BYTES);
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages[messages.length - 1].id).toBe('m39'); // newest survives
+    expect(messages.some((m) => m.id.startsWith('recap-'))).toBe(false); // recap evicted first
+  });
 });
