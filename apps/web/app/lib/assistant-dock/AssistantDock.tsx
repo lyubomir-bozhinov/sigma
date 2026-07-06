@@ -78,7 +78,19 @@ export const AssistantDock = () => {
     } else {
       const wrapper = wrapperRef.current;
       if (wrapper instanceof HTMLDialogElement) {
-        if (!wrapper.open) wrapper.showModal();
+        // showModal() IS the sheet's focus trap (native trap + inert background + Esc). Guarded:
+        // an engine without it must not throw here — open the dialog non-modally instead (a closed
+        // <dialog> is display:none, so the sheet would otherwise never render) and focus the
+        // composer, leaving the sheet open but untrapped.
+        if (typeof wrapper.showModal === 'function') {
+          if (!wrapper.open) wrapper.showModal();
+        } else {
+          if (!wrapper.open) {
+            if (typeof wrapper.show === 'function') wrapper.show();
+            else wrapper.open = true;
+          }
+          wrapper.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+        }
       } else if (pendingFocus.current === 'panel') {
         wrapper?.querySelector<HTMLTextAreaElement>('textarea')?.focus();
       }

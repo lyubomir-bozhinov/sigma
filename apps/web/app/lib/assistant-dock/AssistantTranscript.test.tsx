@@ -172,3 +172,98 @@ describe('AssistantTranscript', () => {
     expect(screen.queryByText(NO_ANSWER)).not.toBeInTheDocument();
   });
 });
+
+// WCAG 4.1.3: the polite log announces settled content; the in-flight message is silenced (its text
+// mutates on every token batch) and turn completion is announced once via a separate status region.
+describe('AssistantTranscript — live region for streamed tokens', () => {
+  const proseAssistant = (id: string, text: string) =>
+    message(id, 'assistant', [{ type: 'text', text }]);
+
+  it('keeps the log region attributes (role, polite, label)', () => {
+    render(
+      <AssistantTranscript messages={[userMessage('l1', 'въпрос')]} phase={null} busy={false} />,
+    );
+
+    const log = screen.getByRole('log');
+    expect(log).toHaveAttribute('aria-live', 'polite');
+    expect(log).toHaveAttribute('aria-label', 'Разговор с асистента');
+  });
+
+  it('silences only the streaming (last) turn with aria-live="off"', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[
+          proseAssistant('s1', 'стар отговор'),
+          userMessage('s2', 'въпрос'),
+          proseAssistant('s3', 'частичен отго'),
+        ]}
+        phase="composing"
+        busy={true}
+      />,
+    );
+
+    const turns = container.querySelectorAll('.assistant-turn');
+    expect(turns[turns.length - 1].getAttribute('aria-live')).toBe('off');
+    expect(turns[0].getAttribute('aria-live')).toBeNull();
+    expect(turns[1].getAttribute('aria-live')).toBeNull();
+  });
+
+  it('does not silence any turn when idle', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[proseAssistant('i1', 'отговор')]}
+        phase={null}
+        busy={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-turn[aria-live="off"]')).toBeNull();
+  });
+
+  it('announces a settled prose turn once busy flips false', () => {
+    const { rerender } = render(
+      <AssistantTranscript
+        messages={[proseAssistant('p1', 'частичен')]}
+        phase="composing"
+        busy={true}
+      />,
+    );
+    rerender(
+      <AssistantTranscript
+        messages={[proseAssistant('p1', 'пълен отговор')]}
+        phase={null}
+        busy={false}
+      />,
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('Отговорът е готов');
+  });
+
+  it('announces a settled report turn with its title', () => {
+    const { rerender } = render(
+      <AssistantTranscript messages={[reportMessage('r1')]} phase="composing" busy={true} />,
+    );
+    rerender(<AssistantTranscript messages={[reportMessage('r1')]} phase={null} busy={false} />);
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Готова е справка: Заглавие на справка',
+    );
+  });
+
+  it('does not announce on initial mount with settled messages', () => {
+    render(<AssistantTranscript messages={[reportMessage('m1')]} phase={null} busy={false} />);
+
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('stays silent for a failed report turn (the in-log failure line announces instead)', () => {
+    const { rerender } = render(
+      <AssistantTranscript messages={[failedReportMessage('f1')]} phase="composing" busy={true} />,
+    );
+    rerender(
+      <AssistantTranscript messages={[failedReportMessage('f1')]} phase={null} busy={false} />,
+    );
+
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+});

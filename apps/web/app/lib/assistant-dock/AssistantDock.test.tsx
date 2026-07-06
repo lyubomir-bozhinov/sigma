@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub, Outlet } from 'react-router';
 import { COLLAPSED_KEY } from './storage';
@@ -198,5 +198,96 @@ describe('AssistantDock', () => {
 
     // onOpenReport is undefined on desktop — clicking „Отвори" navigates but does not collapse the dock.
     expect(screen.getByRole('button', { name: 'Свий асистента' })).toBeInTheDocument();
+  });
+
+  // H5 lock-ins: the dock's keyboard/focus contract (Esc, focus return, composer focus) and the
+  // mobile sheet's native-dialog focus trap, including the guarded no-showModal fallback.
+  describe('focus and keyboard', () => {
+    const stubMobile = () => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }),
+      );
+    };
+
+    const defineShowModal = () => {
+      const showModal = vi.fn(function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      });
+      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+        value: showModal,
+        writable: true,
+        configurable: true,
+      });
+      return showModal;
+    };
+
+    const removeShowModal = () => {
+      delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal;
+    };
+
+    it('desktop: Escape collapses the panel and returns focus to the launcher', async () => {
+      const user = userEvent.setup();
+      render(<AssistantDock />);
+      expect(screen.getByRole('button', { name: 'Свий асистента' })).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+
+      const launcher = screen.getByRole('button', { name: 'Асистент' });
+      expect(document.activeElement).toBe(launcher);
+    });
+
+    it('desktop: expanding from the launcher focuses the composer textarea', async () => {
+      const user = userEvent.setup();
+      localStorage.setItem(COLLAPSED_KEY, '1');
+      render(<AssistantDock />);
+
+      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+
+      expect(document.activeElement).toBe(screen.getByRole('textbox'));
+    });
+
+    it('mobile: expanding opens the sheet modally via showModal (the native focus trap)', async () => {
+      const user = userEvent.setup();
+      stubMobile();
+      const showModal = defineShowModal();
+      render(<AssistantDock />);
+
+      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+
+      expect(showModal).toHaveBeenCalled();
+      removeShowModal();
+    });
+
+    it('mobile: the dialog cancel event (Esc) collapses and returns focus to the launcher', async () => {
+      const user = userEvent.setup();
+      stubMobile();
+      defineShowModal();
+      const { container } = render(<AssistantDock />);
+      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+
+      const dialog = container.querySelector('dialog');
+      expect(dialog).not.toBeNull();
+      fireEvent(dialog!, new Event('cancel', { bubbles: false, cancelable: true }));
+
+      const launcher = screen.getByRole('button', { name: 'Асистент' });
+      expect(document.activeElement).toBe(launcher);
+      removeShowModal();
+    });
+
+    it('mobile: expanding without showModal support does not crash and still focuses the composer', async () => {
+      const user = userEvent.setup();
+      stubMobile();
+      // jsdom has no showModal — exactly the guarded engine-without-dialog-support path.
+      render(<AssistantDock />);
+
+      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+
+      expect(document.activeElement).toBe(screen.getByRole('textbox'));
+    });
   });
 });

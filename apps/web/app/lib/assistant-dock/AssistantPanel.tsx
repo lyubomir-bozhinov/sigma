@@ -80,7 +80,8 @@ export const AssistantPanel = ({
         </div>
       </header>
 
-      <p className="sr-only" role="status">
+      {/* aria-label distinguishes this region from the transcript's turn-completion status. */}
+      <p className="sr-only" role="status" aria-label="Състояние на разговора">
         {announcement}
       </p>
 
