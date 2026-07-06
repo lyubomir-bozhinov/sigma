@@ -149,6 +149,7 @@ html.assistant-ready .assistant-dock--panel {
   font-size: 0.8125rem;
   line-height: 1;
   /* 4px padding + 13px text + borders ≈ 23px — under the 24px floor (WCAG 2.2 §2.5.8). */
+  min-width: 24px;
   min-height: 24px;
   cursor: pointer;
 }
@@ -265,6 +266,7 @@ html.assistant-ready .assistant-dock--panel {
      give it the 24px floor. */
   display: inline-flex;
   align-items: center;
+  min-width: 24px;
   min-height: 24px;
 }
 
