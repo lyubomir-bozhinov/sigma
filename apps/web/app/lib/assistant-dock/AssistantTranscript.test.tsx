@@ -43,7 +43,8 @@ const toolOnlyMessage = (id: string) =>
     { type: 'tool-run_sql', state: 'output-available', output: 'R1 (колони: …) — 100 ред(а)' },
   ]);
 
-const NO_ANSWER = /Не успях да съставя справка за този въпрос/;
+const NO_ANSWER =
+  /Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос\. Опитайте по-конкретно/;
 
 describe('AssistantTranscript', () => {
   it('renders message prose', () => {
@@ -95,7 +96,11 @@ describe('AssistantTranscript', () => {
       />,
     );
 
-    expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('renders the phase line inside the aria-live log region', () => {
@@ -135,7 +140,11 @@ describe('AssistantTranscript', () => {
     );
 
     expect(screen.getByText('Съставям справка…')).toBeInTheDocument();
-    expect(screen.queryByText('Справката не можа да бъде съставена.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   // #31 fallback: the model's original emit_report is orphaned at input-available; the settled turn
@@ -172,7 +181,11 @@ describe('AssistantTranscript', () => {
       />,
     );
 
-    expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('does NOT flash the failure line for an ok:false on the last turn while still busy (retry pending)', () => {
@@ -187,7 +200,11 @@ describe('AssistantTranscript', () => {
       />,
     );
 
-    expect(screen.queryByText('Справката не можа да бъде съставена.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('still shows the failure line for an earlier settled turn while a new turn streams', () => {
@@ -201,7 +218,11 @@ describe('AssistantTranscript', () => {
       />,
     );
 
-    expect(screen.getByText('Справката не можа да бъде съставена.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows the no-answer fallback when a settled turn made tool calls but no report', () => {

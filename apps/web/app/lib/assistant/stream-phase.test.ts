@@ -102,7 +102,10 @@ describe('createPhaseFilter', () => {
     expect(out).toEqual([
       phase('composing'),
       toolInputStart('c3', 'emit_report'),
-      toolOutputError('c3', 'Справката не можа да бъде съставена.'),
+      toolOutputError(
+        'c3',
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
     ]);
   });
 
@@ -114,7 +117,11 @@ describe('createPhaseFilter', () => {
     expect(out).toEqual([
       phase('composing'),
       toolInputStart('c3', 'emit_report'),
-      toolInputError('c3', 'emit_report', 'Справката не можа да бъде съставена.'),
+      toolInputError(
+        'c3',
+        'emit_report',
+        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+      ),
     ]);
   });
 
