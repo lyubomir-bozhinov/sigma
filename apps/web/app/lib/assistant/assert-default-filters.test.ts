@@ -3,14 +3,9 @@ import { assertDefaultFilters } from './assert-default-filters';
 import { applyDefaultFilters } from '../../../workers/assistant/default-filters';
 import { CANONICAL_QUERIES } from './describe-schema';
 
-// A real canonical query that joins contracts + tenders and already carries `amount_eur IS NOT NULL`
-// (the HHI concentration example). We append the synthetic-tender predicate to exercise the
-// "both filters present" path, since no canonical query bundles both by hand.
+// The HHI concentration canonical query — joins contracts + tenders and carries both mandatory
+// default filters (amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна').
 const HHI = CANONICAL_QUERIES.find((q) => q.intent.startsWith('Концентрация'))!.sql;
-const HHI_WITH_BOTH = HHI.replace(
-  'WHERE c.amount_eur IS NOT NULL',
-  "WHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна'",
-);
 
 describe('assertDefaultFilters', () => {
   it('rejects a base-contracts query missing both default filters', () => {
@@ -26,11 +21,11 @@ describe('assertDefaultFilters', () => {
   });
 
   it('accepts a base-contracts query carrying both default filters and returns the standard callout', () => {
-    expect(HHI_WITH_BOTH).toContain('JOIN tenders t');
-    expect(HHI_WITH_BOTH).toContain('c.amount_eur IS NOT NULL');
-    expect(HHI_WITH_BOTH).toContain("t.procedure_type != 'неизвестна'");
+    expect(HHI).toContain('JOIN tenders t');
+    expect(HHI).toContain('c.amount_eur IS NOT NULL');
+    expect(HHI).toContain("t.procedure_type != 'неизвестна'");
 
-    const r = assertDefaultFilters(HHI_WITH_BOTH);
+    const r = assertDefaultFilters(HHI);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.callout).toEqual(applyDefaultFilters().callout);
@@ -200,4 +195,23 @@ describe('assertDefaultFilters', () => {
     const r = assertDefaultFilters(`SELECT SUM(c.amount_eur) AS s ${JOIN} WHERE ${DEFAULTS}`);
     expect(r.ok).toBe(true);
   });
+});
+
+// Referential-integrity guard: every CANONICAL_QUERIES entry that reads base `contracts` must already
+// carry both mandatory default filters. This catches regressions where a canonical example is edited
+// without keeping its WHERE clause in sync with assertDefaultFilters.
+describe('CANONICAL_QUERIES — base-contracts entries carry default filters', () => {
+  const contractsQueries = CANONICAL_QUERIES.filter((q) => /\bFROM\s+contracts\b/i.test(q.sql));
+
+  it('has at least one base-contracts canonical query to guard against an empty filter', () => {
+    expect(contractsQueries.length).toBeGreaterThan(0);
+  });
+
+  it.each(contractsQueries.map((q) => [q.intent, q.sql] as [string, string]))(
+    '%s',
+    (_intent, sql) => {
+      const result = assertDefaultFilters(sql);
+      expect(result.ok).toBe(true);
+    },
+  );
 });

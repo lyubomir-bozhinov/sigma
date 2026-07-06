@@ -150,6 +150,7 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'VFilter',
   'VNext',
   'VOpen', // read side of a virtual table (FTS5 MATCH) — the write side is VUpdate/VBegin, which are denied
+  'Variable', // load a bound parameter (?) value into a register — read-only
   'Yield',
 ]);
 

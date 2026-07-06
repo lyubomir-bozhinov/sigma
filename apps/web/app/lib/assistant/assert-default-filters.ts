@@ -111,10 +111,25 @@ function subtreeReferencesSignedAt(node: unknown): boolean {
 
 // A query „buckets by" signed_at when it derives a period from it in the PROJECTION (`substr(signed_at…)
 // AS year`) or GROUP BY — the timeseries shape. signed_at used only in the WHERE is a plain date FILTER
-// (already a range) and is not a bucket.
+// (already a range) and is not a bucket. A bare `c.signed_at` in the SELECT list is just display
+// (e.g. a point-lookup returning the raw date value) — it is NOT a period derivation and must not
+// trigger the date-window guard.
+function projectionDerivesSignedAtPeriod(columns: unknown): boolean {
+  if (!Array.isArray(columns)) return false;
+  return columns.some((col) => {
+    if (!isObj(col)) return false;
+    // node-sql-parser wraps each SELECT item as `{ expr: <node>, as: <alias>|null }`.
+    const expr = isObj(col.expr) ? col.expr : col;
+    // A bare column_ref for signed_at is pure display — not a period derivation.
+    if (isColumnRef(expr, 'signed_at')) return false;
+    // signed_at appearing inside a function call (substr, strftime, …) derives a period bucket.
+    return subtreeReferencesSignedAt(expr);
+  });
+}
+
 function bucketsBySignedAt(sel: LooseSelect): boolean {
   const node = sel as unknown as Record<string, unknown>;
-  return subtreeReferencesSignedAt(node.columns) || subtreeReferencesSignedAt(node.groupby);
+  return projectionDerivesSignedAtPeriod(node.columns) || subtreeReferencesSignedAt(node.groupby);
 }
 
 const UPPER_OPS = new Set(['<', '<=']);
