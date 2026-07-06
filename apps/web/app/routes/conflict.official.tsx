@@ -66,12 +66,12 @@ export default function ConflictOfficial({ loaderData }: Route.ComponentProps) {
 
         <Section
           id="holdings"
-          title="Деклариран дял в изпълнители"
+          title="Деклариран дял в компании изпълнители"
           hint="Дружества, спечелили обществени поръчки, в които лицето е декларирало дял (или дял и управление)."
         >
           <ConflictTable
             links={links}
-            caption={`Деклариран дял на ${official} в изпълнители`}
+            caption={`Деклариран дял на ${official} в компании изпълнители`}
             omit="official"
           />
         </Section>
