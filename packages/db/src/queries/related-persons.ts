@@ -6,6 +6,7 @@ import type {
   InterestClass,
   OfficialConflicts,
 } from '@sigma/api-contract';
+import { personSlug } from './identity';
 
 // Read-only query layer for свързани лица (ADR-0013). Reads interest_links directly — the contract facts
 // (count/value/years) are denormalized onto the link by the loader, so no rollup table is needed. Only
@@ -13,6 +14,7 @@ import type {
 
 interface LinkRow {
   link_key: string;
+  person_id: string;
   official: string;
   company: string;
   eik: string;
@@ -31,7 +33,7 @@ interface LinkRow {
 // Shared projection: link facts + official/company names + a representative declaration URL. The
 // source_url subquery picks the most recent declaration backing this (person, entity) — provenance for
 // the surface, never fabricated. Callers append a scope predicate + ORDER BY. `?` binds stay as binds.
-export const LINK_SELECT = `SELECT il.link_key, p.name AS official, b.name AS company, il.eik,
+export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official, b.name AS company, il.eik,
     il.relation, il.interest_class, il.contemporaneous, il.own_institution, il.match_method,
     il.contract_count, il.contract_value_eur, il.first_contract_year, il.last_contract_year,
     (SELECT d.source_url FROM declared_interests di JOIN declarations d ON d.id = di.declaration_id
@@ -47,6 +49,7 @@ export const LINK_SELECT = `SELECT il.link_key, p.name AS official, b.name AS co
 function toLink(r: LinkRow): ConflictLink {
   return {
     linkKey: r.link_key,
+    officialSlug: personSlug(r.person_id),
     official: r.official,
     company: r.company,
     eik: r.eik,

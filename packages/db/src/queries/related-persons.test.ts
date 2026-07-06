@@ -4,6 +4,7 @@ import {
   getConflictLeaderboard,
   getOfficialConflicts,
 } from './related-persons';
+import { personSlug } from './identity';
 
 // Unit coverage for the TS logic the SQL can't exercise: row→DTO mapping (booleans, own-institution
 // truth only on 'exact'), the private-vs-other split, and null-on-empty. The SQL itself is covered
@@ -12,6 +13,7 @@ import {
 function row(over: Record<string, unknown> = {}) {
   return {
     link_key: 'p1|111',
+    person_id: 'person:ИВАН МИНЕВ',
     official: 'Иван Минев',
     company: 'ТРЕЙС ГРУП ХОЛД АД',
     eik: '111',
@@ -71,6 +73,9 @@ describe('related-persons queries', () => {
     expect(lb.privateOwnership[0]!.ownInstitution).toBe(true);
     expect(lb.privateOwnership[0]!.contemporaneous).toBe(true);
     expect(lb.privateOwnership[0]!.contractValueEur).toBe(88_000_000);
+    // person_id is encoded to a URL-safe slug, never surfaced raw (drives /conflicts/official/:slug)
+    expect(lb.privateOwnership[0]!.officialSlug).toBe(personSlug('person:ИВАН МИНЕВ'));
+    expect(lb.privateOwnership[0]!.officialSlug).not.toContain(' ');
     expect(lb.exOfficio[0]!.ownInstitution).toBe(false);
     expect(lb.exOfficio[0]!.contemporaneous).toBe(false);
   });

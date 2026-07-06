@@ -596,6 +596,7 @@ export type InterestClass = 'private_ownership' | 'ex_officio_board' | 'manageme
 /** One official↔company conflict link (published) with its contract facts and a provenance URL. */
 export interface ConflictLink {
   linkKey: string;
+  officialSlug: string; // URL-safe person id → /conflicts/official/:slug (base64url, never the raw key)
   official: string; // declarant (public official) name as declared
   company: string; // winner company name as registered
   eik: string; // winner ЕИК
