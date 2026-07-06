@@ -21,6 +21,8 @@ function link(over: Partial<ConflictLink> = {}): ConflictLink {
     interestClass: 'private_ownership',
     contemporaneous: true,
     ownInstitution: false,
+    firstDeclaredYear: '2019',
+    lastDeclaredYear: '2023',
     matchMethod: 'exact_name_key',
     contractCount: 35,
     contractValueEur: 88_000_000,

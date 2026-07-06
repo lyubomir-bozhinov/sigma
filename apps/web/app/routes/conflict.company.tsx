@@ -65,7 +65,7 @@ export default function ConflictCompany({ loaderData }: Route.ComponentProps) {
             Връзките са от декларациите на самите официали (публичен регистър на КПКОНПИ), съпоставени
             точно с този изпълнител. Виж и{' '}
             <Link to={companyProfileHref(eik)}>профила на дружеството</Link> в обществените поръчки.
-            Сигнал за неточност: <Link to="/methodology#contact">Методология → Поправки</Link>.
+            Сигнал за неточност: <Link to="/conflicts/methodology#contest">Методология → Поправки</Link>.
           </p>
         </Callout>
 

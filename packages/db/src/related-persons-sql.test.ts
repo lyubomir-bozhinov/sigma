@@ -52,12 +52,14 @@ INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, de
 INSERT INTO declared_interests (id, declaration_id, entity_raw, entity_key, kind, detail, timing, seat) VALUES
   ('di:i','decl:i','ТРЕЙС ГРУП ХОЛД АД','ТРЕЙС ГРУП ХОЛД АД','shares','','annual','');
 INSERT INTO interest_links
-  (id, link_key, person_id, bidder_id, eik, entity_key, match_method, matcher_version, publish_tier, relation, interest_class, contemporaneous, own_institution, evidence_count, contract_count, contract_value_eur, first_contract_year, last_contract_year, status) VALUES
-  ('il:ivan','person:ivan|111','person:ivan','eik:111','111','ТРЕЙС ГРУП ХОЛД АД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'exact',1,35,88000000,'2021','2024','published'),
-  ('il:boris','person:boris|222','person:boris','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,10,5000000,'2023','2023','published'),
-  ('il:viktor','person:viktor|222','person:viktor','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,10,5000000,'2023','2023','published'),
+  (id, link_key, person_id, bidder_id, eik, entity_key, match_method, matcher_version, publish_tier, relation, interest_class, contemporaneous, own_institution, evidence_count, first_declared_year, last_declared_year, contract_count, contract_value_eur, first_contract_year, last_contract_year, status) VALUES
+  ('il:ivan','person:ivan|111','person:ivan','eik:111','111','ТРЕЙС ГРУП ХОЛД АД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'exact',1,'2019','2023',35,88000000,'2021','2024','published'),
+  ('il:boris','person:boris|222','person:boris','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,'2023','2023',10,5000000,'2023','2023','published'),
+  ('il:viktor','person:viktor|222','person:viktor','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,'2023','2023',10,5000000,'2023','2023','published'),
   -- a HELD link must never surface in any query
-  ('il:held','person:ivan|999','person:ivan','eik:111','999','НЯКОЙ ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,3,1000,'2022','2022','held');
+  ('il:held','person:ivan|999','person:ivan','eik:111','999','НЯКОЙ ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,'2022','2022',3,1000,'2022','2022','held'),
+  -- a WITHDRAWN (divested — later filing omits the company) link must never surface either (§8/E11)
+  ('il:gone','person:viktor|111','person:viktor','eik:111','111','ТРЕЙС ГРУП ХОЛД АД','exact_name_key','v1','B_distinctive','owns','private_ownership',0,'none',1,'2015','2015',5,2000000,'2016','2016','withdrawn');
 `;
 
 describe('свързани-лица SQL (real SQLite)', () => {
@@ -77,10 +79,12 @@ describe('свързани-лица SQL (real SQLite)', () => {
   it('leaderboard returns private ownership with its provenance URL; held links excluded', () => {
     withDb((dbPath) => {
       const priv = rows(dbPath, lit(LEADERBOARD_SQL, 'private_ownership', 100));
-      expect(priv).toHaveLength(1); // the held €1000 link is NOT here
+      expect(priv).toHaveLength(1); // held €1000 AND withdrawn €2M links are NOT here
       expect(priv[0]!.official).toBe('Иван Минев');
       expect(priv[0]!.interest_class).toBe('private_ownership');
       expect(priv[0]!.contract_value_eur).toBe(88_000_000);
+      expect(priv[0]!.first_declared_year).toBe('2019'); // declared span carries through
+      expect(priv[0]!.last_declared_year).toBe('2023');
       expect(priv[0]!.source_url).toBe('https://register.cacbg.bg/2024/i.xml'); // source_url subquery resolved
     });
   });
@@ -102,6 +106,10 @@ describe('свързани-лица SQL (real SQLite)', () => {
 
       const company = rows(dbPath, lit(COMPANY_SQL, '222'));
       expect(company.map((r) => r.official)).toEqual(['Борис Манолов', 'Виктор Асенов']);
+
+      // ЕИК 111: only Иван (published) — Виктор's withdrawn (divested) link to the same winner is excluded
+      const trace = rows(dbPath, lit(COMPANY_SQL, '111'));
+      expect(trace.map((r) => r.official)).toEqual(['Иван Минев']);
     });
   });
 });

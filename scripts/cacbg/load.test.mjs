@@ -53,6 +53,12 @@ before(() => {
     -- distinctive winner MANAGED by two different officials → ex-officio public board (ADR-0013)
     INSERT INTO bidders VALUES ('eik:555555556','ХОЛДИНГ 9 ЕАД','555555556',1,'София');
     INSERT INTO contracts VALUES ('c6','t1','eik:555555556','2023-09-01',500000);
+    -- two distinctive winners for the divestment (E11) case: Николай owns ДИВЕСТ 1 in 2019, then ДИВЕСТ 2
+    -- in 2022 — his later ownership filing omits ДИВЕСТ 1, so that stake is withdrawn (divested), ДИВЕСТ 2 stays.
+    INSERT INTO bidders VALUES ('eik:666666665','ДИВЕСТ 1 ЕООД','666666665',1,'София');
+    INSERT INTO bidders VALUES ('eik:777777773','ДИВЕСТ 2 ЕООД','777777773',1,'София');
+    INSERT INTO contracts VALUES ('c7','t1','eik:666666665','2019-04-01',300000);
+    INSERT INTO contracts VALUES ('c8','t1','eik:777777773','2022-04-01',400000);
   `);
   db.close();
 
@@ -73,6 +79,10 @@ before(() => {
     // Борис and Виктор BOTH manage ХОЛДИНГ 9 (no ownership) → two declarants of one company = ex_officio_board
     { folder: '2024', xmlFile: 'G.xml', year: '2023', template: 'interests', category: '', institution: 'U', person: 'Борис Манолов', position: 'член на съвет', entity: 'ХОЛДИНГ 9 ЕАД', kind: 'management', detail: 'член на надзорен съвет', timing: 'current', seat: '', controlHash: 'H7' },
     { folder: '2024', xmlFile: 'H.xml', year: '2023', template: 'interests', category: '', institution: 'U', person: 'Виктор Асенов', position: 'член на съвет', entity: 'ХОЛДИНГ 9 ЕАД', kind: 'management', detail: 'член на надзорен съвет', timing: 'current', seat: '', controlHash: 'H8' },
+    // Николай owns ДИВЕСТ 1 in 2019, then files an ownership declaration in 2022 listing only ДИВЕСТ 2 →
+    // ДИВЕСТ 1 divested (withdrawn/E11); ДИВЕСТ 2 still current (published).
+    { folder: '2020', xmlFile: 'I.xml', year: '2019', template: 'assets', category: '', institution: 'T', person: 'Николай Дивестов', position: '', entity: 'ДИВЕСТ 1 ЕООД', kind: 'shares', detail: '40%', timing: 'annual', seat: '', controlHash: 'H9' },
+    { folder: '2023', xmlFile: 'J.xml', year: '2022', template: 'assets', category: '', institution: 'T', person: 'Николай Дивестов', position: '', entity: 'ДИВЕСТ 2 ЕООД', kind: 'shares', detail: '60%', timing: 'annual', seat: '', controlHash: 'H10' },
   ];
   fs.writeFileSync(path.join(STAGING, 'holdings.jsonl'), holdings.map((h) => JSON.stringify(h)).join('\n') + '\n');
   fs.writeFileSync(path.join(STAGING, 'related.jsonl'), '');
@@ -125,6 +135,16 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(georgi.publish_tier, 'C_hold'); // generic, no seat → held
   assert.equal(georgi.status, 'held');
 
+  // E11 divestment: Николай's 2019 stake in ДИВЕСТ 1 is superseded by a 2022 filing that omits it → withdrawn;
+  // his current ДИВЕСТ 2 stake stays published. A later ownership filing that drops a company ends that link.
+  const gone = link('666666665', 'Николай Дивестов');
+  const kept = link('777777773', 'Николай Дивестов');
+  assert.equal(gone.status, 'withdrawn'); // divested — excluded from the published surface
+  assert.equal(gone.interest_class, 'private_ownership');
+  assert.equal(gone.last_declared_year, '2019'); // dated to its last declaration, never asserted "current"
+  assert.equal(kept.status, 'published');
+  assert.equal(kept.last_declared_year, '2022');
+
   // certain ЕИК (declared_eik) but colliding name, no seat → HELD, never name-distinctive
   const stefan = link('222222229', 'Стефан Колев');
   assert.equal(stefan.match_method, 'declared_eik'); // ЕИК resolution IS certain
@@ -150,7 +170,7 @@ test('re-run is idempotent and honors link_suppressions (contested link stays re
   db = open();
   assert.equal(db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status, 'suppressed');
   // idempotent: still exactly the same number of links + persons after a clean rebuild
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 7);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 8);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 9);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 9);
   db.close();
 });

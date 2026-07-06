@@ -604,6 +604,8 @@ export interface ConflictLink {
   interestClass: InterestClass;
   contemporaneous: boolean; // stake declared in a year overlapping a contract award
   ownInstitution: boolean; // ≥1 contract from the official's OWN institution (deterministic 'exact' only)
+  firstDeclaredYear: string | null; // declared-interest span — the link is DATED, never asserted "current" (§9.5)
+  lastDeclaredYear: string | null; // divested links (later filing omits the company) are withdrawn upstream (§8/E11)
   matchMethod: string;
   contractCount: number;
   contractValueEur: number | null;

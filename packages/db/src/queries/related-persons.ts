@@ -22,6 +22,8 @@ interface LinkRow {
   interest_class: string;
   contemporaneous: number;
   own_institution: string;
+  first_declared_year: string | null;
+  last_declared_year: string | null;
   match_method: string;
   contract_count: number;
   contract_value_eur: number | null;
@@ -34,7 +36,8 @@ interface LinkRow {
 // source_url subquery picks the most recent declaration backing this (person, entity) — provenance for
 // the surface, never fabricated. Callers append a scope predicate + ORDER BY. `?` binds stay as binds.
 export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official, b.name AS company, il.eik,
-    il.relation, il.interest_class, il.contemporaneous, il.own_institution, il.match_method,
+    il.relation, il.interest_class, il.contemporaneous, il.own_institution,
+    il.first_declared_year, il.last_declared_year, il.match_method,
     il.contract_count, il.contract_value_eur, il.first_contract_year, il.last_contract_year,
     (SELECT d.source_url FROM declared_interests di JOIN declarations d ON d.id = di.declaration_id
      WHERE d.person_id = il.person_id AND di.entity_key = il.entity_key
@@ -57,6 +60,8 @@ function toLink(r: LinkRow): ConflictLink {
     interestClass: r.interest_class as InterestClass,
     contemporaneous: r.contemporaneous === 1,
     ownInstitution: r.own_institution === 'exact',
+    firstDeclaredYear: r.first_declared_year,
+    lastDeclaredYear: r.last_declared_year,
     matchMethod: r.match_method,
     contractCount: r.contract_count,
     contractValueEur: r.contract_value_eur,

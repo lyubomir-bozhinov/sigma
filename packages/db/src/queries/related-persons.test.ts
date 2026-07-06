@@ -21,6 +21,8 @@ function row(over: Record<string, unknown> = {}) {
     interest_class: 'private_ownership',
     contemporaneous: 1,
     own_institution: 'exact',
+    first_declared_year: '2019',
+    last_declared_year: '2023',
     match_method: 'exact_name_key',
     contract_count: 35,
     contract_value_eur: 88_000_000,
@@ -76,6 +78,9 @@ describe('related-persons queries', () => {
     // person_id is encoded to a URL-safe slug, never surfaced raw (drives /conflicts/official/:slug)
     expect(lb.privateOwnership[0]!.officialSlug).toBe(personSlug('person:ИВАН МИНЕВ'));
     expect(lb.privateOwnership[0]!.officialSlug).not.toContain(' ');
+    // declared-interest span carries through — the surface dates every link (§9.5 temporal framing)
+    expect(lb.privateOwnership[0]!.firstDeclaredYear).toBe('2019');
+    expect(lb.privateOwnership[0]!.lastDeclaredYear).toBe('2023');
     expect(lb.exOfficio[0]!.ownInstitution).toBe(false);
     expect(lb.exOfficio[0]!.contemporaneous).toBe(false);
   });

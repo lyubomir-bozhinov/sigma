@@ -22,6 +22,7 @@ export default [
   route('contracts/:id.json', 'routes/contract.json.tsx'),
   route('contracts/:id', 'routes/contract.tsx'),
   route('conflicts', 'routes/conflicts.tsx'),
+  route('conflicts/methodology', 'routes/conflict.methodology.tsx'),
   route('conflicts/official/:id', 'routes/conflict.official.tsx'),
   route('conflicts/company/:eik', 'routes/conflict.company.tsx'),
   route('methodology', 'routes/methodology.tsx'),

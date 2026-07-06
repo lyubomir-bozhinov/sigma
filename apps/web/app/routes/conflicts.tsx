@@ -65,7 +65,7 @@ export default function Conflicts({ loaderData }: Route.ComponentProps) {
             имена са национално уникални, затова точното съвпадение е един и същ субект. Показваме{' '}
             <strong>само 100% съвпадения</strong>. Връзката означава деклариран интерес, а{' '}
             <strong>не</strong> нарушение, конфликт по закон или влияние върху конкретна поръчка.
-            Сигнал за неточност: <Link to="/methodology#contact">Методология → Поправки</Link>.
+            Сигнал за неточност: <Link to="/conflicts/methodology#contest">Методология → Поправки</Link>.
           </p>
         </Callout>
 

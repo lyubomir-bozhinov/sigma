@@ -61,6 +61,11 @@ export function ConflictTable({
               )}
               <td data-label="Деклариран интерес">
                 {relationLabel(l.relation)}
+                {(l.firstDeclaredYear || l.lastDeclaredYear) && (
+                  <span className="sub">
+                    деклариран {contractYearsLabel(l.firstDeclaredYear, l.lastDeclaredYear)} г.
+                  </span>
+                )}
                 {l.ownInstitution && (
                   <>
                     {' '}

@@ -59,7 +59,7 @@ export default function ConflictOfficial({ loaderData }: Route.ComponentProps) {
           <p className="m-0">
             Данните са от собствените декларации на лицето (публичен регистър на КПКОНПИ), съпоставени
             точно с регистъра на изпълнителите. Показваме само 100% съвпадения. Сигнал за неточност:{' '}
-            <Link to="/methodology#contact">Методология → Поправки</Link>.
+            <Link to="/conflicts/methodology#contest">Методология → Поправки</Link>.
           </p>
         </Callout>
 

@@ -105,6 +105,7 @@ const insDI = db.prepare('INSERT INTO declared_interests(id,declaration_id,entit
 const insRP = db.prepare('INSERT INTO related_persons_internal(id,declaration_id,related_name,related_kind,info,timing) VALUES(?,?,?,?,?,?)');
 const personId = (name) => `person:${companyNameKey(name)}`;
 const agg = new Map();
+const ownMaxByPerson = new Map(); // pid → latest year the person filed ANY shares/participation holding (E11)
 let diN = 0, noMatch = 0, quarantined = 0;
 
 db.exec('BEGIN');
@@ -122,10 +123,19 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
   const bidder = bidderByEik.get(eik);
   const gid = `${pid}|${eik}`;
   let rec = agg.get(gid);
-  if (!rec) rec = agg.set(gid, { pid, eik, bidder, person: h.person, key: companyNameKey(bidder.name), kinds: new Set(), declYears: new Set(), seats: new Set(), institutions: new Set(), method: res.method }).get(gid);
+  if (!rec) rec = agg.set(gid, { pid, eik, bidder, person: h.person, key: companyNameKey(bidder.name), kinds: new Set(), declYears: new Set(), ownYears: new Set(), seats: new Set(), institutions: new Set(), method: res.method }).get(gid);
   if (METHOD_RANK[res.method] > METHOD_RANK[rec.method]) rec.method = res.method; // strongest evidence wins
   rec.kinds.add(h.kind);
   const y = yr(h.year); if (Number.isFinite(y)) rec.declYears.add(y);
+  // Ownership-declaration years, per (person,company) AND per person. A later ownership filing that omits
+  // a company = divested → the link is withdrawn (§8/E11), so a stale link never asserts a CURRENT stake.
+  // Scoped to shares/participation only: management filing cadence is unverified (spec §6), so board/manager
+  // links are dated but not divestment-expired. Blind spot (documented): a divest-to-ZERO filing produces no
+  // holdings row, so it can't be seen here — the temporal dating on the surface is the residual mitigation.
+  if ((h.kind === 'shares' || h.kind === 'participation') && Number.isFinite(y)) {
+    rec.ownYears.add(y);
+    ownMaxByPerson.set(pid, Math.max(ownMaxByPerson.get(pid) ?? y, y));
+  }
   if (h.seat) rec.seats.add(h.seat);
   if (h.institution) rec.institutions.add(h.institution);
 }
@@ -204,7 +214,21 @@ for (const rec of agg.values()) {
   const relation = rec.kinds.has('management') ? (rec.kinds.has('shares') || rec.kinds.has('participation') ? 'owns+manages' : 'manages') : 'owns';
   const iClass = interestClass(relation, rec.eik);
   const linkKey = `${rec.pid}|${rec.eik}`;
-  const status = suppressed.has(linkKey) ? 'suppressed' : tier === 'C_hold' ? 'held' : 'published';
+  // E11 divestment: an ownership link whose company is absent from the person's LATEST ownership filing has
+  // ended → 'withdrawn' (excluded from the published surface, like held/suppressed). Only owns/owns+manages,
+  // compared against ownership-declaration years only (see the holdings loop for why management is exempt).
+  const recOwnMax = rec.ownYears.size ? Math.max(...rec.ownYears) : null;
+  const personOwnMax = ownMaxByPerson.get(rec.pid) ?? null;
+  const divested =
+    (relation === 'owns' || relation === 'owns+manages') &&
+    recOwnMax != null && personOwnMax != null && personOwnMax > recOwnMax;
+  const status = suppressed.has(linkKey)
+    ? 'suppressed'
+    : divested
+      ? 'withdrawn'
+      : tier === 'C_hold'
+        ? 'held'
+        : 'published';
   const yrs = [...years];
   insLink.run(`il:${linkKey}`, linkKey, rec.pid, rec.bidder.id, rec.eik, rec.key, rec.method, MATCHER_VERSION,
     tier, relation, iClass, contemporaneous, ownInst, rec.kinds.size,
@@ -228,6 +252,7 @@ const S = {
   published: pub,
   held_for_census: one("SELECT COUNT(*) n FROM interest_links WHERE status='held'").n,
   suppressed: one("SELECT COUNT(*) n FROM interest_links WHERE status='suppressed'").n,
+  withdrawn_divested: one("SELECT COUNT(*) n FROM interest_links WHERE status='withdrawn'").n, // E11 expiry
   officials_linked: one('SELECT COUNT(DISTINCT person_id) n FROM interest_links').n,
   officials_managing: one("SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE relation LIKE '%manages%'").n,
   contemporaneous: one('SELECT COUNT(*) n FROM interest_links WHERE contemporaneous=1').n,
