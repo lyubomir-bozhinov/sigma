@@ -7,8 +7,9 @@ import {
 import { personSlug } from './identity';
 
 // Unit coverage for the TS logic the SQL can't exercise: row→DTO mapping (booleans, own-institution
-// truth only on 'exact'), the private-vs-other split, and null-on-empty. The SQL itself is covered
-// end-to-end against a real SQLite in ../related-persons-sql.test.ts.
+// truth only on 'exact', declared-year passthrough, URL-safe slug) and null-on-empty. The SQL itself
+// (private-ownership filter, ordering, provenance subquery) is covered against a real SQLite in
+// ../related-persons-sql.test.ts.
 
 function row(over: Record<string, unknown> = {}) {
   return {
@@ -18,7 +19,6 @@ function row(over: Record<string, unknown> = {}) {
     company: 'ТРЕЙС ГРУП ХОЛД АД',
     eik: '111',
     relation: 'owns',
-    interest_class: 'private_ownership',
     contemporaneous: 1,
     own_institution: 'exact',
     first_declared_year: '2019',
@@ -55,59 +55,37 @@ function fakeDb(byKey: Record<string, unknown[]>): D1Database {
 }
 
 describe('related-persons queries', () => {
-  it('leaderboard maps rows and keeps ex-officio a separate list from private ownership', async () => {
-    const db = fakeDb({
-      private_ownership: [row({ link_key: 'p1|111' })],
-      ex_officio_board: [
-        row({
-          link_key: 'p2|222',
-          interest_class: 'ex_officio_board',
-          relation: 'manages',
-          own_institution: 'none',
-          contemporaneous: 0,
-        }),
-      ],
-    });
-    const lb = await getConflictLeaderboard(db, 10);
-    expect(lb.privateOwnership.map((l) => l.linkKey)).toEqual(['p1|111']);
-    expect(lb.exOfficio.map((l) => l.linkKey)).toEqual(['p2|222']);
+  it('leaderboard maps rows to dated ownership links (private-ownership only)', async () => {
+    const db = fakeDb({ '10': [row()] }); // leaderboard binds only the limit
+    const links = await getConflictLeaderboard(db, 10);
+    expect(links.map((l) => l.linkKey)).toEqual(['p1|111']);
     // mapping: 1/0 → booleans; ownInstitution true ONLY on the deterministic 'exact' verdict
-    expect(lb.privateOwnership[0]!.ownInstitution).toBe(true);
-    expect(lb.privateOwnership[0]!.contemporaneous).toBe(true);
-    expect(lb.privateOwnership[0]!.contractValueEur).toBe(88_000_000);
-    // person_id is encoded to a URL-safe slug, never surfaced raw (drives /conflicts/official/:slug)
-    expect(lb.privateOwnership[0]!.officialSlug).toBe(personSlug('person:ИВАН МИНЕВ'));
-    expect(lb.privateOwnership[0]!.officialSlug).not.toContain(' ');
-    // declared-interest span carries through — the surface dates every link (§9.5 temporal framing)
-    expect(lb.privateOwnership[0]!.firstDeclaredYear).toBe('2019');
-    expect(lb.privateOwnership[0]!.lastDeclaredYear).toBe('2023');
-    expect(lb.exOfficio[0]!.ownInstitution).toBe(false);
-    expect(lb.exOfficio[0]!.contemporaneous).toBe(false);
+    expect(links[0]!.ownInstitution).toBe(true);
+    expect(links[0]!.contemporaneous).toBe(true);
+    expect(links[0]!.contractValueEur).toBe(88_000_000);
+    // declared span carries through; the surface dates every link
+    expect(links[0]!.firstDeclaredYear).toBe('2019');
+    expect(links[0]!.lastDeclaredYear).toBe('2023');
+    // person_id is encoded to a URL-safe slug, never surfaced raw
+    expect(links[0]!.officialSlug).toBe(personSlug('person:ИВАН МИНЕВ'));
+    expect(links[0]!.officialSlug).not.toContain(' ');
   });
 
   it('own-institution is false for every non-exact verdict', async () => {
     for (const verdict of ['name_contains', 'locality', 'none']) {
-      const db = fakeDb({
-        private_ownership: [row({ own_institution: verdict })],
-        ex_officio_board: [],
-      });
-      const lb = await getConflictLeaderboard(db, 10);
-      expect(lb.privateOwnership[0]!.ownInstitution).toBe(false);
+      const db = fakeDb({ '10': [row({ own_institution: verdict })] });
+      const links = await getConflictLeaderboard(db, 10);
+      expect(links[0]!.ownInstitution).toBe(false);
     }
   });
 
-  it('official conflicts split private ownership from other roles, and 404 (null) when none', async () => {
+  it('official conflicts return the office-holder + their links, null when none', async () => {
     const db = fakeDb({
-      'person:ivan': [
-        row({ link_key: 'a', interest_class: 'private_ownership' }),
-        row({ link_key: 'b', interest_class: 'ex_officio_board' }),
-        row({ link_key: 'c', interest_class: 'management_role' }),
-      ],
+      'person:ivan': [row({ link_key: 'a' }), row({ link_key: 'b' })],
     });
     const res = await getOfficialConflicts(db, 'person:ivan');
     expect(res?.official).toBe('Иван Минев');
-    expect(res?.privateOwnership.map((l) => l.linkKey)).toEqual(['a']);
-    expect(res?.otherRoles.map((l) => l.linkKey)).toEqual(['b', 'c']);
+    expect(res?.links.map((l) => l.linkKey)).toEqual(['a', 'b']);
     expect(await getOfficialConflicts(fakeDb({}), 'person:none')).toBeNull();
   });
 

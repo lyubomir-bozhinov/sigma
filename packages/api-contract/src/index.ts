@@ -584,28 +584,26 @@ export interface SearchResults {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// Свързани лица (related-persons / conflict-of-interest) DTOs — the deterministic official↔winner
-// links built from CACBG declarations. `interestClass` separates genuine private financial interest
-// from ex-officio public-board roles (ADR-0013) so the headline never treats an appointed civil
-// servant as a conflict. Every link is a PUBLISHED, certainty-1.0 match (ADR-0001/0003).
+// Свързани лица (related-persons / conflict-of-interest) DTOs — deterministic office-holder↔winner
+// links built from public asset declarations. The public surface shows ONLY declared PRIVATE OWNERSHIP
+// (the person declared a stake): management/board roles without a stake are not a private interest and
+// are never surfaced. Every link is a PUBLISHED, certainty-1.0 match, dated to its declaration years.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 export type ConflictRelation = 'owns' | 'manages' | 'owns+manages';
-export type InterestClass = 'private_ownership' | 'ex_officio_board' | 'management_role';
 
-/** One official↔company conflict link (published) with its contract facts and a provenance URL. */
+/** One office-holder↔company ownership link with its contract facts and a provenance URL. */
 export interface ConflictLink {
   linkKey: string;
   officialSlug: string; // URL-safe person id → /conflicts/official/:slug (base64url, never the raw key)
-  official: string; // declarant (public official) name as declared
+  official: string; // declarant (office-holder) name as declared
   company: string; // winner company name as registered
   eik: string; // winner ЕИК
   relation: ConflictRelation;
-  interestClass: InterestClass;
   contemporaneous: boolean; // stake declared in a year overlapping a contract award
   ownInstitution: boolean; // ≥1 contract from the official's OWN institution (deterministic 'exact' only)
-  firstDeclaredYear: string | null; // declared-interest span — the link is DATED, never asserted "current" (§9.5)
-  lastDeclaredYear: string | null; // divested links (later filing omits the company) are withdrawn upstream (§8/E11)
+  firstDeclaredYear: string | null; // declared span — the link is DATED, never asserted "current"
+  lastDeclaredYear: string | null; // divested links (later filing omits the company) are withdrawn upstream
   matchMethod: string;
   contractCount: number;
   contractValueEur: number | null;
@@ -614,22 +612,15 @@ export interface ConflictLink {
   sourceUrl: string | null; // a representative declaration URL — provenance, never a fabricated value
 }
 
-/** An official's page: their published links, private-ownership separated from ex-officio/board roles. */
+/** One office-holder's declared ownership links. */
 export interface OfficialConflicts {
   official: string;
-  privateOwnership: ConflictLink[];
-  otherRoles: ConflictLink[]; // ex_officio_board + single-declarant management_role, labelled apart
+  links: ConflictLink[];
 }
 
-/** A company's page: officials with a published declared interest in it. */
+/** A winner's page: office-holders with a declared ownership stake in it. */
 export interface CompanyConflicts {
   company: string;
   eik: string;
   links: ConflictLink[];
-}
-
-/** The conflict leaderboard: the private-ownership headline, ex-officio kept a separate list (ADR-0013). */
-export interface ConflictLeaderboard {
-  privateOwnership: ConflictLink[];
-  exOfficio: ConflictLink[];
 }

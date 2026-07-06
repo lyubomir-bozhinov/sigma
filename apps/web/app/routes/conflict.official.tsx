@@ -9,18 +9,18 @@ import { publicCache } from '../lib/cache';
 import { withDbRetry } from '../lib/retry';
 import { seoMeta } from '../lib/meta';
 
-// One official's published conflict links, private ownership separated from ex-officio/management roles.
-// Reads interest_links only. 404 (not an empty page) when the official has no published link — a bare page
-// under someone's name reads as an unfounded accusation.
+// One office-holder's declared ownership links. Reads private-ownership interest_links only. 404 (not an
+// empty page) when the person has no published link — a bare page under someone's name reads as an
+// unfounded accusation.
 export function meta({ data, matches, params }: Route.MetaArgs) {
-  const name = data?.official ?? 'Официал';
+  const name = data?.official ?? 'Длъжностно лице';
   const tags = seoMeta({
     matches,
     path: `/conflicts/official/${params.id}`,
     title: `${name} — свързани лица — СИГМА`,
-    description: `Декларирани интереси на ${name} в дружества, спечелили обществени поръчки.`,
+    description: `Деклариран дял на ${name} в дружества, спечелили обществени поръчки.`,
   });
-  tags.push({ name: 'robots', content: 'noindex' }); // named individual — not indexed (delivery plan §E10)
+  tags.push({ name: 'robots', content: 'noindex' }); // names an individual — not indexed
   return tags;
 }
 
@@ -38,7 +38,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export default function ConflictOfficial({ loaderData }: Route.ComponentProps) {
-  const { official, privateOwnership, otherRoles } = loaderData;
+  const { official, links } = loaderData;
   return (
     <>
       <Breadcrumbs
@@ -50,46 +50,31 @@ export default function ConflictOfficial({ loaderData }: Route.ComponentProps) {
       />
       <main id="main">
         <PageHeader
-          kicker="Официал"
+          kicker="Длъжностно лице"
           title={official}
-          lede="Дружества, спечелили обществени поръчки, в които това лице е декларирало интерес пред КПКОНПИ. Всяка връзка е точно съвпадение по фирмено име — деклариран интерес, не установено нарушение."
+          lede="Дружества, спечелили обществени поръчки, в които това лице е декларирало дял пред КПКОНПИ. Всяка връзка е точно съвпадение по фирмено име — деклариран интерес, не установено нарушение."
         />
 
         <Callout title="Източник и обхват">
           <p className="m-0">
             Данните са от собствените декларации на лицето (публичен регистър на КПКОНПИ), съпоставени
-            точно с регистъра на изпълнителите. Показваме само 100% съвпадения. Сигнал за неточност:{' '}
+            точно с регистъра на изпълнителите. Показваме само 100% съвпадения и само деклариран дял.
+            Сигнал за неточност:{' '}
             <Link to="/conflicts/methodology#contest">Методология → Поправки</Link>.
           </p>
         </Callout>
 
-        {privateOwnership.length > 0 && (
-          <Section
-            id="private"
-            title="Частна собственост"
-            hint="Деклариран дял (или дял и управление) в дружество изпълнител."
-          >
-            <ConflictTable
-              links={privateOwnership}
-              caption={`Частен дял на ${official} в изпълнители`}
-              omit="official"
-            />
-          </Section>
-        )}
-
-        {otherRoles.length > 0 && (
-          <Section
-            id="roles"
-            title="Служебни и управленски роли"
-            hint="Декларирано управление без деклариран дял — служебни роли в бордове или управленска позиция. Изведено отделно от частната собственост (ADR-0013)."
-          >
-            <ConflictTable
-              links={otherRoles}
-              caption={`Служебни и управленски роли на ${official}`}
-              omit="official"
-            />
-          </Section>
-        )}
+        <Section
+          id="holdings"
+          title="Деклариран дял в изпълнители"
+          hint="Дружества, спечелили обществени поръчки, в които лицето е декларирало дял (или дял и управление)."
+        >
+          <ConflictTable
+            links={links}
+            caption={`Деклариран дял на ${official} в изпълнители`}
+            omit="official"
+          />
+        </Section>
       </main>
     </>
   );

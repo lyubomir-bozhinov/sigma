@@ -76,12 +76,12 @@ describe('свързани-лица SQL (real SQLite)', () => {
     }
   }
 
-  it('leaderboard returns private ownership with its provenance URL; held links excluded', () => {
+  it('leaderboard returns ONLY private ownership with provenance; held/withdrawn/ex-officio excluded', () => {
     withDb((dbPath) => {
-      const priv = rows(dbPath, lit(LEADERBOARD_SQL, 'private_ownership', 100));
-      expect(priv).toHaveLength(1); // held €1000 AND withdrawn €2M links are NOT here
+      const priv = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      // held €1000, withdrawn €2M, and BOTH ex-officio board links are NOT here — only Иван's private stake
+      expect(priv).toHaveLength(1);
       expect(priv[0]!.official).toBe('Иван Минев');
-      expect(priv[0]!.interest_class).toBe('private_ownership');
       expect(priv[0]!.contract_value_eur).toBe(88_000_000);
       expect(priv[0]!.first_declared_year).toBe('2019'); // declared span carries through
       expect(priv[0]!.last_declared_year).toBe('2023');
@@ -89,23 +89,19 @@ describe('свързани-лица SQL (real SQLite)', () => {
     });
   });
 
-  it('ex-officio board roles are a separate list, ordered by value then link_key', () => {
+  it('ex-officio / management roles are never surfaced — not even on the winner’s own page', () => {
     withDb((dbPath) => {
-      const exo = rows(dbPath, lit(LEADERBOARD_SQL, 'ex_officio_board', 100));
-      expect(exo.map((r) => r.official)).toEqual(['Борис Манолов', 'Виктор Асенов']); // €5M tie → link_key order
-      expect(exo.every((r) => r.interest_class === 'ex_officio_board')).toBe(true);
-      expect(exo[0]!.source_url).toBeNull(); // no declaration row → source_url NULL
+      // ЕИК 222 has only ex-officio board links (Борис + Виктор) → the company view is empty, not a list of them
+      const board = rows(dbPath, lit(COMPANY_SQL, '222'));
+      expect(board).toHaveLength(0);
     });
   });
 
-  it('official view returns one official’s links; company view returns all officials for a winner', () => {
+  it('official view returns one office-holder’s ownership links; withdrawn links excluded on the winner view', () => {
     withDb((dbPath) => {
       const ivan = rows(dbPath, lit(OFFICIAL_SQL, 'person:ivan'));
-      expect(ivan).toHaveLength(1); // published only — the held link is excluded
+      expect(ivan).toHaveLength(1); // published private only — the held link is excluded
       expect(ivan[0]!.company).toBe('ТРЕЙС ГРУП ХОЛД АД');
-
-      const company = rows(dbPath, lit(COMPANY_SQL, '222'));
-      expect(company.map((r) => r.official)).toEqual(['Борис Манолов', 'Виктор Асенов']);
 
       // ЕИК 111: only Иван (published) — Виктор's withdrawn (divested) link to the same winner is excluded
       const trace = rows(dbPath, lit(COMPANY_SQL, '111'));

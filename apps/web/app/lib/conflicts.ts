@@ -1,9 +1,9 @@
-import type { ConflictLink, InterestClass } from '@sigma/api-contract';
+import type { ConflictLink } from '@sigma/api-contract';
 
 // Pure presentation logic for the свързани-лица (conflict-of-interest) surface. Everything the conflict
 // routes branch on lives here so the JSX stays a declarative shell (the repo does not render-test
 // components — see search.suggest.test.ts) and every decision is unit-covered. NONE of this touches
-// related_persons_internal; only PUBLISHED interest_links reach the DTO (ADR-0001/0013).
+// related_persons_internal; only PUBLISHED private-ownership links reach the DTO.
 
 const RELATION_LABEL: Record<string, string> = {
   owns: 'притежава дял',
@@ -16,18 +16,7 @@ export function relationLabel(relation: string): string {
   return RELATION_LABEL[relation] ?? relation;
 }
 
-const INTEREST_CLASS_LABEL: Record<InterestClass, string> = {
-  private_ownership: 'частен дял',
-  ex_officio_board: 'служебен борд',
-  management_role: 'управленска роля',
-};
-
-/** Short Bulgarian label for the interpretation class (ADR-0013). */
-export function interestClassLabel(c: InterestClass): string {
-  return INTEREST_CLASS_LABEL[c] ?? c;
-}
-
-/** /conflicts/official/:slug — the official's conflict page (slug already base64url-encoded). */
+/** /conflicts/official/:slug — the office-holder's page (slug already base64url-encoded). */
 export function officialHref(officialSlug: string): string {
   return `/conflicts/official/${officialSlug}`;
 }

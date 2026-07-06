@@ -19,7 +19,7 @@ export function meta({ data, matches, params }: Route.MetaArgs) {
     matches,
     path: `/conflicts/company/${params.eik}`,
     title: `${name} — свързани лица — СИГМА`,
-    description: `Официали, декларирали интерес в ${name} (ЕИК ${params.eik}).`,
+    description: `Длъжностни лица, декларирали дял в ${name} (ЕИК ${params.eik}).`,
   });
   tags.push({ name: 'robots', content: 'noindex' }); // names individuals — not indexed (delivery plan §E10)
   return tags;
@@ -57,26 +57,27 @@ export default function ConflictCompany({ loaderData }: Route.ComponentProps) {
             </>
           }
           title={company}
-          lede={`Публични лица, декларирали интерес в това дружество пред КПКОНПИ. ${count(links.length)} ${plural(links.length, 'връзка', 'връзки')} — всяка е точно съвпадение по фирмено име.`}
+          lede={`Длъжностни лица, декларирали дял в това дружество пред КПКОНПИ. ${count(links.length)} ${plural(links.length, 'връзка', 'връзки')} — всяка е точно съвпадение по фирмено име.`}
         />
 
         <Callout title="Източник и обхват">
           <p className="m-0">
-            Връзките са от декларациите на самите официали (публичен регистър на КПКОНПИ), съпоставени
-            точно с този изпълнител. Виж и{' '}
+            Връзките са от декларациите на самите длъжностни лица (публичен регистър на КПКОНПИ),
+            съпоставени точно с този изпълнител. Виж и{' '}
             <Link to={companyProfileHref(eik)}>профила на дружеството</Link> в обществените поръчки.
-            Сигнал за неточност: <Link to="/conflicts/methodology#contest">Методология → Поправки</Link>.
+            Сигнал за неточност:{' '}
+            <Link to="/conflicts/methodology#contest">Методология → Поправки</Link>.
           </p>
         </Callout>
 
         <Section
           id="officials"
-          title="Официали с деклариран интерес"
-          hint="Подредени по публичните средства към дружеството. Частната собственост и служебните роли са отбелязани в колоната „Деклариран интерес“."
+          title="Длъжностни лица с деклариран дял"
+          hint="Подредени по публичните средства към дружеството."
         >
           <ConflictTable
             links={links}
-            caption={`Официали с деклариран интерес в ${company}`}
+            caption={`Длъжностни лица с деклариран дял в ${company}`}
             omit="company"
           />
         </Section>

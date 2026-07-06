@@ -1,16 +1,11 @@
-import type {
-  ConflictLeaderboard,
-  ConflictLink,
-  ConflictRelation,
-  CompanyConflicts,
-  InterestClass,
-  OfficialConflicts,
-} from '@sigma/api-contract';
+import type { ConflictLink, ConflictRelation, CompanyConflicts, OfficialConflicts } from '@sigma/api-contract';
 import { personSlug } from './identity';
 
-// Read-only query layer for свързани лица (ADR-0013). Reads interest_links directly — the contract facts
-// (count/value/years) are denormalized onto the link by the loader, so no rollup table is needed. Only
-// status='published' rows surface; held/suppressed links never leave the pipeline (ADR-0001/0003).
+// Read-only query layer for свързани лица. The PUBLIC surface shows ONLY declared PRIVATE OWNERSHIP
+// (interest_class='private_ownership' — the person declared a stake). Management/board roles without a
+// declared stake are never surfaced: an appointed office-holder is not a private interest, and showing
+// them would be noise at best and defamatory at worst. Only status='published' rows leave the pipeline;
+// held, suppressed and withdrawn (divested) links never surface.
 
 interface LinkRow {
   link_key: string;
@@ -19,7 +14,6 @@ interface LinkRow {
   company: string;
   eik: string;
   relation: string;
-  interest_class: string;
   contemporaneous: number;
   own_institution: string;
   first_declared_year: string | null;
@@ -32,11 +26,10 @@ interface LinkRow {
   source_url: string | null;
 }
 
-// Shared projection: link facts + official/company names + a representative declaration URL. The
-// source_url subquery picks the most recent declaration backing this (person, entity) — provenance for
-// the surface, never fabricated. Callers append a scope predicate + ORDER BY. `?` binds stay as binds.
+// Shared projection: published private-ownership links + names + a representative declaration URL
+// (provenance for the surface, never fabricated). Callers append a scope predicate + ORDER BY.
 export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official, b.name AS company, il.eik,
-    il.relation, il.interest_class, il.contemporaneous, il.own_institution,
+    il.relation, il.contemporaneous, il.own_institution,
     il.first_declared_year, il.last_declared_year, il.match_method,
     il.contract_count, il.contract_value_eur, il.first_contract_year, il.last_contract_year,
     (SELECT d.source_url FROM declared_interests di JOIN declarations d ON d.id = di.declaration_id
@@ -45,10 +38,10 @@ export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official
   FROM interest_links il
   JOIN persons p ON p.id = il.person_id
   JOIN bidders b ON b.id = il.bidder_id
-  WHERE il.status = 'published'`;
+  WHERE il.status = 'published' AND il.interest_class = 'private_ownership'`;
 
 // own_institution is a 4-value verdict; only the deterministic 'exact' surfaces as true (the
-// name_contains/locality heuristics are disclosed elsewhere, never asserted as fact — ADR-0008).
+// name_contains/locality heuristics are disclosed elsewhere, never asserted as fact).
 function toLink(r: LinkRow): ConflictLink {
   return {
     linkKey: r.link_key,
@@ -57,7 +50,6 @@ function toLink(r: LinkRow): ConflictLink {
     company: r.company,
     eik: r.eik,
     relation: r.relation as ConflictRelation,
-    interestClass: r.interest_class as InterestClass,
     contemporaneous: r.contemporaneous === 1,
     ownInstitution: r.own_institution === 'exact',
     firstDeclaredYear: r.first_declared_year,
@@ -71,27 +63,21 @@ function toLink(r: LinkRow): ConflictLink {
   };
 }
 
-export const LEADERBOARD_SQL = `${LINK_SELECT} AND il.interest_class = ?
+export const LEADERBOARD_SQL = `${LINK_SELECT}
   ORDER BY il.contract_value_eur DESC, il.link_key LIMIT ?`;
 
-/** The leaderboard: private-ownership conflicts (the headline) and ex-officio board roles as a SEPARATE
- *  list — never summed together, so appointed civil servants are not presented as conflicts (ADR-0013). */
-export async function getConflictLeaderboard(
-  db: D1Database,
-  limit = 100,
-): Promise<ConflictLeaderboard> {
-  const [priv, exo] = await Promise.all([
-    db.prepare(LEADERBOARD_SQL).bind('private_ownership', limit).all<LinkRow>(),
-    db.prepare(LEADERBOARD_SQL).bind('ex_officio_board', limit).all<LinkRow>(),
-  ]);
-  return { privateOwnership: priv.results.map(toLink), exOfficio: exo.results.map(toLink) };
+/** The leaderboard: office-holders who declared a private ownership stake in a procurement winner,
+ *  ranked by the public money their company received. */
+export async function getConflictLeaderboard(db: D1Database, limit = 100): Promise<ConflictLink[]> {
+  const rows = (await db.prepare(LEADERBOARD_SQL).bind(limit).all<LinkRow>()).results;
+  return rows.map(toLink);
 }
 
 export const OFFICIAL_SQL = `${LINK_SELECT} AND il.person_id = ?
   ORDER BY il.contract_value_eur DESC, il.link_key`;
 
-/** An official's published links, private-ownership separated from ex-officio/management roles. Null when
- *  the official has no published link (the page 404s rather than render an empty accusation). */
+/** One office-holder's declared ownership links. Null when there are none (the page 404s rather than
+ *  render an empty page under someone's name). */
 export async function getOfficialConflicts(
   db: D1Database,
   personId: string,
@@ -99,17 +85,13 @@ export async function getOfficialConflicts(
   const rows = (await db.prepare(OFFICIAL_SQL).bind(personId).all<LinkRow>()).results;
   if (rows.length === 0) return null;
   const links = rows.map(toLink);
-  return {
-    official: links[0]!.official,
-    privateOwnership: links.filter((l) => l.interestClass === 'private_ownership'),
-    otherRoles: links.filter((l) => l.interestClass !== 'private_ownership'),
-  };
+  return { official: links[0]!.official, links };
 }
 
 export const COMPANY_SQL = `${LINK_SELECT} AND il.eik = ?
   ORDER BY il.contract_value_eur DESC, il.link_key`;
 
-/** Officials with a published declared interest in one winner (by ЕИК). Null when there are none. */
+/** Office-holders with a declared ownership stake in one winner (by ЕИК). Null when there are none. */
 export async function getCompanyConflicts(
   db: D1Database,
   eik: string,

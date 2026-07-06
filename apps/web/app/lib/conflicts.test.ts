@@ -4,7 +4,6 @@ import {
   companyConflictsHref,
   companyProfileHref,
   contractYearsLabel,
-  interestClassLabel,
   officialHref,
   privateOwnershipHeadline,
   relationLabel,
@@ -18,7 +17,6 @@ function link(over: Partial<ConflictLink> = {}): ConflictLink {
     company: 'ТРЕЙС ГРУП ХОЛД АД',
     eik: '111',
     relation: 'owns',
-    interestClass: 'private_ownership',
     contemporaneous: true,
     ownInstitution: false,
     firstDeclaredYear: '2019',
@@ -41,14 +39,6 @@ describe('relationLabel', () => {
   });
   it('passes an unknown relation through rather than inventing a claim', () => {
     expect(relationLabel('mystery')).toBe('mystery');
-  });
-});
-
-describe('interestClassLabel', () => {
-  it('labels each interest class distinctly', () => {
-    expect(interestClassLabel('private_ownership')).toBe('частен дял');
-    expect(interestClassLabel('ex_officio_board')).toBe('служебен борд');
-    expect(interestClassLabel('management_role')).toBe('управленска роля');
   });
 });
 

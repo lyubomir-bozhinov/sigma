@@ -23,6 +23,7 @@ Numbering is sequential. Add a new ADR the moment a decision is made — not ret
 | [0013](0013-private-interest-vs-ex-officio-classification.md) | Separate private financial interest from ex-officio public-board roles (multi-declarant tell) | Accepted |
 | [0014](0014-conflict-explorer-surface-posture.md) | Conflict-explorer surface — interest_links-only read model, noindex-until-gated, provenance on every row | Accepted |
 | [0015](0015-methodology-page-and-temporal-freshness.md) | Public methodology/corrections page (E10) + temporal dating & divestment expiry (E11) | Accepted |
+| [0016](0016-public-surface-private-ownership-only.md) | Public surface shows ONLY declared private ownership (removes the ex-officio list; term „длъжностно лице") | Accepted |
 
 Related design docs: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
 [implementation-plans/phase0-related-persons-feasibility.md](../implementation-plans/phase0-related-persons-feasibility.md).

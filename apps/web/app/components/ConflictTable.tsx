@@ -9,10 +9,10 @@ import {
   relationLabel,
 } from '../lib/conflicts';
 
-// Declarative table of published official↔winner links. All branching lives in ../lib/conflicts (tested);
-// this only emits markup. `omit` drops the redundant column on a single-subject page (the official's own
-// page omits the official column; a winner's page omits the company column). Responsive card layout via
-// `tbl-cards` + data-label, matching the company/authority tables.
+// Declarative table of declared ownership links. All branching lives in ../lib/conflicts (tested); this
+// only emits markup. `omit` drops the redundant column on a single-subject page (an office-holder's own
+// page omits the office-holder column; a winner's page omits the company column). Responsive card layout
+// via `tbl-cards` + data-label, matching the company/authority tables.
 export function ConflictTable({
   links,
   caption,
@@ -29,7 +29,7 @@ export function ConflictTable({
         <thead>
           <tr>
             <th scope="col">#</th>
-            {omit !== 'official' && <th scope="col">Официал</th>}
+            {omit !== 'official' && <th scope="col">Длъжностно лице</th>}
             {omit !== 'company' && <th scope="col">Компания</th>}
             <th scope="col">Деклариран интерес</th>
             <th scope="col" className="num">
@@ -49,7 +49,7 @@ export function ConflictTable({
                 {i + 1}
               </td>
               {omit !== 'official' && (
-                <td className="cell-title" data-label="Официал">
+                <td className="cell-title" data-label="Длъжностно лице">
                   <Link to={officialHref(l.officialSlug)}>{l.official}</Link>
                 </td>
               )}
@@ -61,11 +61,6 @@ export function ConflictTable({
               )}
               <td data-label="Деклариран интерес">
                 {relationLabel(l.relation)}
-                {(l.firstDeclaredYear || l.lastDeclaredYear) && (
-                  <span className="sub">
-                    деклариран {contractYearsLabel(l.firstDeclaredYear, l.lastDeclaredYear)} г.
-                  </span>
-                )}
                 {l.ownInstitution && (
                   <>
                     {' '}
@@ -76,6 +71,14 @@ export function ConflictTable({
                   <>
                     {' '}
                     <Chip>към момента на договор</Chip>
+                  </>
+                )}
+                {(l.firstDeclaredYear || l.lastDeclaredYear) && (
+                  <>
+                    {' '}
+                    <div className="small muted">
+                      деклариран {contractYearsLabel(l.firstDeclaredYear, l.lastDeclaredYear)} г.
+                    </div>
                   </>
                 )}
               </td>
