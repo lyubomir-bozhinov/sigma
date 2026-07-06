@@ -582,3 +582,51 @@ export interface SearchResults {
   groups: SearchGroup[];
   empty: boolean;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// Свързани лица (related-persons / conflict-of-interest) DTOs — the deterministic official↔winner
+// links built from CACBG declarations. `interestClass` separates genuine private financial interest
+// from ex-officio public-board roles (ADR-0013) so the headline never treats an appointed civil
+// servant as a conflict. Every link is a PUBLISHED, certainty-1.0 match (ADR-0001/0003).
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+export type ConflictRelation = 'owns' | 'manages' | 'owns+manages';
+export type InterestClass = 'private_ownership' | 'ex_officio_board' | 'management_role';
+
+/** One official↔company conflict link (published) with its contract facts and a provenance URL. */
+export interface ConflictLink {
+  linkKey: string;
+  official: string; // declarant (public official) name as declared
+  company: string; // winner company name as registered
+  eik: string; // winner ЕИК
+  relation: ConflictRelation;
+  interestClass: InterestClass;
+  contemporaneous: boolean; // stake declared in a year overlapping a contract award
+  ownInstitution: boolean; // ≥1 contract from the official's OWN institution (deterministic 'exact' only)
+  matchMethod: string;
+  contractCount: number;
+  contractValueEur: number | null;
+  firstContractYear: string | null;
+  lastContractYear: string | null;
+  sourceUrl: string | null; // a representative declaration URL — provenance, never a fabricated value
+}
+
+/** An official's page: their published links, private-ownership separated from ex-officio/board roles. */
+export interface OfficialConflicts {
+  official: string;
+  privateOwnership: ConflictLink[];
+  otherRoles: ConflictLink[]; // ex_officio_board + single-declarant management_role, labelled apart
+}
+
+/** A company's page: officials with a published declared interest in it. */
+export interface CompanyConflicts {
+  company: string;
+  eik: string;
+  links: ConflictLink[];
+}
+
+/** The conflict leaderboard: the private-ownership headline, ex-officio kept a separate list (ADR-0013). */
+export interface ConflictLeaderboard {
+  privateOwnership: ConflictLink[];
+  exOfficio: ConflictLink[];
+}

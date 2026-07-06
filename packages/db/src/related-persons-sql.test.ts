@@ -1,0 +1,107 @@
+/// <reference types="node" />
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { COMPANY_SQL, LEADERBOARD_SQL, OFFICIAL_SQL } from './queries/related-persons';
+
+// Integration test for the свързани-лица SQL. The query layer's unit tests (queries/related-persons.test)
+// use a fake D1 and never run the aggregation; this runs the EXACT exported SQL against a real SQLite
+// built from the production migrations (0000 + 0002) with a deterministic fixture, asserting the private
+// vs ex-officio separation (ADR-0013), the value ordering, and the source_url provenance subquery.
+// Mirrors the sqlite3-CLI harness of competition-sql.test.ts (no better-sqlite3 dependency).
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const migration0 = resolve(root, 'packages/db/migrations/0000_init.sql');
+const migration2 = resolve(root, 'packages/db/migrations/0002_related_persons_foundation.sql');
+
+function sqlite(dbPath: string, sql: string): string {
+  return execFileSync('sqlite3', [dbPath], { input: sql, encoding: 'utf8' }).trim();
+}
+function readScript(dbPath: string, path: string): void {
+  execFileSync('sqlite3', ['-bail', dbPath], { input: `.read ${path}\n`, stdio: 'pipe' });
+}
+// Substitute D1 `?` binds with SQL literals so the exported query runs through the sqlite3 CLI unchanged.
+function lit(sql: string, ...vals: (string | number)[]): string {
+  let i = 0;
+  return sql.replace(/\?/g, () => {
+    const v = vals[i++];
+    return typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`;
+  });
+}
+// Rows as objects keyed by column name — JSON output, since link_key itself contains a '|' that would
+// break a pipe-split of the default list mode.
+function rows(dbPath: string, sql: string): Record<string, string | number | null>[] {
+  const out = execFileSync('sqlite3', ['-json', dbPath], { input: sql, encoding: 'utf8' }).trim();
+  return out ? JSON.parse(out) : [];
+}
+
+// Иван OWNS ТРЕЙС (private_ownership, own institution, €88M). Борис + Виктор both MANAGE ХОЛДИНГ 9
+// (declared by two officials → ex_officio_board, €5M each). Only Иван has a declaration row → his link
+// resolves a source_url; the board links do not (NULL).
+const FIXTURE = `
+INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, kind) VALUES
+  ('eik:111','ТРЕЙС ГРУП ХОЛД АД','111','111',1,'company'),
+  ('eik:222','ХОЛДИНГ 9 ЕАД','222','222',1,'company');
+INSERT INTO persons (id, name) VALUES
+  ('person:ivan','Иван Минев'),('person:boris','Борис Манолов'),('person:viktor','Виктор Асенов');
+INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, declared_year, template, category, institution, position, source_url) VALUES
+  ('decl:i','person:ivan','i.xml','H1','2024','2023','assets','','ТЕСТ','', 'https://register.cacbg.bg/2024/i.xml');
+INSERT INTO declared_interests (id, declaration_id, entity_raw, entity_key, kind, detail, timing, seat) VALUES
+  ('di:i','decl:i','ТРЕЙС ГРУП ХОЛД АД','ТРЕЙС ГРУП ХОЛД АД','shares','','annual','');
+INSERT INTO interest_links
+  (id, link_key, person_id, bidder_id, eik, entity_key, match_method, matcher_version, publish_tier, relation, interest_class, contemporaneous, own_institution, evidence_count, contract_count, contract_value_eur, first_contract_year, last_contract_year, status) VALUES
+  ('il:ivan','person:ivan|111','person:ivan','eik:111','111','ТРЕЙС ГРУП ХОЛД АД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'exact',1,35,88000000,'2021','2024','published'),
+  ('il:boris','person:boris|222','person:boris','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,10,5000000,'2023','2023','published'),
+  ('il:viktor','person:viktor|222','person:viktor','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,10,5000000,'2023','2023','published'),
+  -- a HELD link must never surface in any query
+  ('il:held','person:ivan|999','person:ivan','eik:111','999','НЯКОЙ ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,3,1000,'2022','2022','held');
+`;
+
+describe('свързани-лица SQL (real SQLite)', () => {
+  function withDb<T>(fn: (dbPath: string) => T): T {
+    const dir = mkdtempSync(resolve(tmpdir(), 'sigma-related-'));
+    const dbPath = resolve(dir, 'test.sqlite');
+    try {
+      readScript(dbPath, migration0);
+      readScript(dbPath, migration2);
+      sqlite(dbPath, FIXTURE);
+      return fn(dbPath);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('leaderboard returns private ownership with its provenance URL; held links excluded', () => {
+    withDb((dbPath) => {
+      const priv = rows(dbPath, lit(LEADERBOARD_SQL, 'private_ownership', 100));
+      expect(priv).toHaveLength(1); // the held €1000 link is NOT here
+      expect(priv[0]!.official).toBe('Иван Минев');
+      expect(priv[0]!.interest_class).toBe('private_ownership');
+      expect(priv[0]!.contract_value_eur).toBe(88_000_000);
+      expect(priv[0]!.source_url).toBe('https://register.cacbg.bg/2024/i.xml'); // source_url subquery resolved
+    });
+  });
+
+  it('ex-officio board roles are a separate list, ordered by value then link_key', () => {
+    withDb((dbPath) => {
+      const exo = rows(dbPath, lit(LEADERBOARD_SQL, 'ex_officio_board', 100));
+      expect(exo.map((r) => r.official)).toEqual(['Борис Манолов', 'Виктор Асенов']); // €5M tie → link_key order
+      expect(exo.every((r) => r.interest_class === 'ex_officio_board')).toBe(true);
+      expect(exo[0]!.source_url).toBeNull(); // no declaration row → source_url NULL
+    });
+  });
+
+  it('official view returns one official’s links; company view returns all officials for a winner', () => {
+    withDb((dbPath) => {
+      const ivan = rows(dbPath, lit(OFFICIAL_SQL, 'person:ivan'));
+      expect(ivan).toHaveLength(1); // published only — the held link is excluded
+      expect(ivan[0]!.company).toBe('ТРЕЙС ГРУП ХОЛД АД');
+
+      const company = rows(dbPath, lit(COMPANY_SQL, '222'));
+      expect(company.map((r) => r.official)).toEqual(['Борис Манолов', 'Виктор Асенов']);
+    });
+  });
+});
