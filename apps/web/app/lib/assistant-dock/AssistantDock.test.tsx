@@ -10,6 +10,7 @@ const mock = vi.hoisted(() => ({
   chat: {
     messages: [] as unknown[],
     status: 'ready' as 'ready' | 'submitted' | 'streaming' | 'error',
+    aborted: false,
     phase: null as 'thinking' | 'querying' | 'composing' | null,
     error: undefined as Error | undefined,
     sendMessage: vi.fn(),
@@ -21,6 +22,25 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock('./useAssistantChat', () => ({ useAssistantChat: () => mock.chat }));
+
+// jsdom does not implement showModal() — define it so the focus effect can open the <dialog>
+// without throwing. Callers MUST pair with removeShowModal via afterEach/finally: a leaked
+// prototype patch would silently invalidate the no-showModal fallback tests.
+const defineShowModal = () => {
+  const showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    value: showModal,
+    writable: true,
+    configurable: true,
+  });
+  return showModal;
+};
+
+const removeShowModal = () => {
+  delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal;
+};
 
 beforeEach(() => {
   localStorage.clear();
@@ -145,35 +165,30 @@ describe('AssistantDock', () => {
         removeEventListener: vi.fn(),
       }),
     );
-    // jsdom does not implement showModal() — define it so the focus effect can open the <dialog>
-    // without throwing.
-    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
-      value: function (this: HTMLDialogElement) {
-        this.setAttribute('open', '');
-      },
-      writable: true,
-      configurable: true,
-    });
-    localStorage.setItem(COLLAPSED_KEY, '0'); // force expanded; mobile default is collapsed
-    mock.chat.messages = [reportMessage];
-    const Stub = createRoutesStub([
-      {
-        path: '/',
-        Component: () => (
-          <>
-            <AssistantDock />
-            <Outlet />
-          </>
-        ),
-        children: [{ path: 'reports/:id', Component: () => null }],
-      },
-    ]);
-    render(<Stub />);
+    defineShowModal();
+    try {
+      localStorage.setItem(COLLAPSED_KEY, '0'); // force expanded; mobile default is collapsed
+      mock.chat.messages = [reportMessage];
+      const Stub = createRoutesStub([
+        {
+          path: '/',
+          Component: () => (
+            <>
+              <AssistantDock />
+              <Outlet />
+            </>
+          ),
+          children: [{ path: 'reports/:id', Component: () => null }],
+        },
+      ]);
+      render(<Stub />);
 
-    await user.click(screen.getByRole('link', { name: 'Отвори' }));
+      await user.click(screen.getByRole('link', { name: 'Отвори' }));
 
-    expect(screen.getByRole('button', { name: 'Асистент' })).toBeInTheDocument();
-    delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal;
+      expect(screen.getByRole('button', { name: 'Асистент' })).toBeInTheDocument();
+    } finally {
+      removeShowModal();
+    }
   });
 
   it('does not collapse the dock on desktop when „Отвори" is clicked on a report chip', async () => {
@@ -214,22 +229,6 @@ describe('AssistantDock', () => {
       );
     };
 
-    const defineShowModal = () => {
-      const showModal = vi.fn(function (this: HTMLDialogElement) {
-        this.setAttribute('open', '');
-      });
-      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
-        value: showModal,
-        writable: true,
-        configurable: true,
-      });
-      return showModal;
-    };
-
-    const removeShowModal = () => {
-      delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal;
-    };
-
     it('desktop: Escape collapses the panel and returns focus to the launcher', async () => {
       const user = userEvent.setup();
       render(<AssistantDock />);
@@ -251,43 +250,75 @@ describe('AssistantDock', () => {
       expect(document.activeElement).toBe(screen.getByRole('textbox'));
     });
 
-    it('mobile: expanding opens the sheet modally via showModal (the native focus trap)', async () => {
-      const user = userEvent.setup();
-      stubMobile();
-      const showModal = defineShowModal();
-      render(<AssistantDock />);
+    // Prototype patches must be applied/removed via hooks, not inline calls: an assertion failure
+    // mid-test would otherwise leak the stub into the no-showModal describe below.
+    describe('mobile, with native showModal', () => {
+      let showModal: ReturnType<typeof defineShowModal>;
 
-      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+      beforeEach(() => {
+        showModal = defineShowModal();
+      });
 
-      expect(showModal).toHaveBeenCalled();
-      removeShowModal();
+      afterEach(() => {
+        removeShowModal();
+      });
+
+      it('expanding opens the sheet modally via showModal (the native focus trap)', async () => {
+        const user = userEvent.setup();
+        stubMobile();
+        render(<AssistantDock />);
+
+        await user.click(screen.getByRole('button', { name: 'Асистент' }));
+
+        expect(showModal).toHaveBeenCalled();
+      });
+
+      it('the dialog cancel event (Esc) collapses and returns focus to the launcher', async () => {
+        const user = userEvent.setup();
+        stubMobile();
+        const { container } = render(<AssistantDock />);
+        await user.click(screen.getByRole('button', { name: 'Асистент' }));
+
+        const dialog = container.querySelector('dialog');
+        expect(dialog).not.toBeNull();
+        fireEvent(dialog!, new Event('cancel', { bubbles: false, cancelable: true }));
+
+        const launcher = screen.getByRole('button', { name: 'Асистент' });
+        expect(document.activeElement).toBe(launcher);
+      });
     });
 
-    it('mobile: the dialog cancel event (Esc) collapses and returns focus to the launcher', async () => {
-      const user = userEvent.setup();
-      stubMobile();
-      defineShowModal();
-      const { container } = render(<AssistantDock />);
-      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+    describe('mobile, without showModal support (guarded fallback)', () => {
+      // Premise guard: these tests are only meaningful on a dialog WITHOUT showModal. A stub
+      // leaked from another test would silently invert them — fail loudly instead.
+      beforeEach(() => {
+        expect('showModal' in HTMLDialogElement.prototype).toBe(false);
+      });
 
-      const dialog = container.querySelector('dialog');
-      expect(dialog).not.toBeNull();
-      fireEvent(dialog!, new Event('cancel', { bubbles: false, cancelable: true }));
+      it('expanding does not crash and still focuses the composer', async () => {
+        const user = userEvent.setup();
+        stubMobile();
+        render(<AssistantDock />);
 
-      const launcher = screen.getByRole('button', { name: 'Асистент' });
-      expect(document.activeElement).toBe(launcher);
-      removeShowModal();
-    });
+        await user.click(screen.getByRole('button', { name: 'Асистент' }));
 
-    it('mobile: expanding without showModal support does not crash and still focuses the composer', async () => {
-      const user = userEvent.setup();
-      stubMobile();
-      // jsdom has no showModal — exactly the guarded engine-without-dialog-support path.
-      render(<AssistantDock />);
+        expect(document.activeElement).toBe(screen.getByRole('textbox'));
+      });
 
-      await user.click(screen.getByRole('button', { name: 'Асистент' }));
+      it('Escape closes the non-modally opened sheet and returns focus to the launcher', async () => {
+        // A non-modal <dialog> fires no cancel on Esc, so the document-level Esc listener must
+        // cover the fallback sheet — otherwise it cannot be closed by keyboard (WCAG 2.1.2).
+        const user = userEvent.setup();
+        stubMobile();
+        render(<AssistantDock />);
+        await user.click(screen.getByRole('button', { name: 'Асистент' }));
+        expect(document.activeElement).toBe(screen.getByRole('textbox'));
 
-      expect(document.activeElement).toBe(screen.getByRole('textbox'));
+        await user.keyboard('{Escape}');
+
+        const launcher = screen.getByRole('button', { name: 'Асистент' });
+        expect(document.activeElement).toBe(launcher);
+      });
     });
   });
 });

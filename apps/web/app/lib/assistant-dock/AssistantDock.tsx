@@ -98,15 +98,17 @@ export const AssistantDock = () => {
     pendingFocus.current = null;
   }, [collapsed, isMobile, mounted]);
 
-  // Esc collapses the desktop (non-modal) panel; the mobile sheet handles Esc natively via onCancel.
+  // Esc collapses the expanded dock. The native modal sheet also fires cancel → collapse(); the
+  // double call is idempotent. Active on mobile too so the no-showModal fallback (non-modal
+  // dialog, which fires NO cancel on Esc) can still be closed by keyboard (WCAG 2.1.2).
   useEffect(() => {
-    if (collapsed || isMobile) return;
+    if (collapsed) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') collapse();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [collapsed, isMobile]);
+  }, [collapsed]);
 
   // Focus the composer after a new chat — deferred, since the textarea is disabled until the aborted
   // turn settles; the ref one-shots it so later turns don't steal focus.
@@ -141,6 +143,7 @@ export const AssistantDock = () => {
     <AssistantPanel
       messages={chat.messages}
       busy={chat.status === 'submitted' || chat.status === 'streaming'}
+      aborted={chat.aborted}
       phase={chat.phase}
       onSend={(text) => chat.sendMessage({ text })}
       onStop={chat.stop}

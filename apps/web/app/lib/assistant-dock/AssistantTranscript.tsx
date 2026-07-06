@@ -14,6 +14,9 @@ interface AssistantTranscriptProps {
   /** A turn is in flight. While busy, the streaming message's report result is withheld (mid-turn it
    *  may still change on retry) and the settled-turn no-answer fallback is suppressed. */
   busy: boolean;
+  /** The last turn was stopped by the user. The SDK settles an aborted stream to status:ready exactly
+   *  like a natural finish, so without this flag the settle announcement would falsely say „готов". */
+  aborted: boolean;
   /** Called when the user taps „Отвори" — forwarded to ReportChip to close the dock on mobile. */
   onOpenReport?: () => void;
 }
@@ -40,6 +43,7 @@ export const AssistantTranscript = ({
   messages,
   phase,
   busy,
+  aborted,
   onOpenReport,
 }: AssistantTranscriptProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -58,16 +62,23 @@ export const AssistantTranscript = ({
     const wasBusy = prevBusy.current;
     prevBusy.current = busy;
     if (!wasBusy || busy) return;
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== 'assistant') return;
-    const report = reportOutputFromMessage(last);
     let text: string | null = null;
-    if (report?.ok) text = `Готова е справка: ${report.report.title}`;
-    else if (!report && messageText(last) !== '') text = 'Отговорът е готов';
+    if (aborted) {
+      // A user Stop settles to the same busy:false as a natural finish — announcing „готов" would
+      // tell an SR user their cancelled answer completed. Checked before the role guard: an abort
+      // can land before any assistant part has arrived.
+      text = 'Отговорът е прекъснат';
+    } else {
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== 'assistant') return;
+      const report = reportOutputFromMessage(last);
+      if (report?.ok) text = `Готова е справка: ${report.report.title}`;
+      else if (!report && messageText(last) !== '') text = 'Отговорът е готов';
+    }
     if (!text) return;
     settleCount.current += 1;
     setSettledAnnouncement(`${text}${settleCount.current % 2 === 0 ? ' ' : ''}`);
-  }, [busy, messages]);
+  }, [busy, aborted, messages]);
 
   // Index each settled report so /reports can read from localStorage (spec §5: per-browser, no
   // global enumeration). Runs whenever messages change; deduplication is in addToReportIndex.

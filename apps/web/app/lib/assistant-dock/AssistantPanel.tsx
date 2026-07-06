@@ -11,6 +11,8 @@ interface AssistantPanelProps {
   messages: UIMessage[];
   /** A turn is in flight (status 'submitted' | 'streaming'). */
   busy: boolean;
+  /** The last turn ended because the user pressed Stop — the transcript announces it as interrupted. */
+  aborted: boolean;
   /** The ephemeral turn phase surfaced in the transcript. */
   phase: AssistantPhase | null;
   onSend: (text: string) => void;
@@ -35,6 +37,7 @@ interface AssistantPanelProps {
 export const AssistantPanel = ({
   messages,
   busy,
+  aborted,
   phase,
   onSend,
   onStop,
@@ -93,6 +96,7 @@ export const AssistantPanel = ({
             messages={messages}
             phase={phase}
             busy={busy}
+            aborted={aborted}
             onOpenReport={onOpenReport}
           />
         )}

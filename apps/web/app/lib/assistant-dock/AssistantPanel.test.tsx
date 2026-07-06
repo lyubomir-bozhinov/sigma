@@ -23,6 +23,7 @@ type Props = Parameters<typeof AssistantPanel>[0];
 const props = (over: Partial<Props> = {}): Props => ({
   messages: [],
   busy: false,
+  aborted: false,
   phase: null,
   onSend: vi.fn(),
   onStop: vi.fn(),
