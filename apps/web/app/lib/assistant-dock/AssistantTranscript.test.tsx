@@ -1,11 +1,32 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
 import { AssistantTranscript } from './AssistantTranscript';
+import { addToReportIndex } from './storage';
+import { DEDUP_PART } from '../../../workers/assistant/dedup-stream';
 
 afterEach(() => {
   cleanup();
 });
+
+// A cache-hit turn: the route streams a single `data-dedup` part (no emit_report tool ran).
+const dedupMessage = (id: string, reportId = 'r_abc') =>
+  message(id, 'assistant', [
+    {
+      type: DEDUP_PART,
+      data: {
+        reportId,
+        createdAt: '2026-07-06T00:00:00Z',
+        layer: 'L1',
+        label: 'Преизползване на съществуващ отчет',
+      },
+    },
+  ]);
+
+// The reuse chip renders a react-router <Link>, so these render inside a router.
+const renderInRouter = (ui: ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 // Minimal hand-built messages — the SDK's UIMessage part union is stricter than these fixtures need,
 // so the cast crosses that boundary in one place.
@@ -433,5 +454,91 @@ describe('AssistantTranscript — live region for streamed tokens', () => {
     );
 
     expect(screen.getByRole('status').textContent).toBe('');
+  });
+});
+
+// A cache hit runs no emit_report tool — the route streams a single data-dedup part — so the transcript
+// renders a "reuse existing report" chip from it, linking to the immutable report at /reports/:id (§3c).
+// Without this the hit turn rendered blank ("dedup does nothing"), even though the backend deduped fine.
+describe('AssistantTranscript — dedup cache hit (reuse affordance)', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('renders a reuse chip linking to the report, labelled from the part when not locally indexed', () => {
+    renderInRouter(
+      <AssistantTranscript
+        messages={[dedupMessage('d1')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(screen.getByText('Преизползване на съществуващ отчет')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Отвори' })).toHaveAttribute('href', '/reports/r_abc');
+  });
+
+  it('enriches the chip with the real title + lead stat when the report is in the local index', () => {
+    addToReportIndex({
+      id: 'r_abc',
+      title: 'Месечен разход за 2024 г.',
+      question: 'q',
+      createdAt: '2026-07-06T00:00:00Z',
+      leadStat: 'Общ разход: 9,65 млрд. €',
+    });
+
+    renderInRouter(
+      <AssistantTranscript
+        messages={[dedupMessage('d2')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(screen.getByText('Месечен разход за 2024 г.')).toBeInTheDocument();
+    expect(screen.getByText('Общ разход: 9,65 млрд. €')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Отвори' })).toHaveAttribute('href', '/reports/r_abc');
+  });
+
+  it('withholds the reuse chip while the hit turn is still streaming', () => {
+    renderInRouter(
+      <AssistantTranscript
+        messages={[dedupMessage('d3')]}
+        phase="thinking"
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(screen.queryByRole('link', { name: 'Отвори' })).not.toBeInTheDocument();
+  });
+
+  it('announces the reused report once the turn settles', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <AssistantTranscript
+          messages={[dedupMessage('d4')]}
+          phase="thinking"
+          busy={true}
+          aborted={false}
+        />
+      </MemoryRouter>,
+    );
+    rerender(
+      <MemoryRouter>
+        <AssistantTranscript
+          messages={[dedupMessage('d4')]}
+          phase={null}
+          busy={false}
+          aborted={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Готова е справка: Преизползване на съществуващ отчет',
+    );
   });
 });
