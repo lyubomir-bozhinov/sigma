@@ -34,6 +34,13 @@ export function isReportReadyPart(part: { type: string }): part is ReportReadyPa
   return part.type === REPORT_READY_PART;
 }
 
+// The canonical user-facing sentence for a turn the assistant cannot answer precisely — no data, an
+// empty completion, or a report that could not be composed. One source of truth so the system prompt
+// (NO_DATA_RULE), the server fallbacks (agent.ts, stream-phase.ts), and the dock's no-answer line
+// can't drift into three different wordings.
+export const INSUFFICIENT_DATA_MESSAGE =
+  'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.';
+
 // The terminal report tool's name and its SDK UI-message part type (`tool-${name}`). One source of
 // truth so the server filter, the agent registration, and the dock projection can't drift apart.
 export const EMIT_REPORT_TOOL = 'emit_report' as const;
