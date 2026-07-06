@@ -1,0 +1,61 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { insertStatements, sqlLiteral, sqlIdent, TABLES } from './ship-related-persons.mjs';
+
+test('sqlLiteral escapes quotes, strips NUL, and NULLs non-finite/absent', () => {
+  assert.equal(sqlLiteral(null), 'NULL');
+  assert.equal(sqlLiteral(undefined), 'NULL');
+  assert.equal(sqlLiteral(42), '42');
+  assert.equal(sqlLiteral(Infinity), 'NULL');
+  assert.equal(sqlLiteral(NaN), 'NULL');
+  assert.equal(sqlLiteral("Д'Артанян"), "'Д''Артанян'"); // single quote doubled — injection-safe
+  assert.equal(sqlLiteral('a\x00b'), "'ab'"); // NUL stripped
+});
+
+test('sqlIdent double-quotes and escapes identifiers', () => {
+  assert.equal(sqlIdent('persons'), '"persons"');
+  assert.equal(sqlIdent('we"ird'), '"we""ird"');
+});
+
+test('insertStatements builds a valid multi-row INSERT with escaped values', () => {
+  const stmts = insertStatements(
+    'persons',
+    ['id', 'name'],
+    [
+      { id: 'person:a', name: 'Иван' },
+      { id: 'person:b', name: "О'Брайън" },
+    ],
+  );
+  assert.equal(stmts.length, 1);
+  assert.match(stmts[0], /^INSERT INTO "persons" \("id", "name"\) VALUES\n/);
+  assert.match(stmts[0], /\('person:a','Иван'\)/);
+  assert.match(stmts[0], /\('person:b','О''Брайън'\)/); // escaped
+  assert.match(stmts[0], /;\n$/);
+});
+
+test('insertStatements batches by row count (MAX_BATCH_ROWS)', () => {
+  const rows = Array.from({ length: 900 }, (_, i) => ({ id: `p${i}`, name: `n${i}` }));
+  const stmts = insertStatements('persons', ['id', 'name'], rows);
+  // 900 rows / 400-row cap → 3 statements (400 + 400 + 100)
+  assert.equal(stmts.length, 3);
+  assert.ok(stmts.every((s) => s.startsWith('INSERT INTO "persons"')));
+});
+
+test('insertStatements yields nothing for empty columns or rows', () => {
+  assert.deepEqual(insertStatements('persons', [], [{ id: 'x' }]), []);
+  assert.deepEqual(insertStatements('persons', ['id'], []), []);
+});
+
+test('TABLES ships suppressions first and covers the full related-persons schema', () => {
+  assert.equal(TABLES[0], 'link_suppressions'); // contested links never briefly re-exposed
+  for (const t of [
+    'persons',
+    'declarations',
+    'declared_interests',
+    'interest_links',
+    'interest_link_authorities',
+    'related_persons_internal',
+  ]) {
+    assert.ok(TABLES.includes(t), `missing ${t}`);
+  }
+});
