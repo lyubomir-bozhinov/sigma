@@ -25,7 +25,8 @@ describe('describe-schema data dictionary', () => {
   });
 
   it('data traps are non-empty, distinct imperative rules', () => {
-    expect(DATA_TRAPS.length).toBeGreaterThanOrEqual(10);
+    // Exact count (not a floor) so an accidental deletion trips the test too (review #52).
+    expect(DATA_TRAPS.length).toBe(12);
     expect(new Set(DATA_TRAPS).size).toBe(DATA_TRAPS.length);
     for (const trap of DATA_TRAPS) expect(trap.trim().length).toBeGreaterThan(20);
   });
