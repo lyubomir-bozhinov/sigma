@@ -58,6 +58,13 @@ CREATE TABLE interest_links (
   matcher_version   TEXT NOT NULL,          -- companyNameKey/classify version — reproducibility
   publish_tier      TEXT NOT NULL,          -- A_seat | B_distinctive | C_hold (ADR-0003/0009)
   relation          TEXT NOT NULL,          -- owns | manages | owns+manages (control) — ADR-0008
+  -- interpretation class for the published surface (ADR-0013). Separates genuine PRIVATE financial
+  -- interest from EX-OFFICIO public-board roles so the headline can't defame appointed civil servants:
+  --   private_ownership — relation owns/owns+manages (declared a stake): the real conflict signal
+  --   ex_officio_board  — relation manages AND ≥2 distinct officials declared the same company
+  --                       (a rotating/multi-member board = a public body, not a private interest)
+  --   management_role   — relation manages, a single declarant (ambiguous: private manager or small board)
+  interest_class    TEXT NOT NULL DEFAULT 'private_ownership',
   contemporaneous   INTEGER NOT NULL DEFAULT 0,
   own_institution   TEXT NOT NULL DEFAULT 'none', -- exact (deterministic) | locality (heuristic) | none
   evidence_count    INTEGER NOT NULL DEFAULT 1,   -- # declared_interests supporting this link

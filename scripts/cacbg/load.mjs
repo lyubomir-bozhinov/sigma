@@ -143,7 +143,7 @@ db.exec('COMMIT');
 
 // --- enrich each (person,eik) → interest_links (+ per-authority breakdown) -----------------------
 const contractStmt = db.prepare("SELECT strftime('%Y', c.signed_at) yr, a.id auth_id, a.name authority, c.amount_eur eur FROM contracts c JOIN tenders t ON t.id=c.tender_id JOIN authorities a ON a.id=t.authority_id JOIN bidders b ON b.id=c.bidder_id WHERE b.eik_normalized=?");
-const insLink = db.prepare('INSERT INTO interest_links(id,link_key,person_id,bidder_id,eik,entity_key,match_method,matcher_version,publish_tier,relation,contemporaneous,own_institution,evidence_count,first_declared_year,last_declared_year,contract_count,contract_value_eur,first_contract_year,last_contract_year,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+const insLink = db.prepare('INSERT INTO interest_links(id,link_key,person_id,bidder_id,eik,entity_key,match_method,matcher_version,publish_tier,relation,interest_class,contemporaneous,own_institution,evidence_count,first_declared_year,last_declared_year,contract_count,contract_value_eur,first_contract_year,last_contract_year,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
 const insILA = db.prepare('INSERT OR IGNORE INTO interest_link_authorities(link_key,authority_id,authority_name,contract_count,value_eur,own) VALUES(?,?,?,?,?,?)');
 // classify one authority (whose name may be a ';'-joined blob) against the official's institutions.
 // exact = deterministic name equality; name_contains/locality = DISCLOSED heuristics (candidate, not proof).
@@ -157,6 +157,20 @@ function authOwn(authorityName, instNorms, instNormsLong, locTokens) {
   if (instNormsLong.length && parts.some((p) => instNormsLong.some((i) => p.includes(i) || i.includes(p)))) return 'name_contains';
   if (locTokens.length && parts.some((p) => locTokens.some((t) => p.includes(t)))) return 'locality';
   return 'none';
+}
+// Distinct officials who declared each company (ЕИК). A private interest has ONE owner-declarant; a
+// public body's board is declared by MANY rotating members — the deterministic ex-officio tell (ADR-0013).
+const declarantsByEik = new Map();
+for (const rec of agg.values()) {
+  let s = declarantsByEik.get(rec.eik);
+  if (!s) declarantsByEik.set(rec.eik, (s = new Set()));
+  s.add(rec.pid);
+}
+// Interpretation class for the published surface — separates genuine private financial interest from
+// ex-officio public-board roles so the headline never treats an appointed civil servant as a conflict.
+function interestClass(relation, eik) {
+  if (relation === 'owns' || relation === 'owns+manages') return 'private_ownership';
+  return (declarantsByEik.get(eik)?.size ?? 1) > 1 ? 'ex_officio_board' : 'management_role';
 }
 db.exec('BEGIN');
 for (const rec of agg.values()) {
@@ -188,11 +202,12 @@ for (const rec of agg.values()) {
   let ownInst = 'none';
   for (const [, a] of perAuth) { a.own = authOwn(a.name, instNorms, instNormsLong, locTokens); if (OWN_RANK[a.own] > OWN_RANK[ownInst]) ownInst = a.own; }
   const relation = rec.kinds.has('management') ? (rec.kinds.has('shares') || rec.kinds.has('participation') ? 'owns+manages' : 'manages') : 'owns';
+  const iClass = interestClass(relation, rec.eik);
   const linkKey = `${rec.pid}|${rec.eik}`;
   const status = suppressed.has(linkKey) ? 'suppressed' : tier === 'C_hold' ? 'held' : 'published';
   const yrs = [...years];
   insLink.run(`il:${linkKey}`, linkKey, rec.pid, rec.bidder.id, rec.eik, rec.key, rec.method, MATCHER_VERSION,
-    tier, relation, contemporaneous, ownInst, rec.kinds.size,
+    tier, relation, iClass, contemporaneous, ownInst, rec.kinds.size,
     declYears.length ? String(Math.min(...declYears)) : null, declYears.length ? String(Math.max(...declYears)) : null,
     cCount, hasValue ? cValue : null, yrs.length ? String(Math.min(...yrs)) : null, yrs.length ? String(Math.max(...yrs)) : null, status);
   for (const [auth_id, a] of perAuth) insILA.run(linkKey, auth_id, a.name, a.count, a.value || null, a.own);
@@ -220,6 +235,10 @@ const S = {
   own_institution_name_contains: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='name_contains'").n,
   own_institution_locality: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='locality'").n,
   published_contract_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published'").v),
+  // headline conflict number = PRIVATE ownership only (ADR-0013); ex-officio state boards excluded
+  published_private_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='private_ownership'").n,
+  published_private_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='private_ownership'").v),
+  published_by_interest_class: Object.fromEntries(q("SELECT interest_class, COUNT(*) n, ROUND(COALESCE(SUM(contract_value_eur),0)) v FROM interest_links WHERE status='published' GROUP BY interest_class").map((r) => [r.interest_class, { links: r.n, value_eur: r.v }])),
   published_own_institution_value_eur: Math.round(one("SELECT COALESCE(SUM(value_eur),0) v FROM interest_link_authorities ila JOIN interest_links il ON il.link_key=ila.link_key WHERE il.status='published' AND ila.own='exact'").v),
   by_match_method: Object.fromEntries(q('SELECT match_method, COUNT(*) n FROM interest_links GROUP BY match_method').map((r) => [r.match_method, r.n])),
   trueOverMerge_LIBEL_GATE: trueOverMerges, noMatch, quarantined,

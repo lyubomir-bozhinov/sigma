@@ -50,6 +50,9 @@ before(() => {
     -- both colliding ГЕНЕРИК ЕИК are real winners → declared_eik can resolve a certain ЕИК behind an ambiguous name
     INSERT INTO contracts VALUES ('c4','t2','eik:222222229','2023-07-01',70000);
     INSERT INTO contracts VALUES ('c5','t2','eik:333333338','2023-08-01',80000);
+    -- distinctive winner MANAGED by two different officials → ex-officio public board (ADR-0013)
+    INSERT INTO bidders VALUES ('eik:555555556','ХОЛДИНГ 9 ЕАД','555555556',1,'София');
+    INSERT INTO contracts VALUES ('c6','t1','eik:555555556','2023-09-01',500000);
   `);
   db.close();
 
@@ -67,6 +70,9 @@ before(() => {
     { folder: '2024', xmlFile: 'E.xml', year: '2023', template: 'assets', category: '', institution: 'W', person: 'Стефан Колев', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 222222229', kind: 'shares', detail: '20%', timing: 'annual', seat: '', controlHash: 'H5' },
     // Радка writes the other certain ЕИК (333333338) AND its town Варна → seat disambiguates the collision → A_seat
     { folder: '2024', xmlFile: 'F.xml', year: '2023', template: 'assets', category: '', institution: 'V', person: 'Радка Илиева', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 333333338', kind: 'shares', detail: '30%', timing: 'annual', seat: 'Варна', controlHash: 'H6' },
+    // Борис and Виктор BOTH manage ХОЛДИНГ 9 (no ownership) → two declarants of one company = ex_officio_board
+    { folder: '2024', xmlFile: 'G.xml', year: '2023', template: 'interests', category: '', institution: 'U', person: 'Борис Манолов', position: 'член на съвет', entity: 'ХОЛДИНГ 9 ЕАД', kind: 'management', detail: 'член на надзорен съвет', timing: 'current', seat: '', controlHash: 'H7' },
+    { folder: '2024', xmlFile: 'H.xml', year: '2023', template: 'interests', category: '', institution: 'U', person: 'Виктор Асенов', position: 'член на съвет', entity: 'ХОЛДИНГ 9 ЕАД', kind: 'management', detail: 'член на надзорен съвет', timing: 'current', seat: '', controlHash: 'H8' },
   ];
   fs.writeFileSync(path.join(STAGING, 'holdings.jsonl'), holdings.map((h) => JSON.stringify(h)).join('\n') + '\n');
   fs.writeFileSync(path.join(STAGING, 'related.jsonl'), '');
@@ -85,6 +91,7 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(ivan.status, 'published');
   assert.equal(ivan.publish_tier, 'B_distinctive');
   assert.equal(ivan.relation, 'manages');
+  assert.equal(ivan.interest_class, 'management_role'); // manages, sole declarant → ambiguous, not headline
   assert.equal(ivan.own_institution, 'exact');
   assert.equal(ivan.contemporaneous, 1);
   // contract facts: both of ДИСТИНКТ's contracts summed deterministically
@@ -105,6 +112,14 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   const petar = link('444444447', 'Петър Николов');
   assert.equal(petar.publish_tier, 'A_seat'); // generic name rescued by seat match
   assert.equal(petar.status, 'published');
+  assert.equal(petar.interest_class, 'private_ownership'); // declared a share → the headline conflict signal
+
+  // two officials manage the SAME company → deterministically classed ex-officio (public board), not private
+  const boris = link('555555556', 'Борис Манолов');
+  const viktor = link('555555556', 'Виктор Асенов');
+  assert.equal(boris.interest_class, 'ex_officio_board');
+  assert.equal(viktor.interest_class, 'ex_officio_board');
+  assert.equal(boris.relation, 'manages');
 
   const georgi = link('444444447', 'Георги Стоянов');
   assert.equal(georgi.publish_tier, 'C_hold'); // generic, no seat → held
@@ -135,7 +150,7 @@ test('re-run is idempotent and honors link_suppressions (contested link stays re
   db = open();
   assert.equal(db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status, 'suppressed');
   // idempotent: still exactly the same number of links + persons after a clean rebuild
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 5);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 6);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 7);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 8);
   db.close();
 });
