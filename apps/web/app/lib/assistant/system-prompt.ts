@@ -11,6 +11,7 @@
 //
 // Pure string assembly — unit-testable, no deps/bindings.
 
+import { INSUFFICIENT_DATA_MESSAGE } from '../assistant-contract/stream';
 import { describeSchema } from './describe-schema';
 import type { ResolvedPeriod, TemporalContext } from './temporal';
 
@@ -48,7 +49,7 @@ export const VALUES_BY_REFERENCE_RULE =
 
 // The model-facing emit_report JSON schema is deliberately shallow (only requires `type`), so a weak
 // 27B keeps guessing the per-block fields wrong and never satisfies the strict server validator
-// (validateEmitShape) within the step budget → "Справката не можа да бъде съставена". This spells out
+// (validateEmitShape) within the step budget → the insufficient-data failure line. This spells out
 // the EXACT shape of every block type + the `format` enum so it lands valid on the first try.
 export const EMIT_REPORT_BLOCKS_GUIDE =
   'ФОРМАТ НА БЛОКОВЕТЕ (emit_report) — попълвай ТОЧНО тези полета. `format` е едно от ' +
@@ -98,6 +99,29 @@ export const RECONCILE_RULE =
 export const EDITORIAL_SKELETON =
   'ФОРМА НА СПРАВКАТА: заглавие → едноредов отговор (`text`) → водещи `totals` → поддържащи ' +
   '`table`/`bar`/`flows`/`timeseries` → `callout`, който цитира източниците.';
+
+// The skeleton describes the ideal report form but nothing MANDATED the supporting detail — the weak
+// model sometimes ships a bare totals + one-liner, leaving the reader with a number and no evidence.
+// This rule makes the detail blocks and a plain-language findings narrative obligatory.
+export const REPORT_DETAILS_RULE =
+  'ДЕТАЙЛИ В СПРАВКАТА: Всяка справка ЗАДЪЛЖИТЕЛНО показва какво е намерено, не само крайно число. ' +
+  'Когато резултатът съдържа редове, включи поне един поддържащ блок с данните ' +
+  '(`table`/`bar`/`timeseries`/`flows`/`facts`) — самостоятелен `totals` с едноредов текст НЕ е достатъчен. ' +
+  'Освен това всяка справка съдържа `text` или `callout` блок, който на ясен потребителски език описва ' +
+  'какво е търсено и какво е намерено: обхват, период и приложени филтри (описани по смисъл, без SQL и ' +
+  'вътрешни полета — виж ЗАБРАНЕНО В ТЕКСТА), както и източниците на данните.';
+
+// Zero-row / unanswerable turns previously had no scripted answer, so the model improvised (or the turn
+// dead-ended on a technical fallback). This pins the exact user-facing sentence. It explicitly DEFERS to
+// the temporal recency caveat (renderTemporalContext): a recent period with late-arriving data is shown
+// as partial data with a freshness citation, NOT declared unanswerable.
+export const NO_DATA_RULE =
+  'ЛИПСА НА ДАННИ: Ако `run_sql` върне нула редове или наличните данни не позволяват точен отговор, ' +
+  'НЕ съставяй справка и НЕ измисляй данни. Отговори с обикновен текст, който започва точно с: ' +
+  `„${INSUFFICIENT_DATA_MESSAGE}" — и предложи как ` +
+  'въпросът да се уточни (напр. възложител, период или сектор). ИЗКЛЮЧЕНИЕ: ако е подаден времеви ' +
+  'контекст с предупреждение за свежест (скорошен период), следвай него — покажи наличното до момента ' +
+  'и цитирай свежестта, вместо да обявяваш липса на данни.';
 
 export const HEADLINE_TOTALS_RULE =
   'ВОДЕЩО ЧИСЛО В КАРТАТА: Когато справката е списък или разбивка (`table`, `bar`) и ИМА смислено ' +
@@ -191,6 +215,8 @@ export function buildSystemPrompt(input: SystemPromptInput = {}): string {
     DATA_TRUST_RULE,
     RECONCILE_RULE,
     EDITORIAL_SKELETON,
+    REPORT_DETAILS_RULE,
+    NO_DATA_RULE,
     HEADLINE_TOTALS_RULE,
     input.freshness ? `СВЕЖЕСТ НА ДАННИТЕ: ${input.freshness} — цитирай я в callout.` : '',
     schema,

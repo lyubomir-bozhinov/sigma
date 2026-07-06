@@ -5,8 +5,10 @@ import {
   EDITORIAL_SKELETON,
   EMIT_REPORT_POLICY,
   HEADLINE_TOTALS_RULE,
+  NO_DATA_RULE,
   NO_INTERNAL_FIELDS_RULE,
   RECONCILE_RULE,
+  REPORT_DETAILS_RULE,
   VALUES_BY_REFERENCE_RULE,
 } from './system-prompt';
 import { resolveTemporalContext } from './temporal';
@@ -36,6 +38,40 @@ describe('buildSystemPrompt', () => {
 
   it('requires a leading totals headline for list/breakdown reports (so numbers reach the chat card)', () => {
     expect(buildSystemPrompt()).toContain(HEADLINE_TOTALS_RULE);
+  });
+
+  it('mandates supporting detail blocks and a findings narrative in every report', () => {
+    const p = buildSystemPrompt();
+    expect(p).toContain(REPORT_DETAILS_RULE);
+    // never a bare headline number: the underlying rows must ship in a supporting block
+    expect(REPORT_DETAILS_RULE).toContain('поддържащ блок');
+    expect(REPORT_DETAILS_RULE).toContain('НЕ е достатъчен');
+    // and a plain-language narrative of what was searched/found: scope, period, filters, sources
+    expect(REPORT_DETAILS_RULE).toContain('какво е търсено и какво е намерено');
+    expect(REPORT_DETAILS_RULE).toContain('обхват');
+    expect(REPORT_DETAILS_RULE).toContain('период');
+    expect(REPORT_DETAILS_RULE).toContain('филтри');
+    expect(REPORT_DETAILS_RULE).toContain('източниц');
+  });
+
+  it('tells the model exactly what to answer when the data cannot support a precise answer', () => {
+    const p = buildSystemPrompt();
+    expect(p).toContain(NO_DATA_RULE);
+    // the canonical user-facing sentence, verbatim
+    expect(NO_DATA_RULE).toContain(
+      'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
+    );
+    // no fabricated data, no empty report
+    expect(NO_DATA_RULE).toContain('НЕ измисляй');
+  });
+
+  it('keeps the recency caveat authoritative over the no-data answer for recent periods', () => {
+    // A recent period with late-arriving data is NOT "no data" — the temporal caveat must keep
+    // precedence, and the no-data rule must explicitly defer to it.
+    const temporal = resolveTemporalContext('този месец', JUL_2)!;
+    const p = buildSystemPrompt({ temporal });
+    expect(p).toContain('ВНИМАНИЕ (свежест)');
+    expect(NO_DATA_RULE).toContain('свежест');
   });
 
   it('hardens the prompt-injection boundary: embedded "instructions" in data are framed as data to ignore', () => {
