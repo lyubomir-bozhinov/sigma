@@ -33,7 +33,7 @@ export const DATA_TRAPS: string[] = [
     'като „няма такъв субект". Взетото id ползвай в run_sql (`t.authority_id = <id>` / `c.bidder_id = <id>`). ' +
     '`run_sql` НЕ поддържа FTS `MATCH` (парсерът я отхвърля); за парафрази/синоними допълва `semantic_search`.',
   'Всяка заявка към базовата `contracts` ЗАДЪЛЖИТЕЛНО носи `amount_eur IS NOT NULL` И изключване на ' +
-    "синтетичните преписки (`procedure_type != 'неизвестна'`) като условия на най-горното WHERE — иначе " +
+    'синтетичните записи (`c.is_synthetic != 1`) като условия на най-горното WHERE — иначе ' +
     'се отхвърля. Затова обикновените броеве са вече ФИЛТРИРАНИ броеве. Въпрос като „колко договора нямат ' +
     'записана стойност" НЕ се отговаря с `COUNT(*)` върху `contracts` (ще бъде отхвърлен); ползвай ' +
     'корпусните броеве (`home_totals.contracts` брои ВСИЧКИ договори, вкл. NULL `amount_eur`) или го посочи ' +
@@ -43,7 +43,7 @@ export const DATA_TRAPS: string[] = [
     '(изисква `JOIN tenders t` в заявката). За бърза справка „има ли анекси" ползвай ' +
     '`contracts.annex_count > 0` без JOIN; `contracts.current_value_eur` дава EUR стойността след последния анекс.',
   'УНП на договор е `tenders.source_id` — достъпва се през `JOIN tenders t ON t.id = c.tender_id`. ' +
-    'За да намериш всички договори по дадено УНП: `WHERE t.source_id = ?`.',
+    "За да намериш всички договори по дадено УНП: `WHERE t.source_id = '00123-2024-0001'` (замени с реалния УНП).",
   'Времеви серии (разход/брой по ГОДИНА или МЕСЕЦ — `substr(c.signed_at,1,4|7)` в SELECT/GROUP BY) ' +
     "ЗАДЪЛЖИТЕЛНО ограничавай обхвата: `c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')` " +
     "(или фиксирай период, напр. `substr(c.signed_at,1,4) = '2024'`) — иначе се отхвърля. Причината: " +
@@ -90,6 +90,7 @@ export const TABLES: TableDoc[] = [
       'id, tender_id→tenders, bidder_id→bidders, contract_number, amount (display, в `currency`), currency, ' +
       'amount_eur (КАНОНИЧЕН EUR, SAFE TO SUM; NULL=suspect/FX), value_flag, date_flag, ' +
       'signed_at, bids_received, eu_funded, ' +
+      'is_synthetic (1=синтетична преписка=procedure_type неизвестна, 0=нормална; филтрирай с c.is_synthetic != 1), ' +
       'annex_count (брой анекси; 0=няма), current_value_eur (EUR след последния анекс), ' +
       'signing_value_eur (EUR при сключване — за анализ на отклонение след анекси), ' +
       "contract_kind (Доставки/Услуги/Строителство), winner_size ('micro'|'small'|'medium'|'large'), " +
@@ -174,12 +175,12 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
   },
   {
     intent: 'Разход по година (timeseries) — само валидно датирани, чисти EUR редове',
-    sql: "SELECT substr(c.signed_at, 1, 4) AS year, SUM(c.amount_eur) AS total_eur\nFROM contracts c JOIN tenders t ON t.id = c.tender_id\nWHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна'\n  AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'\n  AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')\nGROUP BY year ORDER BY year;",
+    sql: "SELECT substr(c.signed_at, 1, 4) AS year, SUM(c.amount_eur) AS total_eur\nFROM contracts c\nWHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1\n  AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'\n  AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')\nGROUP BY year ORDER BY year;",
   },
   {
     intent:
       'Дял на договорите с една оферта (по стойност) — включи и готовия дял (0..1), не само сумите',
-    sql: "SELECT\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) AS single_offer_eur,\n  SUM(c.amount_eur) AS total_eur,\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) * 1.0 / SUM(c.amount_eur) AS single_offer_share\nFROM contracts c JOIN tenders t ON t.id = c.tender_id\nWHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна';",
+    sql: 'SELECT\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) AS single_offer_eur,\n  SUM(c.amount_eur) AS total_eur,\n  SUM(CASE WHEN c.bids_received = 1 THEN c.amount_eur ELSE 0 END) * 1.0 / SUM(c.amount_eur) AS single_offer_share\nFROM contracts c\nWHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1;',
   },
   {
     intent: 'Разход по CPV сектор',
@@ -187,16 +188,16 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
   },
   {
     intent: 'Възложители с най-висок дял договори с една оферта (сигнал за слаба конкуренция)',
-    sql: "SELECT a.name, t.authority_id AS authority_id, COUNT(*) AS contracts,\n  SUM(CASE WHEN c.bids_received = 1 THEN 1 ELSE 0 END) AS single_offer,\n  SUM(CASE WHEN c.bids_received = 1 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS single_offer_share\nFROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id\nWHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна' AND c.bids_received >= 1\nGROUP BY t.authority_id HAVING COUNT(*) >= 20\nORDER BY single_offer_share DESC, contracts DESC LIMIT 20;",
+    sql: 'SELECT a.name, t.authority_id AS authority_id, COUNT(*) AS contracts,\n  SUM(CASE WHEN c.bids_received = 1 THEN 1 ELSE 0 END) AS single_offer,\n  SUM(CASE WHEN c.bids_received = 1 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS single_offer_share\nFROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id\nWHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1 AND c.bids_received >= 1\nGROUP BY t.authority_id HAVING COUNT(*) >= 20\nORDER BY single_offer_share DESC, contracts DESC LIMIT 20;',
   },
   {
     intent:
       'Концентрация на доставчици при възложител (HHI — близо до 1 = малко доставчици взимат всичко)',
-    sql: "WITH pair AS (\n  SELECT t.authority_id AS authority_id, c.bidder_id AS bidder_id, SUM(c.amount_eur) AS spent\n  FROM contracts c JOIN tenders t ON t.id = c.tender_id\n  WHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна'\n  GROUP BY t.authority_id, c.bidder_id\n), tot AS (\n  SELECT authority_id, SUM(spent) AS total, COUNT(*) AS suppliers FROM pair GROUP BY authority_id\n)\nSELECT a.name, p.authority_id AS authority_id, tot.suppliers AS suppliers,\n  SUM((p.spent / tot.total) * (p.spent / tot.total)) AS hhi\nFROM pair p JOIN tot ON tot.authority_id = p.authority_id JOIN authorities a ON a.id = p.authority_id\nWHERE tot.suppliers >= 2\nGROUP BY p.authority_id ORDER BY hhi DESC LIMIT 20;",
+    sql: 'WITH pair AS (\n  SELECT t.authority_id AS authority_id, c.bidder_id AS bidder_id, SUM(c.amount_eur) AS spent\n  FROM contracts c JOIN tenders t ON t.id = c.tender_id\n  WHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1\n  GROUP BY t.authority_id, c.bidder_id\n), tot AS (\n  SELECT authority_id, SUM(spent) AS total, COUNT(*) AS suppliers FROM pair GROUP BY authority_id\n)\nSELECT a.name, p.authority_id AS authority_id, tot.suppliers AS suppliers,\n  SUM((p.spent / tot.total) * (p.spent / tot.total)) AS hhi\nFROM pair p JOIN tot ON tot.authority_id = p.authority_id JOIN authorities a ON a.id = p.authority_id\nWHERE tot.suppliers >= 2\nGROUP BY p.authority_id ORDER BY hhi DESC LIMIT 20;',
   },
   {
     intent: 'Разход по месеци (timeseries) — само валидно датирани, чисти EUR редове',
-    sql: "SELECT substr(c.signed_at, 1, 7) AS period, SUM(c.amount_eur) AS total_eur, COUNT(*) AS contracts\nFROM contracts c JOIN tenders t ON t.id = c.tender_id\nWHERE c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна'\n  AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'\n  AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')\nGROUP BY period ORDER BY period;",
+    sql: "SELECT substr(c.signed_at, 1, 7) AS period, SUM(c.amount_eur) AS total_eur, COUNT(*) AS contracts\nFROM contracts c\nWHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1\n  AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'\n  AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')\nGROUP BY period ORDER BY period;",
   },
   {
     intent: 'Разход по област (NUTS3) — от rollup-а; празно region = неразпределени',
@@ -212,11 +213,11 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
       'Договори по УНП — намери всички договори от конкретна преписка ' +
       '(задължителният филтър изключва редове без EUR стойност и синтетични преписки; ' +
       'за пълен списък с анекси ползвай contracts.annex_count и current_value_eur)',
-    sql: "SELECT c.id, c.contract_number, c.amount_eur, c.signed_at, b.name AS bidder_name\nFROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN bidders b ON b.id = c.bidder_id\nWHERE t.source_id = ? AND c.amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна';",
+    sql: "SELECT c.id, c.contract_number, c.amount_eur, c.signed_at, b.name AS bidder_name\nFROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN bidders b ON b.id = c.bidder_id\nWHERE t.source_id = '00123-2024-0001' AND c.amount_eur IS NOT NULL AND c.is_synthetic != 1;",
   },
   {
     intent: 'Анекси към преписка — история на стойностните промени (join по unp=tenders.source_id)',
-    sql: 'SELECT a.contract_number, a.value_before, a.value_after, a.value_delta, a.currency, a.published_at, a.description\nFROM amendments a\nWHERE a.unp = ?\nORDER BY a.published_at;',
+    sql: "SELECT a.contract_number, a.value_before, a.value_after, a.value_delta, a.currency, a.published_at, a.description\nFROM amendments a\nWHERE a.unp = '00123-2024-0001'\nORDER BY a.published_at;",
   },
   {
     intent:

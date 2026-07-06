@@ -4,7 +4,7 @@ import { applyDefaultFilters } from '../../../workers/assistant/default-filters'
 import { CANONICAL_QUERIES } from './describe-schema';
 
 // The HHI concentration canonical query — joins contracts + tenders and carries both mandatory
-// default filters (amount_eur IS NOT NULL AND t.procedure_type != 'неизвестна').
+// default filters (amount_eur IS NOT NULL AND c.is_synthetic != 1).
 const HHI = CANONICAL_QUERIES.find((q) => q.intent.startsWith('Концентрация'))!.sql;
 
 describe('assertDefaultFilters', () => {
@@ -13,7 +13,7 @@ describe('assertDefaultFilters', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toMatch(/amount_eur/);
-      expect(r.reason).toMatch(/procedure_type/);
+      expect(r.reason).toMatch(/is_synthetic/);
       // fragment: lowercase start, no trailing period
       expect(r.reason[0]).toBe(r.reason[0].toLowerCase());
       expect(r.reason.endsWith('.')).toBe(false);
@@ -23,7 +23,7 @@ describe('assertDefaultFilters', () => {
   it('accepts a base-contracts query carrying both default filters and returns the standard callout', () => {
     expect(HHI).toContain('JOIN tenders t');
     expect(HHI).toContain('c.amount_eur IS NOT NULL');
-    expect(HHI).toContain("t.procedure_type != 'неизвестна'");
+    expect(HHI).toContain('c.is_synthetic != 1');
 
     const r = assertDefaultFilters(HHI);
     expect(r.ok).toBe(true);
@@ -41,13 +41,13 @@ describe('assertDefaultFilters', () => {
     expect(r).toEqual({ ok: true, callout: [] });
   });
 
-  it('rejects a query that has amount_eur but is missing the procedure_type filter', () => {
+  it('rejects a query that has amount_eur but is missing the synthetic-exclusion filter', () => {
     const r = assertDefaultFilters(
       'SELECT SUM(c.amount_eur) FROM contracts c JOIN tenders t ON t.id = c.tender_id WHERE c.amount_eur IS NOT NULL',
     );
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.reason).toMatch(/procedure_type/);
+      expect(r.reason).toMatch(/is_synthetic/);
       expect(r.reason).not.toMatch(/amount_eur/);
     }
   });
@@ -107,7 +107,7 @@ describe('assertDefaultFilters', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toMatch(/amount_eur/);
-      expect(r.reason).toMatch(/procedure_type/);
+      expect(r.reason).toMatch(/is_synthetic/);
     }
   });
 
@@ -119,7 +119,7 @@ describe('assertDefaultFilters', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toMatch(/amount_eur/);
-      expect(r.reason).toMatch(/procedure_type/);
+      expect(r.reason).toMatch(/is_synthetic/);
     }
   });
 
@@ -132,7 +132,7 @@ describe('assertDefaultFilters', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toMatch(/amount_eur/);
-      expect(r.reason).toMatch(/procedure_type/);
+      expect(r.reason).toMatch(/is_synthetic/);
     }
   });
 

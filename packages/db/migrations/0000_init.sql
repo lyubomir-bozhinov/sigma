@@ -148,6 +148,7 @@ CREATE TABLE contracts (
   framework        INTEGER,                -- Договор по рамково споразумение
   accelerated      INTEGER,                -- Ускорена процедура
   strategic        INTEGER,                -- Стратегическа поръчка
+  is_synthetic     INTEGER NOT NULL DEFAULT 0, -- 1 when the parent tender is a synthetic orphan (procedure_type='неизвестна'); allows aggregate filtering without a tenders JOIN
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
