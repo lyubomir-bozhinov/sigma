@@ -24,7 +24,7 @@ import {
 import { buildSystemPrompt } from './system-prompt';
 import { createPhaseFilter } from './stream-phase';
 import { classifyStreamError, isGatewayRateLimit } from './stream-errors';
-import { EMIT_REPORT_TOOL } from '../assistant-contract/stream';
+import { EMIT_REPORT_TOOL, INSUFFICIENT_DATA_MESSAGE } from '../assistant-contract/stream';
 import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
 import { buildFallbackReport } from './report-fallback';
@@ -150,9 +150,10 @@ function buildVerifierGenerate(env: AgentEnv, turnSignal?: AbortSignal): Generat
 
 // Shown when the model returns a completely empty turn — no report, no run_sql data to synthesize from,
 // and no prose (an empty completion / finishReason 'other'). Guarantees the dock never renders a blank
-// turn in that case. Mirrors the client-side NO_ANSWER_FALLBACK wording (AssistantTranscript.tsx).
-const EMPTY_COMPLETION_MESSAGE =
-  'Не успях да съставя справка за този въпрос. Опитайте отново или го формулирайте по-конкретно — ' +
+// turn in that case. Opens with the canonical insufficient-data sentence (assistant-contract) so the
+// server fallback, the system prompt's NO_DATA_RULE, and the dock's NO_ANSWER_FALLBACK stay in step.
+export const EMPTY_COMPLETION_MESSAGE =
+  `${INSUFFICIENT_DATA_MESSAGE} Опитайте отново или го формулирайте по-конкретно — ` +
   'напр. посочете възложител, период или сектор.';
 
 // System-prompt version string used in StoredReport provenance for regression tracing. Derived — NOT a

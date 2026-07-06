@@ -10,6 +10,7 @@ import type { UIMessageChunk } from 'ai';
 import {
   EMIT_REPORT_TOOL,
   PHASE_PART,
+  REPORT_FAILED_MESSAGE,
   REPORT_READY_PART,
   type AssistantPhase,
 } from '../assistant-contract/stream';
@@ -17,7 +18,9 @@ import {
 // The only tool whose chunks reach the client (its input is a block skeleton referencing result
 // handles R1…, its output the resolved report the dock renders); every other tool is internal.
 // The user-facing failure line the dock shows for a rejected report — also the mask for a thrown one.
-const REPORT_FAILED_TEXT = 'Справката не можа да бъде съставена.';
+// A TECHNICAL failure, not a data statement — hence REPORT_FAILED_MESSAGE, never the
+// insufficient-data wording (the data may exist; only the compose step failed).
+const REPORT_FAILED_TEXT = REPORT_FAILED_MESSAGE;
 
 // Non-tool chunk types forwarded verbatim. `error` is already masked upstream (toUIMessageStream's
 // onError); reasoning is dropped at the source (sendReasoning: false) and NOT listed here so it
