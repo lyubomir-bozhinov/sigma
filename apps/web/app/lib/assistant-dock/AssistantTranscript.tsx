@@ -5,7 +5,11 @@ import { addToReportIndex } from './storage';
 import { AssistantMessage, messageText } from './AssistantMessage';
 import { AssistantPhaseLine } from './AssistantPhaseLine';
 import { ReportChip } from './ReportChip';
-import { INSUFFICIENT_DATA_MESSAGE, type AssistantPhase } from '../assistant-contract/stream';
+import {
+  INSUFFICIENT_DATA_MESSAGE,
+  REPORT_FAILED_MESSAGE,
+  type AssistantPhase,
+} from '../assistant-contract/stream';
 
 interface AssistantTranscriptProps {
   messages: UIMessage[];
@@ -163,7 +167,7 @@ export const AssistantTranscript = ({
                 that lands a moment later. Only show it once the turn has settled (or for an earlier
                 turn that genuinely ended on ok:false). While busy the pending indicator shows instead. */}
               {report && !report.ok && !(busy && index === messages.length - 1) ? (
-                <p className="assistant-transcript__error">{INSUFFICIENT_DATA_MESSAGE}</p>
+                <p className="assistant-transcript__error">{REPORT_FAILED_MESSAGE}</p>
               ) : null}
               {showNoAnswer ? (
                 <p className="assistant-transcript__error">{NO_ANSWER_FALLBACK}</p>

@@ -97,9 +97,7 @@ describe('AssistantTranscript', () => {
     );
 
     expect(
-      screen.getByText(
-        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
-      ),
+      screen.getByText('Справката не можа да бъде съставена. Опитайте отново.'),
     ).toBeInTheDocument();
   });
 
@@ -141,9 +139,7 @@ describe('AssistantTranscript', () => {
 
     expect(screen.getByText('Съставям справка…')).toBeInTheDocument();
     expect(
-      screen.queryByText(
-        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
-      ),
+      screen.queryByText('Справката не можа да бъде съставена. Опитайте отново.'),
     ).not.toBeInTheDocument();
   });
 
@@ -182,9 +178,7 @@ describe('AssistantTranscript', () => {
     );
 
     expect(
-      screen.getByText(
-        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
-      ),
+      screen.getByText('Справката не можа да бъде съставена. Опитайте отново.'),
     ).toBeInTheDocument();
   });
 
@@ -201,9 +195,7 @@ describe('AssistantTranscript', () => {
     );
 
     expect(
-      screen.queryByText(
-        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
-      ),
+      screen.queryByText('Справката не можа да бъде съставена. Опитайте отново.'),
     ).not.toBeInTheDocument();
   });
 
@@ -219,9 +211,7 @@ describe('AssistantTranscript', () => {
     );
 
     expect(
-      screen.getByText(
-        'Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос.',
-      ),
+      screen.getByText('Справката не можа да бъде съставена. Опитайте отново.'),
     ).toBeInTheDocument();
   });
 
