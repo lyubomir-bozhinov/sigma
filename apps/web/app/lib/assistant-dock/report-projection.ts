@@ -5,14 +5,23 @@
 
 import { count, date, money, pct } from '@sigma/shared';
 import { EMIT_REPORT_PART } from '../assistant-contract/stream';
+import { DEDUP_PART, type DedupData } from '../../../workers/assistant/dedup-stream';
+import type { DedupLayer } from '../../../workers/assistant/dedup';
+
+// Client-safe allowlist for the untrusted `layer` (dedup.ts itself is worker-only — it runs key
+// derivation at module load, so we import DedupLayer type-only and keep the runtime set here). The
+// `satisfies` lock fails the build if any entry stops being a valid layer; a NEW union member merely
+// won't render its reuse affordance until added here (benign — falls back to regeneration).
+const DEDUP_LAYERS = ['L0', 'L1', 'L2', 'L2.5', 'L3'] as const satisfies readonly DedupLayer[];
 import type { CellFormat, EmitReportOutput, ResolvedReport } from './contract';
 
 // Minimal shape we read from a useChat UIMessage part — avoids coupling to the SDK's full part typing
-// (we only ever read `type`, `state`, and `output`).
+// (we only ever read `type`, `state`, `output`, and — for the dedup part — `data`).
 interface MessagePartLike {
   type: string;
   state?: string;
   output?: unknown;
+  data?: unknown;
 }
 interface MessageLike {
   parts?: MessagePartLike[];
@@ -73,6 +82,32 @@ export const isToolTurnWithoutReport = (message: MessageLike): boolean => {
     if (type.startsWith('tool-') || type === 'dynamic-tool') sawTool = true;
   }
   return sawTool;
+};
+
+// Narrow the untrusted `data` of a `data-dedup` part (it round-trips through localStorage, which is
+// same-origin-writable) to the fields the reuse affordance reads before rendering from them.
+const isDedupData = (value: unknown): value is DedupData => {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.reportId === 'string' &&
+    typeof v.createdAt === 'string' &&
+    typeof v.label === 'string' &&
+    typeof v.layer === 'string' &&
+    (DEDUP_LAYERS as readonly string[]).includes(v.layer)
+  );
+};
+
+/**
+ * The dedup hit carried by a message served from cache, or null. On an L0–L2.5 hit the route runs no
+ * emit_report tool — it streams a single `data-dedup` part instead — so the transcript renders a "reuse
+ * existing report" affordance from this, linking to the immutable report at /reports/:reportId (spec §3c).
+ */
+export const dedupHitFromMessage = (message: MessageLike): DedupData | null => {
+  for (const part of message.parts ?? []) {
+    if (part.type === DEDUP_PART && isDedupData(part.data)) return part.data;
+  }
+  return null;
 };
 
 const toNumber = (value: string | number | null): number | null => {
