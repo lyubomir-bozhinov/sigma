@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadCollapsed, saveCollapsed } from './storage';
 import { useAssistantChat } from './useAssistantChat';
+import { useTurnstileGate } from './useTurnstileGate';
 import { AssistantLauncher } from './AssistantLauncher';
 import { AssistantPanel } from './AssistantPanel';
+
+interface AssistantDockProps {
+  /** Public Turnstile site key (from the root loader). Absent ⇒ the bot gate stays inactive. */
+  turnstileSiteKey?: string | null;
+}
 
 // Below the site's primary mobile breakpoint (760px — where the layout goes single-column) a 400px
 // docked panel would cover most of the viewport, so the dock becomes a full-screen modal sheet instead.
@@ -17,8 +23,10 @@ const MOBILE_QUERY = '(max-width: 760px)';
  *
  * Every hook runs unconditionally, before the `!mounted` early return (Rules of React).
  */
-export const AssistantDock = () => {
+export const AssistantDock = ({ turnstileSiteKey }: AssistantDockProps = {}) => {
   const chat = useAssistantChat();
+  // Mount the invisible Turnstile widget + register the per-send token minter (no-op without a key).
+  useTurnstileGate(turnstileSiteKey);
   const [mounted, setMounted] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
