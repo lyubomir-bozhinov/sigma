@@ -132,6 +132,34 @@ Custom token-ът се нуждае само от тези **Account**-ниво 
 > няма отговор от Cloudflare. Затова смекчаването е **минимални scope-ове + expiry + ротация**, не
 > keyless auth. Преразгледайте, ако Cloudflare пусне OIDC.
 
+### Секрети на асистента (за всяка среда)
+
+Асистентът чете няколко secret-а от Worker binding-и (никога от `wrangler.jsonc` — те се задават с
+`wrangler secret put <ИМЕ> --env <target>` или като GitHub Environment secret, source of truth е
+секретът):
+
+- `ASSISTANT_API_KEY` — ключът към BgGPT провайдъра (през AI Gateway). Без него ендпойнтът връща 503.
+- `TURNSTILE_SECRET` — двойка на публичния `TURNSTILE_SITE_KEY`; докато не е зададен, edge gate-ът е
+  no-op (dev/preview/staging). Виж §7/§8.
+- `ASSISTANT_HMAC_KEY` — ключ за подписване на транскрипта (§9.3, [ADR-0011](adr/0011-transcript-hmac-signing.md)
+  / [ADR-0012](adr/0012-transcript-hmac-enforcement.md)). ≥256-битов случаен низ, различен per-среда.
+  Сървърът подписва всяко свое съобщение и отхвърля всяко неавтентично при следващия ход. **Fail-closed
+  в production:** ако `ENVIRONMENT=production` и този ключ липсва, ендпойнтът връща 503 (отказва да
+  работи с непроверим транскрипт). В dev/preview без ключ асистентът работи без подписи (feature
+  unprovisioned) — като Turnstile. Пример:
+  ```sh
+  # 256-битов ключ
+  openssl rand -hex 32 | pnpm exec wrangler secret put ASSISTANT_HMAC_KEY --env production
+  ```
+- `ASSISTANT_HMAC_KEY_PREVIOUS` — задава се **само по време на ротация**. Verify приема и стария, и
+  новия ключ; подписва се само с текущия. Извежда се (unset) щом всички стари подписани съобщения са
+  изтекли от клиентската история (прозорец от порядъка на дни).
+
+> **`ENVIRONMENT` binding.** Fail-closed gate-ът се управлява от runtime променливата `ENVIRONMENT`
+> (не от build-константата `import.meta.env.PROD`, която е `true` и за staging). Deploy слоят
+> (`scripts/wrangler-render.mjs`) я stamp-ва per-target на `production` / `staging` / `development`;
+> unset ⇒ третира се като non-production (без fail-closed).
+
 ## 1. Provisioning на D1 (за всяка среда, локално)
 
 Всяка среда получава **собствена** база. `SIGMA_D1_NAME` избира името (по подразбиране `sigma`):
