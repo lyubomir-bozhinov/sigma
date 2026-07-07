@@ -28,11 +28,18 @@ const requestHandler = createRequestHandler(
 // typed correctly without changing runtime behaviour.
 const edgeCache = (caches as unknown as { default: Cache }).default;
 
-// Evaluated at module-init time, i.e. once per worker deploy. Prefixed into the cache key so a fresh
-// deploy automatically invalidates the per-colo edge cache without a manual purge; old entries are
-// orphaned and TTL out, new requests populate under the new tag. The Cache API has no namespace
-// concept, so we synthesise one by mutating the cache-key URL (the served response is unaffected).
-const DEPLOY_TAG = Date.now().toString(36);
+// Build-time-unique tag (injected by Vite `define`, see vite.config.ts), prefixed into the cache key so a
+// fresh deploy rotates every key and orphans the previous deploy's cached entries — no manual purge; old
+// entries TTL out, new requests populate under the new tag. The Cache API has no namespace concept, so we
+// synthesise one by mutating the cache-key URL (the served response is unaffected). It MUST come from the
+// build, NOT `Date.now()` here: Cloudflare pins the clock in a worker's global scope for deterministic
+// startup snapshots, so a runtime Date.now() was constant across deploys and never invalidated the cache —
+// stale HTML (and data) survived every redeploy. The typeof guard keeps the worker from crashing if the
+// define is ever misconfigured (a bare reference to an unreplaced identifier would ReferenceError); it then
+// degrades to the old constant-tag behaviour, never worse.
+declare const __SIGMA_DEPLOY_TAG__: string | undefined;
+const DEPLOY_TAG =
+  typeof __SIGMA_DEPLOY_TAG__ !== 'undefined' ? __SIGMA_DEPLOY_TAG__ : Date.now().toString(36);
 
 function applySecurityHeaders(headers: Headers, security: Headers): void {
   for (const [key, value] of security) headers.set(key, value);
