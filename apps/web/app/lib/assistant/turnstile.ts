@@ -4,10 +4,12 @@
 // we verify that token server-side (Cloudflare siteverify) BEFORE any body buffering or paid
 // model/D1 work, so a bot/CSRF flood can't start a turn.
 //
-// Graceful degradation: when `TURNSTILE_SECRET` is unset (local dev, previews, staging), the gate is
-// a NO-OP — the assistant stays usable without it. It only activates once the secret is provisioned,
-// which is a deliberate launch-gate step (spec §8). Pairs with the client widget (sends the token
-// header); ship both before setting the secret in production.
+// Graceful degradation OUTSIDE production: when `TURNSTILE_SECRET` is unset in dev/preview/staging
+// (`!isProd`), the gate is a NO-OP so the assistant stays usable without it — a deliberate launch-gate
+// step (spec §8). In PRODUCTION (`isProd`) a missing secret is FAIL-CLOSED (503): a forgotten or
+// rotated-away secret must not silently disable the bot gate, mirroring the fail-closed rate limiters
+// (bggpt-global-rate-limit.ts). Pairs with the client widget (sends the token header); ship both, then
+// set the secret before flipping the assistant on in production.
 
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -53,14 +55,25 @@ export async function verifyTurnstileToken(
 
 /**
  * Gate an assistant request. Returns a rejection to send back, or `null` to proceed.
- * No-op (null) when `TURNSTILE_SECRET` is unset — dev/preview/staging run without the gate.
+ * When `TURNSTILE_SECRET` is unset: no-op (null) OUTSIDE production (`!isProd` — dev/preview/staging run
+ * without the gate), but FAIL-CLOSED (503) in production (`isProd`) so a missing secret can't silently
+ * disable the bot gate. `isProd` is the app-wide `import.meta.env.PROD` signal (see the chat route).
  */
 export async function turnstileRejection(
   request: Request,
   env: TurnstileEnv,
+  isProd: boolean,
 ): Promise<TurnstileRejection | null> {
   const secret = env.TURNSTILE_SECRET;
-  if (!secret) return null; // gate not provisioned → degrade to no-op (spec §7/§8)
+  if (!secret) {
+    // No secret: degrade to a no-op outside production (spec §7/§8). In production, fail closed — a
+    // forgotten/rotated secret must not silently turn the gate off (cf. the fail-closed rate limiters).
+    if (!isProd) return null;
+    return {
+      status: 503,
+      error: 'защитата срещу ботове не е конфигурирана. Опитай отново по-късно.',
+    };
+  }
 
   const token = request.headers.get(TURNSTILE_TOKEN_HEADER);
   if (!token) {
