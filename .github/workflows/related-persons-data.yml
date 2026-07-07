@@ -154,4 +154,15 @@ jobs:
             --file ../../packages/db/migrations/0002_related_persons_foundation.sql
 
       - name: Ship свързани-лица tables → D1
-        run: node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --remote --yes
+        # ship-related-persons.mjs shells out to `wrangler d1 execute` with cwd=apps/web. Two things it
+        # needs that a bare `node …` invocation lacks: (1) wrangler on PATH (the other steps get it via
+        # `pnpm … exec`), and (2) an auto-loaded config carrying the real database_id + target name — the
+        # committed apps/web/wrangler.jsonc holds a zero-UUID placeholder + base name 'sigma'. Render the
+        # real values and overwrite the auto-loaded config, then add the workspace bin to PATH. ship writes
+        # ONLY свързани-лица tables (its TABLES list), so the EOP corpus is untouched.
+        run: |
+          set -euo pipefail
+          node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
+          cp apps/web/wrangler.deploy.jsonc apps/web/wrangler.jsonc
+          export PATH="$GITHUB_WORKSPACE/apps/web/node_modules/.bin:$GITHUB_WORKSPACE/node_modules/.bin:$PATH"
+          node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --remote --yes
