@@ -85,7 +85,12 @@ jobs:
         run: node --import ./scripts/cacbg/register-ts.mjs scripts/cacbg/audit.mjs
 
       - name: Apply migrations to the target D1
-        run: pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" --remote
+        # migrations apply resolves the DB from the config, so render the real database_id + name first
+        # (committed config holds a zero-UUID placeholder + base name 'sigma') — same as the deploy path.
+        run: |
+          node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
+          pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote
 
       - name: Ship свързани-лица tables → D1
         run: node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --remote --yes

@@ -83,10 +83,14 @@ jobs:
 
       # Schema before serving: the preview binds the shared dev D1, so any migration the branch adds
       # (e.g. the свързани-лица tables) must exist there before the new Worker answers requests — else
-      # routes like /conflicts 500 on a missing table. Resolves the DB by name (--remote), idempotent
-      # (wrangler tracks applied migrations in d1_migrations), guarded above against the prod D1.
+      # routes like /conflicts 500 on a missing table. migrations apply resolves the DB from the config,
+      # so render the real database_id + name first (committed config holds a zero-UUID placeholder and
+      # the base name 'sigma'). Idempotent (wrangler tracks applied migrations); guarded above vs prod.
       - name: Apply D1 migrations to the shared dev database
-        run: pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" --remote
+        run: |
+          node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
+          pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote
 
       - name: Deploy preview worker
         id: deploy

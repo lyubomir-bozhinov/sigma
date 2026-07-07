@@ -145,11 +145,15 @@ jobs:
 
       # Schema before serving: apply pending D1 migrations to the target environment BEFORE the Worker
       # deploys, so a release that adds tables (e.g. свързани-лица) never serves against a stale schema.
-      # Resolves the DB by name (--remote); idempotent (wrangler tracks applied migrations); the guard
-      # above already refused production resource names for non-prod envs.
+      # migrations apply resolves the DB from the config, so render the real database_id + name first
+      # (committed config holds a zero-UUID placeholder + base name 'sigma'). Idempotent (wrangler tracks
+      # applied migrations); the guard above already refused production resource names for non-prod envs.
       - name: Apply D1 migrations
         if: steps.guard.outputs.ok == 'true'
-        run: pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" --remote
+        run: |
+          node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
+          pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote
 
       # `run deploy`, not `deploy` — bare `pnpm deploy` is a pnpm built-in, not our package script.
       - name: Deploy explorer (sigma)
