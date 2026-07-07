@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import reportFixture from './__fixtures__/report.fixture.json';
 import type { CellFormat, ResolvedReport } from './contract';
-import { isToolTurnWithoutReport, projectChip, reportOutputFromMessage } from './report-projection';
+import {
+  dedupHitFromMessage,
+  isToolTurnWithoutReport,
+  projectChip,
+  reportOutputFromMessage,
+} from './report-projection';
+import { DEDUP_PART } from '../../../workers/assistant/dedup-stream';
 
 // Mock the site formatters so we assert WHICH formatter is applied to WHICH value — not @sigma/shared's
 // own output (that has its own tests). Each returns an identifiable string.
@@ -166,5 +172,40 @@ describe('isToolTurnWithoutReport', () => {
 
   it('is false for a prose-only message (no tool calls at all)', () => {
     expect(isToolTurnWithoutReport({ parts: [{ type: 'text' }] })).toBe(false);
+  });
+});
+
+describe('dedupHitFromMessage', () => {
+  const hit = {
+    reportId: 'r_abc',
+    createdAt: '2026-07-06T00:00:00Z',
+    layer: 'L1',
+    label: 'Преизползване на съществуващ отчет',
+  };
+
+  it('returns the dedup data from a cache-hit message', () => {
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART, data: hit }] })).toEqual(hit);
+  });
+
+  it('returns null for a message with no dedup part', () => {
+    expect(dedupHitFromMessage({ parts: [{ type: 'text' }] })).toBeNull();
+  });
+
+  it('returns null when the dedup data is malformed (missing reportId)', () => {
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART, data: { label: 'x' } }] })).toBeNull();
+  });
+
+  it('ignores a dedup part carrying no data at all', () => {
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART }] })).toBeNull();
+  });
+
+  it('rejects a dedup part whose layer is outside the known set (localStorage tamper)', () => {
+    const tampered = { ...hit, layer: 'L9' };
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART, data: tampered }] })).toBeNull();
+  });
+
+  it('accepts a fractional layer label that is valid (L2.5)', () => {
+    const l25 = { ...hit, layer: 'L2.5' };
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART, data: l25 }] })).toEqual(l25);
   });
 });
