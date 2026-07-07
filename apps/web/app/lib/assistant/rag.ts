@@ -1,8 +1,10 @@
 // RAG layer (Vectorize + Workers AI embeddings).
 //
-// WHY THIS EXISTS / DEVIATION FROM THE SPEC: the design in §1–§9 is a text→SQL tool-calling agent
-// with NO vector retrieval. RAG is added here deliberately (per the implementation request) where it
-// pays off most for a weak 27B model:
+// WHY THIS EXISTS: an ADOPTED layer of the assistant, not a deviation. The base spec §1–§9 describes a
+// text→SQL tool-calling agent; the agent-team addendum (spec/ai-assistant-agent-team.md, Phase 1) and
+// §9 point 2 adopt retrieval as canonical — this is the retrieval-augmented realisation of §9 point 2
+// (feed the MOST RELEVANT dictionary chunks, not the whole thing). See docs/adr/0008. It pays off most
+// for a weak 27B model:
 //
 //   1. Schema/cookbook grounding (primary). Embed the data-dictionary trap-rules + canonical queries
 //      (describe-schema.ts) and retrieve the few MOST RELEVANT chunks for the user's question, to
