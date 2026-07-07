@@ -57,12 +57,19 @@ jobs:
         #   workflow_dispatch  -> the chosen environment
         #   tag v*             -> production
         #   push to main       -> staging      (continuous staging — main always leads prod)
+        # Pass the GitHub expressions through `env:` and reference the quoted shell vars, rather than
+        # interpolating `${{ github.ref }}` (attacker-influenceable via a crafted tag/branch name)
+        # directly into the script body — that would let a ref like `v"; <cmd>; "` break out of the test.
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENV: ${{ inputs.environment }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "env=$INPUT_ENV" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "env=production" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          elif [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "env=staging" >> "$GITHUB_OUTPUT"
           else
             echo "env=" >> "$GITHUB_OUTPUT"
