@@ -81,6 +81,13 @@ jobs:
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || exit 1
 
+      # Schema before serving: the preview binds the shared dev D1, so any migration the branch adds
+      # (e.g. the свързани-лица tables) must exist there before the new Worker answers requests — else
+      # routes like /conflicts 500 on a missing table. Resolves the DB by name (--remote), idempotent
+      # (wrangler tracks applied migrations in d1_migrations), guarded above against the prod D1.
+      - name: Apply D1 migrations to the shared dev database
+        run: pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" --remote
+
       - name: Deploy preview worker
         id: deploy
         run: |

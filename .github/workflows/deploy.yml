@@ -143,6 +143,14 @@ jobs:
         if: steps.guard.outputs.ok == 'true'
         run: pnpm typecheck
 
+      # Schema before serving: apply pending D1 migrations to the target environment BEFORE the Worker
+      # deploys, so a release that adds tables (e.g. свързани-лица) never serves against a stale schema.
+      # Resolves the DB by name (--remote); idempotent (wrangler tracks applied migrations); the guard
+      # above already refused production resource names for non-prod envs.
+      - name: Apply D1 migrations
+        if: steps.guard.outputs.ok == 'true'
+        run: pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" --remote
+
       # `run deploy`, not `deploy` — bare `pnpm deploy` is a pnpm built-in, not our package script.
       - name: Deploy explorer (sigma)
         if: steps.guard.outputs.ok == 'true'
