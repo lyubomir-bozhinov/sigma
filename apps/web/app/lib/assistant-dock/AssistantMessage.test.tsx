@@ -87,4 +87,44 @@ describe('AssistantMessage', () => {
     expect(container.querySelector('table')).toBeNull();
     expect(container.textContent ?? '').not.toContain('Изпълнител');
   });
+
+  // The weak 27B sometimes narrates emit_report's output as a raw <report>…</report> pseudo-XML block in
+  // a TEXT part. MarkdownBlock renders unknown tags as inert literal text, so without stripping the user
+  // sees raw "<report>" tags in the dock (the reported bug). The bound report card renders from the tool
+  // part; the leaked block must not surface.
+  it('strips a leaked <report> block so raw tags never render in the dock', () => {
+    const leaked =
+      'Ето справката: <report format="table"><block>{"type":"table","rows":[["X","5"]]}</block></report>';
+    expect(messageText(message('assistant', leaked))).toBe('Ето справката:');
+
+    const { container } = render(<AssistantMessage message={message('assistant', leaked)} />);
+    expect(container.textContent ?? '').not.toContain('<report');
+    expect(container.textContent ?? '').not.toContain('block>');
+    expect(container.textContent ?? '').toContain('Ето справката:');
+  });
+
+  it('strips a whole-part <tool_response>/<tool_call> echo (renders nothing)', () => {
+    const echo = message('assistant', '<tool_response>{"reportId":"r_1"}</tool_response>');
+    expect(messageText(echo)).toBe('');
+    const { container } = render(<AssistantMessage message={echo} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('strips a dangling opener left by a mid-stream truncation', () => {
+    // No closing tag (the stream was cut) — everything from the opener to end is noise.
+    const truncated = message('assistant', 'Готово. <report format="table"><block>{"type":"tabl');
+    expect(messageText(truncated)).toBe('Готово.');
+  });
+
+  it('does not over-strip: a bare word and a non-matching tag survive', () => {
+    // Only `<report|tool_call|tool_response>` with a word boundary is markup. The bare word "report" (no
+    // angle bracket) and an unrelated tag like "<reporting>" must pass through untouched. ("<ЕИК>" prose
+    // is guarded above.)
+    expect(messageText(message('assistant', 'Този report показва 5 договора.'))).toBe(
+      'Този report показва 5 договора.',
+    );
+    expect(messageText(message('assistant', 'Виж <reporting> раздела.'))).toBe(
+      'Виж <reporting> раздела.',
+    );
+  });
 });
