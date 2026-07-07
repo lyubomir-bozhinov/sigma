@@ -11,14 +11,23 @@ const FORM = /\b(ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ|
  * @returns {'distinctive'|'generic'}
  */
 export function nameDistinctiveness(key) {
-  const core = String(key).replace(FORM, '').replace(/[^A-Za-zА-Яа-яЁё0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const core = String(key)
+    .replace(FORM, '')
+    .replace(/[^A-Za-zА-Яа-яЁё0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (/[0-9]/.test(core)) return 'distinctive'; // ordinals / registration numbers
   if (/[A-Za-z]/.test(core)) return 'distinctive'; // Latin / brand token
   const tokens = core.split(' ').filter((t) => t.length > 1);
   return tokens.length >= 3 ? 'distinctive' : 'generic';
 }
 
-const norm = (s) => String(s ?? '').normalize('NFC').toUpperCase().replace(/[\s.\-–—]+/g, ' ').trim();
+const norm = (s) =>
+  String(s ?? '')
+    .normalize('NFC')
+    .toUpperCase()
+    .replace(/[\s.\-–—]+/g, ' ')
+    .trim();
 
 // Joint-stock / listed legal form as a whole token (АД / ЕАД / АДСИЦ), bounded by string edge, whitespace
 // or quotes only — NOT hyphens/dots, so „АД-ХОК ЕООД" (a hyphenated ООД name) is not misread as a company.
@@ -31,7 +40,11 @@ const JOINT_STOCK = /(?:^|[\s"„“”«»])(АД|ЕАД|АДСИЦ)(?:[\s"„�
  * so it withholds rather than fabricates. @returns {boolean} true ⇒ material/closely-held.
  */
 export function closelyHeldForm(name) {
-  return !JOINT_STOCK.test(String(name ?? '').normalize('NFC').toUpperCase());
+  return !JOINT_STOCK.test(
+    String(name ?? '')
+      .normalize('NFC')
+      .toUpperCase(),
+  );
 }
 
 /** Seat proof: declared seat and winner settlement both present and equal ⇒ same entity (deterministic). */

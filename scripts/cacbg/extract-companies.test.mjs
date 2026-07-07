@@ -6,7 +6,11 @@ test('companyCandidates pulls „NAME" ФОРМА out of prose', () => {
   assert.deepEqual(companyCandidates('"ТРАНСПОМЕД" ЕООД, ЕИК 101677351'), ['"ТРАНСПОМЕД" ЕООД']);
   assert.deepEqual(companyCandidates('"Кристална вода" АД София'), ['"Кристална вода" АД']);
   // prose sentence with the real company buried
-  assert.ok(companyCandidates('2 дружествени дяла на „ЕН-ФРЕШ" ООД, прехвърлени нотариално').some((c) => /ЕН-ФРЕШ/.test(c)));
+  assert.ok(
+    companyCandidates('2 дружествени дяла на „ЕН-ФРЕШ" ООД, прехвърлени нотариално').some((c) =>
+      /ЕН-ФРЕШ/.test(c),
+    ),
+  );
   // no legal form → no candidate (we don't guess bare words)
   assert.deepEqual(companyCandidates('някакъв текст без фирма'), []);
 });

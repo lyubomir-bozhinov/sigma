@@ -19,7 +19,13 @@ const LIST = `<?xml version="1.0"?>
 </Category></MainCategory></root>`;
 
 // --- asset template ---
-function assetDecl({ name = 'Иван Петров Тестов', year = '2023', egn = '', address = 'ул. Тестова 1', rows = '' } = {}) {
+function assetDecl({
+  name = 'Иван Петров Тестов',
+  year = '2023',
+  egn = '',
+  address = 'ул. Тестова 1',
+  rows = '',
+} = {}) {
   return `<?xml version="1.0"?>
 <PublicPerson>
   <Personal><Name>${name}</Name><EGN>${egn}</EGN><Address>${address}</Address><Position>Директор</Position></Personal>
@@ -57,13 +63,25 @@ const interestsDecl = `<?xml version="1.0"?>
 test('parseList flattens the hierarchy and handles multiple persons/positions', () => {
   const rows = parseList(LIST);
   assert.equal(rows.length, 3);
-  assert.deepEqual(rows.map((r) => r.xmlFile), ['AAAA.xml', 'BBBB.xml', 'CCCC.xml']);
+  assert.deepEqual(
+    rows.map((r) => r.xmlFile),
+    ['AAAA.xml', 'BBBB.xml', 'CCCC.xml'],
+  );
 });
 
 test('asset decl: extracts self SHARES, skips empty template rows', () => {
   const d = parseDeclaration(assetDecl({ rows: selfRow + emptyRow }));
   assert.equal(d.templateType, 'assets');
-  assert.deepEqual(d.interests, [{ entity: '"ТЕСТ АГРО" ЕООД', kind: 'shares', detail: 'София', timing: 'annual', seat: 'София', holderRelation: 'self' }]);
+  assert.deepEqual(d.interests, [
+    {
+      entity: '"ТЕСТ АГРО" ЕООД',
+      kind: 'shares',
+      detail: 'София',
+      timing: 'annual',
+      seat: 'София',
+      holderRelation: 'self',
+    },
+  ]);
   assert.equal(d.familyHoldingCount, 0);
 });
 
@@ -102,11 +120,22 @@ const secDecl = `<?xml version="1.0"?>
 test('asset decl: АД securities read from Емитент (col 6), tagged kind=securities', () => {
   const d = parseDeclaration(secDecl);
   assert.equal(d.interests.length, 1);
-  assert.deepEqual(d.interests[0], { entity: 'ТРЕЙС ГРУП ХОЛД АД', kind: 'securities', detail: '', timing: 'annual', seat: '', holderRelation: 'self' });
+  assert.deepEqual(d.interests[0], {
+    entity: 'ТРЕЙС ГРУП ХОЛД АД',
+    kind: 'securities',
+    detail: '',
+    timing: 'annual',
+    seat: '',
+    holderRelation: 'self',
+  });
 });
 
 test('address never extracted', () => {
-  assert.ok(!JSON.stringify(parseDeclaration(assetDecl({ address: 'ул. Секретна 42', rows: selfRow }))).includes('Секретна'));
+  assert.ok(
+    !JSON.stringify(
+      parseDeclaration(assetDecl({ address: 'ул. Секретна 42', rows: selfRow })),
+    ).includes('Секретна'),
+  );
 });
 
 test('non-empty EGN raises egnPresent', () => {
@@ -119,14 +148,25 @@ test('interests decl: participation + MANAGEMENT + timing, from <PublicPersonDek
   assert.equal(d.templateType, 'interests');
   assert.equal(d.year, '2025'); // from DeclarationDate
   const byKind = (k) => d.interests.filter((i) => i.kind === k);
-  assert.deepEqual(byKind('participation').map((i) => [i.entity, i.detail, i.timing]),
-    [['Ристовица ООД', '1/2', 'current'], ['Мейт Медия ООД', '1/20', 'prior']]);
-  assert.deepEqual(byKind('management').map((i) => [i.entity, i.detail]), [['Велми Комерс ООД', 'управител']]);
+  assert.deepEqual(
+    byKind('participation').map((i) => [i.entity, i.detail, i.timing]),
+    [
+      ['Ристовица ООД', '1/2', 'current'],
+      ['Мейт Медия ООД', '1/20', 'prior'],
+    ],
+  );
+  assert.deepEqual(
+    byKind('management').map((i) => [i.entity, i.detail]),
+    [['Велми Комерс ООД', 'управител']],
+  );
 });
 
 test('interests decl: related persons are SEPARATED (never in interests, name only in relatedPersons)', () => {
   const d = parseDeclaration(interestsDecl);
-  assert.ok(!d.interests.some((i) => i.entity.includes('Мария')), 'related person leaked into interests');
+  assert.ok(
+    !d.interests.some((i) => i.entity.includes('Мария')),
+    'related person leaked into interests',
+  );
   assert.equal(d.relatedPersons.length, 1);
   assert.equal(d.relatedPersons[0].kind, 'related_person');
   assert.equal(d.relatedPersons[0].name, 'Мария Спасова Роднинска');
@@ -134,7 +174,9 @@ test('interests decl: related persons are SEPARATED (never in interests, name on
 
 test('interests template versions (Dekl3) dispatch by root, classify by description not table number', () => {
   // Dekl3 = same interests decl, tables renumbered 1-9. Management table is T2 here, not T16.
-  const dekl3 = interestsDecl.replace(/PublicPersonDekl2/g, 'PublicPersonDekl3').replace('Num="16"', 'Num="2"');
+  const dekl3 = interestsDecl
+    .replace(/PublicPersonDekl2/g, 'PublicPersonDekl3')
+    .replace('Num="16"', 'Num="2"');
   const d = parseDeclaration(dekl3);
   assert.equal(d.templateType, 'interests');
   assert.ok(d.interests.some((i) => i.kind === 'management' && i.entity === 'Велми Комерс ООД'));

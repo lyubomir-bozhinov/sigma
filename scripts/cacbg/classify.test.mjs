@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken, closelyHeldForm } from './classify.mjs';
+import {
+  nameDistinctiveness,
+  seatConfirmed,
+  publishTier,
+  temporalStatus,
+  localityToken,
+  closelyHeldForm,
+} from './classify.mjs';
 
 test('nameDistinctiveness: numbers / Latin / ≥3 words are distinctive; bare 1-2 word Cyrillic is generic', () => {
   assert.equal(nameDistinctiveness('СТЕЛИТ 1 ЕООД'), 'distinctive'); // number

@@ -13,7 +13,10 @@ export function companyCandidates(text) {
   const out = [];
   // name (optionally quoted) + a required separator (space or closing quote) + a legal form not glued
   // to a longer word. `\b` is unreliable here — it is ASCII-only under the /u flag, so Cyrillic breaks it.
-  const re = new RegExp('[„"“»]?\\s*([^„"“»,;]{2,60}?)[\\s”"«]+(?:' + FORM + ')(?![А-Яа-яA-Za-z])', 'gu');
+  const re = new RegExp(
+    '[„"“»]?\\s*([^„"“»,;]{2,60}?)[\\s”"«]+(?:' + FORM + ')(?![А-Яа-яA-Za-z])',
+    'gu',
+  );
   for (const m of String(text).matchAll(re)) {
     const s = m[0].replace(/^[\s,;]+/, '').trim();
     if (s) out.push(s);

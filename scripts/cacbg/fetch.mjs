@@ -35,11 +35,15 @@ async function politeGet(url, { tries = 5 } = {}) {
       res = await getPinned(url);
     } catch (err) {
       if (attempt >= tries) throw err;
-      await sleep(wait); wait *= 2; continue;
+      await sleep(wait);
+      wait *= 2;
+      continue;
     }
     if (res.status === 403 || res.status === 429 || res.status >= 500) {
       if (attempt >= tries) return res;
-      await sleep(wait); wait *= 2; continue;
+      await sleep(wait);
+      wait *= 2;
+      continue;
     }
     return res;
   }
@@ -61,16 +65,22 @@ async function discoverFolders() {
   const html = res.body.toString('utf8');
   const seen = new Set();
   for (const m of html.matchAll(/href="([A-Za-z0-9_]+)\/index\.html"/gi)) {
-    try { seen.add(safeFolder(m[1])); } catch { /* skip off-shape hrefs (nav, external) */ }
+    try {
+      seen.add(safeFolder(m[1]));
+    } catch {
+      /* skip off-shape hrefs (nav, external) */
+    }
   }
   return [...seen];
 }
 
 async function pool(items, concurrency, worker) {
   let i = 0;
-  await Promise.all(Array.from({ length: concurrency }, async () => {
-    while (i < items.length) await worker(items[i++]);
-  }));
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (i < items.length) await worker(items[i++]);
+    }),
+  );
 }
 
 async function run() {
@@ -90,7 +100,10 @@ async function run() {
     const dir = path.join(RAW, folder);
     fs.mkdirSync(dir, { recursive: true });
     const listRes = await politeGet(`${BASE}/${folder}/list.xml`);
-    if (listRes.status !== 200) { console.log(`  ${folder}/list.xml → ${listRes.status}, skip`); continue; }
+    if (listRes.status !== 200) {
+      console.log(`  ${folder}/list.xml → ${listRes.status}, skip`);
+      continue;
+    }
     atomicWrite(path.join(dir, 'list.xml'), listRes.body); // cache list for extract.mjs
     let rows = parseList(listRes.body.toString('utf8'));
     if (Number.isFinite(limit)) rows = rows.slice(0, limit);
@@ -100,14 +113,34 @@ async function run() {
     let consecutive = 0;
     await pool(rows, concurrency, async (row) => {
       let xmlFile;
-      try { xmlFile = safeXmlFile(row.xmlFile); } catch { stats.errors++; return; }
+      try {
+        xmlFile = safeXmlFile(row.xmlFile);
+      } catch {
+        stats.errors++;
+        return;
+      }
       const dest = path.join(dir, xmlFile);
-      if (fs.existsSync(dest)) { stats.cached++; return; }
+      if (fs.existsSync(dest)) {
+        stats.cached++;
+        return;
+      }
       let res;
-      try { res = await politeGet(`${BASE}/${folder}/${xmlFile}`); }
-      catch { stats.errors++; if (++consecutive > 25) throw new Error(`circuit breaker near ${folder}/${xmlFile}`); return; }
-      if (res.status === 404) { stats.missing++; consecutive = 0; return; } // listed-but-unpublished (source gap)
-      if (res.status !== 200) { stats.errors++; return; }
+      try {
+        res = await politeGet(`${BASE}/${folder}/${xmlFile}`);
+      } catch {
+        stats.errors++;
+        if (++consecutive > 25) throw new Error(`circuit breaker near ${folder}/${xmlFile}`);
+        return;
+      }
+      if (res.status === 404) {
+        stats.missing++;
+        consecutive = 0;
+        return;
+      } // listed-but-unpublished (source gap)
+      if (res.status !== 200) {
+        stats.errors++;
+        return;
+      }
       consecutive = 0;
       atomicWrite(dest, res.body);
       stats.fetched++;
@@ -119,4 +152,7 @@ async function run() {
   console.log(`raw cache → ${RAW}`);
 }
 
-run().catch((err) => { console.error('FATAL:', err.message); process.exit(1); });
+run().catch((err) => {
+  console.error('FATAL:', err.message);
+  process.exit(1);
+});

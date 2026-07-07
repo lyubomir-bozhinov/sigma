@@ -18,12 +18,15 @@ before(() => {
   // Real export shape: Message[].Body[].Deeds[].Deed[], each with its fields under `$`; CompanyName is
   // bare and LegalForm is a code — the census must reconstruct «name + Bulgarian form» to match bidders.
   const deeds = [
-    { CompanyName: 'СИЙ', LegalForm: 'AD', UIC: '444444447' },          // globally unique → promote
-    { CompanyName: 'ОБЩА ФИРМА', LegalForm: 'OOD', UIC: '555555556' },  // one of two namesakes
-    { CompanyName: 'Обща Фирма', LegalForm: 'OOD', UIC: '666666663' },  // second namesake → NOT unique
-    { CompanyName: 'СИЙ', LegalForm: 'AD', UIC: '444444447' },          // same deed on another day → deduped
+    { CompanyName: 'СИЙ', LegalForm: 'AD', UIC: '444444447' }, // globally unique → promote
+    { CompanyName: 'ОБЩА ФИРМА', LegalForm: 'OOD', UIC: '555555556' }, // one of two namesakes
+    { CompanyName: 'Обща Фирма', LegalForm: 'OOD', UIC: '666666663' }, // second namesake → NOT unique
+    { CompanyName: 'СИЙ', LegalForm: 'AD', UIC: '444444447' }, // same deed on another day → deduped
   ];
-  fs.writeFileSync(dump, JSON.stringify({ Message: [{ Body: [{ Deeds: [{ Deed: deeds.map((d) => ({ $: d })) }] }] }] }));
+  fs.writeFileSync(
+    dump,
+    JSON.stringify({ Message: [{ Body: [{ Deeds: [{ Deed: deeds.map((d) => ({ $: d })) }] }] }] }),
+  );
 
   dbPath = path.join(dir, 'db.sqlite');
   const db = new DatabaseSync(dbPath);
@@ -38,23 +41,34 @@ before(() => {
 after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 test('extractEntity reconstructs «name + Bulgarian legal form» from a TR deed and reads UIC as ЕИК', () => {
-  assert.deepEqual(extractEntity({ CompanyName: 'СИЙ', LegalForm: 'AD', UIC: '444444447' }), { eik: '444444447', name: 'СИЙ АД' });
-  assert.deepEqual(extractEntity({ CompanyName: 'ТЕСТ', LegalForm: 'EOOD', UIC: '205057459' }), { eik: '205057459', name: 'ТЕСТ ЕООД' });
+  assert.deepEqual(extractEntity({ CompanyName: 'СИЙ', LegalForm: 'AD', UIC: '444444447' }), {
+    eik: '444444447',
+    name: 'СИЙ АД',
+  });
+  assert.deepEqual(extractEntity({ CompanyName: 'ТЕСТ', LegalForm: 'EOOD', UIC: '205057459' }), {
+    eik: '205057459',
+    name: 'ТЕСТ ЕООД',
+  });
   assert.equal(extractEntity({ CompanyName: 'X', LegalForm: 'AD', UIC: '2018060520' }).eik, null); // 10 digits ≠ ЕИК
   assert.equal(extractEntity({ name: 'flat ООД', uic: '5555555560000' }).eik, '5555555560000'); // flat fallback + 13-digit
 });
 
 test('buildCensus indexes name-key → set of ЕИК over the nested export (dedup by ЕИК)', () => {
   const c = buildCensus(dump);
-  assert.equal(c.get(K('СИЙ АД')).size, 1);              // appears twice, one ЕИК → deduped
-  assert.equal(c.get(K('ОБЩА ФИРМА ООД')).size, 2);      // two distinct ЕИК fold to one key → non-unique
+  assert.equal(c.get(K('СИЙ АД')).size, 1); // appears twice, one ЕИК → deduped
+  assert.equal(c.get(K('ОБЩА ФИРМА ООД')).size, 2); // two distinct ЕИК fold to one key → non-unique
 });
 
 test('promote publishes only globally-unique tier-C links; shared names stay held', () => {
   const db = new DatabaseSync(dbPath);
   const res = promote(db, buildCensus(dump));
   assert.equal(res.promoted, 1);
-  const rows = new Map(db.prepare('SELECT link_key,status,match_method FROM interest_links').all().map((r) => [r.link_key, r]));
+  const rows = new Map(
+    db
+      .prepare('SELECT link_key,status,match_method FROM interest_links')
+      .all()
+      .map((r) => [r.link_key, r]),
+  );
   assert.equal(rows.get('p1|444444447').status, 'published');
   assert.match(rows.get('p1|444444447').match_method, /tr_census/);
   assert.equal(rows.get('p2|555555556').status, 'held'); // two namesakes → stays held
@@ -64,9 +78,14 @@ test('promote publishes only globally-unique tier-C links; shared names stay hel
 test('dry-run reports would-promote set without mutating the DB', () => {
   const db = new DatabaseSync(dbPath);
   // reset p1 back to held for an isolated dry-run check
-  db.exec("UPDATE interest_links SET status='held', match_method='exact_name_key' WHERE link_key='p1|444444447'");
+  db.exec(
+    "UPDATE interest_links SET status='held', match_method='exact_name_key' WHERE link_key='p1|444444447'",
+  );
   const res = promote(db, buildCensus(dump), { dryRun: true });
   assert.deepEqual(res.would, ['p1|444444447']);
-  assert.equal(db.prepare("SELECT status FROM interest_links WHERE link_key='p1|444444447'").get().status, 'held'); // untouched
+  assert.equal(
+    db.prepare("SELECT status FROM interest_links WHERE link_key='p1|444444447'").get().status,
+    'held',
+  ); // untouched
   db.close();
 });

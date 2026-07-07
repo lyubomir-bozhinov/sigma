@@ -15,9 +15,15 @@ const ROOT = path.resolve(HERE, '..', '..');
 let dir, DB, STAGING;
 
 function runLoad() {
-  execFileSync('node', ['--import', path.join(HERE, 'register-ts.mjs'), path.join(HERE, 'load.mjs')], {
-    cwd: ROOT, env: { ...process.env, CACBG_DB: DB, CACBG_STAGING: STAGING }, stdio: 'pipe',
-  });
+  execFileSync(
+    'node',
+    ['--import', path.join(HERE, 'register-ts.mjs'), path.join(HERE, 'load.mjs')],
+    {
+      cwd: ROOT,
+      env: { ...process.env, CACBG_DB: DB, CACBG_STAGING: STAGING },
+      stdio: 'pipe',
+    },
+  );
 }
 const open = () => new DatabaseSync(DB, { readOnly: true });
 
@@ -72,32 +78,217 @@ before(() => {
 
   const holdings = [
     // Иван manages the distinctive winner, from his OWN institution, in a contract year → published/B/manages/exact/contemporaneous
-    { folder: '2024', xmlFile: 'A.xml', year: '2023', template: 'interests', category: '', institution: 'ТЕСТ ВЕДОМСТВО', person: 'Иван Петров Тестов', position: 'директор', entity: 'ДИСТИНКТ ТЕХ 7 ЕООД', kind: 'management', detail: 'управител', timing: 'current', seat: '', controlHash: 'H1' },
+    {
+      folder: '2024',
+      xmlFile: 'A.xml',
+      year: '2023',
+      template: 'interests',
+      category: '',
+      institution: 'ТЕСТ ВЕДОМСТВО',
+      person: 'Иван Петров Тестов',
+      position: 'директор',
+      entity: 'ДИСТИНКТ ТЕХ 7 ЕООД',
+      kind: 'management',
+      detail: 'управител',
+      timing: 'current',
+      seat: '',
+      controlHash: 'H1',
+    },
     // Мария declares the collision name → 2 ЕИК → quarantined, NO link
-    { folder: '2024', xmlFile: 'B.xml', year: '2023', template: 'assets', category: '', institution: 'X', person: 'Мария Иванова', position: '', entity: '"ГЕНЕРИК" ООД', kind: 'shares', detail: '50%', timing: 'annual', seat: 'Пловдив', controlHash: 'H2' },
+    {
+      folder: '2024',
+      xmlFile: 'B.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'X',
+      person: 'Мария Иванова',
+      position: '',
+      entity: '"ГЕНЕРИК" ООД',
+      kind: 'shares',
+      detail: '50%',
+      timing: 'annual',
+      seat: 'Пловдив',
+      controlHash: 'H2',
+    },
     // Петър owns the generic winner AND declares matching seat Бургас → tier A (seat-confirmed) published
-    { folder: '2024', xmlFile: 'C.xml', year: '2023', template: 'assets', category: '', institution: 'Y', person: 'Петър Николов', position: '', entity: 'СИЙ ЕООД', kind: 'shares', detail: '10%', timing: 'annual', seat: 'Бургас', controlHash: 'H3' },
+    {
+      folder: '2024',
+      xmlFile: 'C.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'Y',
+      person: 'Петър Николов',
+      position: '',
+      entity: 'СИЙ ЕООД',
+      kind: 'shares',
+      detail: '10%',
+      timing: 'annual',
+      seat: 'Бургас',
+      controlHash: 'H3',
+    },
     // Георги owns the same generic winner but NO seat → tier C held
-    { folder: '2024', xmlFile: 'D.xml', year: '2023', template: 'assets', category: '', institution: 'Z', person: 'Георги Стоянов', position: '', entity: 'СИЙ ЕООД', kind: 'shares', detail: '5%', timing: 'annual', seat: '', controlHash: 'H4' },
+    {
+      folder: '2024',
+      xmlFile: 'D.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'Z',
+      person: 'Георги Стоянов',
+      position: '',
+      entity: 'СИЙ ЕООД',
+      kind: 'shares',
+      detail: '5%',
+      timing: 'annual',
+      seat: '',
+      controlHash: 'H4',
+    },
     // Стефан writes a CERTAIN ЕИК (222222229) behind a COLLIDING name, no seat → declared_eik resolves the
     // right company, but the name maps to 2 ЕИК → cannot be name-distinctive → HELD (the fix under test)
-    { folder: '2024', xmlFile: 'E.xml', year: '2023', template: 'assets', category: '', institution: 'W', person: 'Стефан Колев', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 222222229', kind: 'shares', detail: '20%', timing: 'annual', seat: '', controlHash: 'H5' },
+    {
+      folder: '2024',
+      xmlFile: 'E.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'W',
+      person: 'Стефан Колев',
+      position: '',
+      entity: '"ГЕНЕРИК" ООД, ЕИК 222222229',
+      kind: 'shares',
+      detail: '20%',
+      timing: 'annual',
+      seat: '',
+      controlHash: 'H5',
+    },
     // Радка writes the other certain ЕИК (333333338) AND its town Варна → seat disambiguates the collision → A_seat
-    { folder: '2024', xmlFile: 'F.xml', year: '2023', template: 'assets', category: '', institution: 'V', person: 'Радка Илиева', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 333333338', kind: 'shares', detail: '30%', timing: 'annual', seat: 'Варна', controlHash: 'H6' },
+    {
+      folder: '2024',
+      xmlFile: 'F.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'V',
+      person: 'Радка Илиева',
+      position: '',
+      entity: '"ГЕНЕРИК" ООД, ЕИК 333333338',
+      kind: 'shares',
+      detail: '30%',
+      timing: 'annual',
+      seat: 'Варна',
+      controlHash: 'H6',
+    },
     // Борис and Виктор BOTH manage ХОЛДИНГ 9 (no ownership) → two declarants of one company = ex_officio_board
-    { folder: '2024', xmlFile: 'G.xml', year: '2023', template: 'interests', category: '', institution: 'U', person: 'Борис Манолов', position: 'член на съвет', entity: 'ХОЛДИНГ 9 ЕАД', kind: 'management', detail: 'член на надзорен съвет', timing: 'current', seat: '', controlHash: 'H7' },
-    { folder: '2024', xmlFile: 'H.xml', year: '2023', template: 'interests', category: '', institution: 'U', person: 'Виктор Асенов', position: 'член на съвет', entity: 'ХОЛДИНГ 9 ЕАД', kind: 'management', detail: 'член на надзорен съвет', timing: 'current', seat: '', controlHash: 'H8' },
+    {
+      folder: '2024',
+      xmlFile: 'G.xml',
+      year: '2023',
+      template: 'interests',
+      category: '',
+      institution: 'U',
+      person: 'Борис Манолов',
+      position: 'член на съвет',
+      entity: 'ХОЛДИНГ 9 ЕАД',
+      kind: 'management',
+      detail: 'член на надзорен съвет',
+      timing: 'current',
+      seat: '',
+      controlHash: 'H7',
+    },
+    {
+      folder: '2024',
+      xmlFile: 'H.xml',
+      year: '2023',
+      template: 'interests',
+      category: '',
+      institution: 'U',
+      person: 'Виктор Асенов',
+      position: 'член на съвет',
+      entity: 'ХОЛДИНГ 9 ЕАД',
+      kind: 'management',
+      detail: 'член на надзорен съвет',
+      timing: 'current',
+      seat: '',
+      controlHash: 'H8',
+    },
     // Николай owns ДИВЕСТ 1 in 2019, then files an ownership declaration in 2022 listing only ДИВЕСТ 2 →
     // ДИВЕСТ 1 divested (withdrawn/E11); ДИВЕСТ 2 still current (published).
-    { folder: '2020', xmlFile: 'I.xml', year: '2019', template: 'assets', category: '', institution: 'T', person: 'Николай Дивестов', position: '', entity: 'ДИВЕСТ 1 ЕООД', kind: 'shares', detail: '40%', timing: 'annual', seat: '', controlHash: 'H9' },
-    { folder: '2023', xmlFile: 'J.xml', year: '2022', template: 'assets', category: '', institution: 'T', person: 'Николай Дивестов', position: '', entity: 'ДИВЕСТ 2 ЕООД', kind: 'shares', detail: '60%', timing: 'annual', seat: '', controlHash: 'H10' },
+    {
+      folder: '2020',
+      xmlFile: 'I.xml',
+      year: '2019',
+      template: 'assets',
+      category: '',
+      institution: 'T',
+      person: 'Николай Дивестов',
+      position: '',
+      entity: 'ДИВЕСТ 1 ЕООД',
+      kind: 'shares',
+      detail: '40%',
+      timing: 'annual',
+      seat: '',
+      controlHash: 'H9',
+    },
+    {
+      folder: '2023',
+      xmlFile: 'J.xml',
+      year: '2022',
+      template: 'assets',
+      category: '',
+      institution: 'T',
+      person: 'Николай Дивестов',
+      position: '',
+      entity: 'ДИВЕСТ 2 ЕООД',
+      kind: 'shares',
+      detail: '60%',
+      timing: 'annual',
+      seat: '',
+      controlHash: 'H10',
+    },
     // FAMILY: Кмет declares a CLOSE RELATIVE's stake (holderRelation:'related') in ЕВРОСТРОЙ 21 ЕООД, a winner that
     // sold to Кмет's OWN institution → family_ownership, own_institution exact. Relative's name never in staging.
-    { folder: '2024', xmlFile: 'K.xml', year: '2023', template: 'assets', category: '', institution: 'ОБЩИНА ТЕСТ', person: 'Кмет Тестов', position: 'кмет', entity: 'ЕВРОСТРОЙ 21 ЕООД', kind: 'shares', detail: '100%', timing: 'annual', seat: '', holderRelation: 'related', controlHash: 'H11' },
+    {
+      folder: '2024',
+      xmlFile: 'K.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'ОБЩИНА ТЕСТ',
+      person: 'Кмет Тестов',
+      position: 'кмет',
+      entity: 'ЕВРОСТРОЙ 21 ЕООД',
+      kind: 'shares',
+      detail: '100%',
+      timing: 'annual',
+      seat: '',
+      holderRelation: 'related',
+      controlHash: 'H11',
+    },
     // SECURITIES: Акционер holds LISTED joint-stock shares (kind securities) → excluded, no ownership link.
-    { folder: '2024', xmlFile: 'L.xml', year: '2023', template: 'assets', category: '', institution: 'S', person: 'Акционер Тестов', position: '', entity: 'ЛИСТЕД ТЕСТ АД', kind: 'securities', detail: '25', timing: 'annual', seat: '', holderRelation: 'self', controlHash: 'H12' },
+    {
+      folder: '2024',
+      xmlFile: 'L.xml',
+      year: '2023',
+      template: 'assets',
+      category: '',
+      institution: 'S',
+      person: 'Акционер Тестов',
+      position: '',
+      entity: 'ЛИСТЕД ТЕСТ АД',
+      kind: 'securities',
+      detail: '25',
+      timing: 'annual',
+      seat: '',
+      holderRelation: 'self',
+      controlHash: 'H12',
+    },
   ];
-  fs.writeFileSync(path.join(STAGING, 'holdings.jsonl'), holdings.map((h) => JSON.stringify(h)).join('\n') + '\n');
+  fs.writeFileSync(
+    path.join(STAGING, 'holdings.jsonl'),
+    holdings.map((h) => JSON.stringify(h)).join('\n') + '\n',
+  );
   fs.writeFileSync(path.join(STAGING, 'related.jsonl'), '');
 });
 
@@ -106,9 +297,12 @@ after(() => fs.rmSync(dir, { recursive: true, force: true }));
 test('resolves publish/held/quarantine tiers deterministically', () => {
   runLoad();
   const db = open();
-  const link = (eik, person) => db.prepare(
-    'SELECT il.* FROM interest_links il JOIN persons p ON p.id=il.person_id WHERE il.eik=? AND p.name=?',
-  ).get(eik, person);
+  const link = (eik, person) =>
+    db
+      .prepare(
+        'SELECT il.* FROM interest_links il JOIN persons p ON p.id=il.person_id WHERE il.eik=? AND p.name=?',
+      )
+      .get(eik, person);
 
   const ivan = link('111111119', 'Иван Петров Тестов');
   assert.equal(ivan.status, 'published');
@@ -122,7 +316,9 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(ivan.contract_value_eur, 125000);
   assert.equal(ivan.first_contract_year, '2023');
   // semicolon-blob authority matched by component split → own='exact', with its value
-  const blob = db.prepare("SELECT * FROM interest_link_authorities WHERE link_key=? AND authority_id='auth:3'").get(ivan.link_key);
+  const blob = db
+    .prepare("SELECT * FROM interest_link_authorities WHERE link_key=? AND authority_id='auth:3'")
+    .get(ivan.link_key);
   assert.equal(blob.own, 'exact');
   assert.equal(blob.value_eur, 25000);
 
@@ -130,7 +326,14 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(link('222222229', 'Мария Иванова'), undefined);
   assert.equal(link('333333338', 'Мария Иванова'), undefined);
   // the only links onto the colliding ЕИК come from declared_eik (Стефан/Радка), never exact_name_key
-  assert.equal(db.prepare("SELECT COUNT(*) n FROM interest_links WHERE eik IN (?,?) AND match_method='exact_name_key'").get('222222229', '333333338').n, 0);
+  assert.equal(
+    db
+      .prepare(
+        "SELECT COUNT(*) n FROM interest_links WHERE eik IN (?,?) AND match_method='exact_name_key'",
+      )
+      .get('222222229', '333333338').n,
+    0,
+  );
 
   const petar = link('444444447', 'Петър Николов');
   assert.equal(petar.publish_tier, 'A_seat'); // generic name rescued by seat match
@@ -161,7 +364,7 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   // certain ЕИК (declared_eik) but colliding name, no seat → HELD, never name-distinctive
   const stefan = link('222222229', 'Стефан Колев');
   assert.equal(stefan.match_method, 'declared_eik'); // ЕИК resolution IS certain
-  assert.equal(stefan.publish_tier, 'C_hold');       // …but the name maps to 2 ЕИК → not distinctive
+  assert.equal(stefan.publish_tier, 'C_hold'); // …but the name maps to 2 ЕИК → not distinctive
   assert.equal(stefan.status, 'held');
   // seat disambiguates the same colliding name → publishable as A_seat
   const radka = link('333333338', 'Радка Илиева');
@@ -180,26 +383,38 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(family.contract_value_eur, 250000);
   assert.equal(family.link_key, family.person_id + '|888888884|family'); // distinct from any self link
   // PII rail: the relative's identity is never stored — no family holder name reaches the DB.
-  assert.equal(db.prepare("SELECT COUNT(*) n FROM related_persons_internal").get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM related_persons_internal').get().n, 0);
 
   // SECURITIES/materiality: a self holding of LISTED joint-stock shares forms NO ownership link.
   assert.equal(link('999999998', 'Акционер Тестов'), undefined);
   // but it is still recorded as a declared interest (census), tagged kind securities
-  assert.equal(db.prepare("SELECT kind FROM declared_interests WHERE entity_raw='ЛИСТЕД ТЕСТ АД'").get().kind, 'securities');
+  assert.equal(
+    db.prepare("SELECT kind FROM declared_interests WHERE entity_raw='ЛИСТЕД ТЕСТ АД'").get().kind,
+    'securities',
+  );
   db.close();
 });
 
 test('re-run is idempotent and honors link_suppressions (contested link stays removed)', () => {
   // grab a published link_key, suppress it, re-load
   let db = new DatabaseSync(DB);
-  const key = db.prepare("SELECT link_key FROM interest_links WHERE eik='111111119'").get().link_key;
-  db.prepare('INSERT INTO link_suppressions(link_key,reason,suppressed_by) VALUES(?,?,?)').run(key, 'contested', 'test');
+  const key = db
+    .prepare("SELECT link_key FROM interest_links WHERE eik='111111119'")
+    .get().link_key;
+  db.prepare('INSERT INTO link_suppressions(link_key,reason,suppressed_by) VALUES(?,?,?)').run(
+    key,
+    'contested',
+    'test',
+  );
   db.close();
 
   runLoad(); // rebuild
 
   db = open();
-  assert.equal(db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status, 'suppressed');
+  assert.equal(
+    db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status,
+    'suppressed',
+  );
   // idempotent: still exactly the same number of links + persons after a clean rebuild.
   // 10 links: 9 self (incl. withdrawn/held) + 1 family; Мария (quarantined) & Акционер (securities) form none.
   assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 10);

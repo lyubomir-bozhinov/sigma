@@ -46,7 +46,7 @@ function colNum(firstRow, re, fallback) {
   }
   return fallback;
 }
-const year4 = (s) => (String(s ?? '').match(/\b(20\d{2})\b/)?.[1] ?? null);
+const year4 = (s) => String(s ?? '').match(/\b(20\d{2})\b/)?.[1] ?? null;
 
 /**
  * Parse a year's list.xml into flat person→declaration rows.
@@ -107,7 +107,9 @@ function parseAssets(pp) {
     // Column resolution is description-first (robust across template renumberings); fallbacks are the
     // observed column for that table type. Reading the wrong column is the libel risk, so the two table
     // types resolve independently — a securities table never falls back to the ООД company column.
-    const cCompany = isOod ? colNum(rows[0], /наименование.*дружеств|фирма/i, '4') : colNum(rows[0], /емитент/i, '6');
+    const cCompany = isOod
+      ? colNum(rows[0], /наименование.*дружеств|фирма/i, '4')
+      : colNum(rows[0], /емитент/i, '6');
     const cSeat = colNum(rows[0], /седалище/i, '5');
     const cHolder = colNum(rows[0], /собствено.*фамил/i, isOod ? '7' : '8');
     const cEgn = colNum(rows[0], /^егн$/i, isOod ? '8' : '9');
@@ -120,7 +122,14 @@ function parseAssets(pp) {
       const holderRelation = !holder || holder === declarant ? 'self' : 'related';
       if (holderRelation === 'related') familyHoldingCount += 1;
       const seat = isOod ? (by[cSeat] ?? '') : '';
-      interests.push({ entity: company, kind, detail: seat, timing: 'annual', seat, holderRelation });
+      interests.push({
+        entity: company,
+        kind,
+        detail: seat,
+        timing: 'annual',
+        seat,
+        holderRelation,
+      });
     }
   }
   return {
@@ -153,7 +162,11 @@ function parseInterests(ppd) {
     let kind = null;
     if (/участие в следните търговски дружества|имам участие/i.test(desc)) kind = 'participation';
     else if (/управител или член на орган|управление или контрол/i.test(desc)) kind = 'management';
-    else if (/едноличен търговец|наименование на ет/i.test(desc) || /наименование на ет/i.test(String(rows[0]?.Cell?.[1]?.['@_Description'] ?? ''))) kind = 'sole_trader';
+    else if (
+      /едноличен търговец|наименование на ет/i.test(desc) ||
+      /наименование на ет/i.test(String(rows[0]?.Cell?.[1]?.['@_Description'] ?? ''))
+    )
+      kind = 'sole_trader';
     else if (/свързани лица/i.test(desc)) kind = 'related_person';
     else if (/договори с лица/i.test(desc)) kind = 'related_contract';
     else continue;
@@ -176,7 +189,15 @@ function parseInterests(ppd) {
       const entity = by[cEntity] ?? '';
       // Interests-declaration holdings are the declarant's own (family stakes are declared separately, as
       // related persons) — holderRelation:'self' keeps the staging shape uniform with parseAssets.
-      if (entity) interests.push({ entity, kind, detail: by[cDetail] ?? '', timing, seat: '', holderRelation: 'self' });
+      if (entity)
+        interests.push({
+          entity,
+          kind,
+          detail: by[cDetail] ?? '',
+          timing,
+          seat: '',
+          holderRelation: 'self',
+        });
     }
   }
   return {
@@ -208,5 +229,17 @@ export function parseDeclaration(xml) {
   // only in table NUMBERING — parseInterests classifies tables by @_Description, so it handles them all.
   const dekl = Object.keys(doc ?? {}).find((k) => /^PublicPersonDekl\d+$/.test(k));
   if (dekl) return parseInterests(doc[dekl]);
-  return { templateType: 'unknown', declarant: '', position: null, work: null, year: null, declarationType: null, controlHash: null, egnPresent: false, familyHoldingCount: 0, interests: [], relatedPersons: [] };
+  return {
+    templateType: 'unknown',
+    declarant: '',
+    position: null,
+    work: null,
+    year: null,
+    declarationType: null,
+    controlHash: null,
+    egnPresent: false,
+    familyHoldingCount: 0,
+    interests: [],
+    relatedPersons: [],
+  };
 }

@@ -14,7 +14,9 @@ export function assertScratchIgnored() {
   try {
     execFileSync('git', ['check-ignore', '-q', probe], { cwd: ROOT });
   } catch {
-    throw new Error(`REFUSE TO RUN: ${probe} is not git-ignored — add scratch/ to .gitignore first (PII rail, spec §8)`);
+    throw new Error(
+      `REFUSE TO RUN: ${probe} is not git-ignored — add scratch/ to .gitignore first (PII rail, spec §8)`,
+    );
   }
 }
 

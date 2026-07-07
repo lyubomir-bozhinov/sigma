@@ -12,7 +12,14 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken, closelyHeldForm } from './classify.mjs';
+import {
+  nameDistinctiveness,
+  seatConfirmed,
+  publishTier,
+  temporalStatus,
+  localityToken,
+  closelyHeldForm,
+} from './classify.mjs';
 import { companyCandidates, declaredEiks } from './extract-companies.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -23,26 +30,60 @@ const REPORT = path.join(STAGING, 'findings.md');
 const MATCHER_VERSION = 'cnk-1+classify-1'; // bump when the normalizer or classify logic changes
 const { companyNameKey } = await import('../../packages/shared/src/company-name-key.ts');
 
-const norm = (s) => String(s ?? '').normalize('NFC').toUpperCase().replace(/[\s.\-–—]+/g, ' ').trim();
-const yr = (s) => { const m = String(s ?? '').match(/\b(20\d{2})\b/); return m ? Number(m[1]) : NaN; };
-const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+const norm = (s) =>
+  String(s ?? '')
+    .normalize('NFC')
+    .toUpperCase()
+    .replace(/[\s.\-–—]+/g, ' ')
+    .trim();
+const yr = (s) => {
+  const m = String(s ?? '').match(/\b(20\d{2})\b/);
+  return m ? Number(m[1]) : NaN;
+};
+const readJsonl = (f) =>
+  fs.existsSync(f)
+    ? fs
+        .readFileSync(f, 'utf8')
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
 
 const db = new DatabaseSync(DB);
 db.exec('PRAGMA foreign_keys=ON');
 // Full idempotent rebuild that also picks up schema changes: preserve human-curated suppressions,
 // drop the CACBG tables (children first — FK-safe), re-apply migration 0002, restore suppressions.
 let savedSuppressions = [];
-if (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='link_suppressions'").get()) {
-  savedSuppressions = db.prepare('SELECT link_key,reason,suppressed_by,suppressed_at FROM link_suppressions').all();
+if (
+  db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='link_suppressions'").get()
+) {
+  savedSuppressions = db
+    .prepare('SELECT link_key,reason,suppressed_by,suppressed_at FROM link_suppressions')
+    .all();
 }
-for (const t of ['interest_link_authorities', 'interest_links', 'declared_interests', 'related_persons_internal', 'declarations', 'persons', 'link_suppressions']) db.exec(`DROP TABLE IF EXISTS ${t}`);
+for (const t of [
+  'interest_link_authorities',
+  'interest_links',
+  'declared_interests',
+  'related_persons_internal',
+  'declarations',
+  'persons',
+  'link_suppressions',
+])
+  db.exec(`DROP TABLE IF EXISTS ${t}`);
 db.exec(fs.readFileSync(MIGRATION, 'utf8'));
-const insSupp = db.prepare('INSERT INTO link_suppressions(link_key,reason,suppressed_by,suppressed_at) VALUES(?,?,?,?)');
-for (const s of savedSuppressions) insSupp.run(s.link_key, s.reason, s.suppressed_by, s.suppressed_at);
+const insSupp = db.prepare(
+  'INSERT INTO link_suppressions(link_key,reason,suppressed_by,suppressed_at) VALUES(?,?,?,?)',
+);
+for (const s of savedSuppressions)
+  insSupp.run(s.link_key, s.reason, s.suppressed_by, s.suppressed_at);
 const suppressed = new Set(savedSuppressions.map((s) => s.link_key));
 
 // --- bidder index + libel gate ------------------------------------------------------------------
-const bidders = db.prepare('SELECT id, name, eik_normalized eik, eik_valid valid, settlement FROM bidders').all();
+const bidders = db
+  .prepare('SELECT id, name, eik_normalized eik, eik_valid valid, settlement FROM bidders')
+  .all();
 const byKey = new Map();
 const bidderByEik = new Map(); // valid winners, for declared-ЕИК-in-text matching
 for (const b of bidders) {
@@ -70,7 +111,10 @@ function resolveEntity(entity) {
     const b = bidderByEik.get(de);
     if (!b) continue;
     const winnerKey = companyNameKey(b.name);
-    if (key.includes(winnerKey) || companyCandidates(entity).some((c) => companyNameKey(c) === winnerKey)) {
+    if (
+      key.includes(winnerKey) ||
+      companyCandidates(entity).some((c) => companyNameKey(c) === winnerKey)
+    ) {
       return { eik: de, method: 'declared_eik' };
     }
   }
@@ -91,34 +135,72 @@ const nameGloballyUnique = (key) => {
   return new Set([...m.values()].filter((v) => v.eik && v.valid).map((v) => v.eik)).size === 1;
 };
 const METHOD_RANK = { exact_name_key: 3, declared_eik: 2, extracted_name: 1 };
-const strictKey = (s) => s.normalize('NFC').toUpperCase().replace(/[\s"„“”«».,\-]/g, '');
+const strictKey = (s) =>
+  s
+    .normalize('NFC')
+    .toUpperCase()
+    .replace(/[\s"„“”«».,\-]/g, '');
 let trueOverMerges = 0;
 for (const [, m] of byKey) {
   const valid = [...m.values()].filter((v) => v.eik && v.valid);
-  if (new Set(valid.map((v) => v.eik)).size > 1 && new Set(valid.map((v) => strictKey(v.name))).size > 1) trueOverMerges++;
+  if (
+    new Set(valid.map((v) => v.eik)).size > 1 &&
+    new Set(valid.map((v) => strictKey(v.name))).size > 1
+  )
+    trueOverMerges++;
 }
 
 // --- load staging → persons / declarations / declared_interests ; resolve → agg ------------------
 const insPerson = db.prepare('INSERT OR IGNORE INTO persons(id,name) VALUES(?,?)');
-const insDecl = db.prepare('INSERT OR IGNORE INTO declarations(id,person_id,xml_file,control_hash,folder_year,declared_year,template,category,institution,position,source_url) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
-const insDI = db.prepare('INSERT INTO declared_interests(id,declaration_id,entity_raw,entity_key,kind,detail,timing,seat) VALUES(?,?,?,?,?,?,?,?)');
-const insRP = db.prepare('INSERT INTO related_persons_internal(id,declaration_id,related_name,related_kind,info,timing) VALUES(?,?,?,?,?,?)');
+const insDecl = db.prepare(
+  'INSERT OR IGNORE INTO declarations(id,person_id,xml_file,control_hash,folder_year,declared_year,template,category,institution,position,source_url) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+);
+const insDI = db.prepare(
+  'INSERT INTO declared_interests(id,declaration_id,entity_raw,entity_key,kind,detail,timing,seat) VALUES(?,?,?,?,?,?,?,?)',
+);
+const insRP = db.prepare(
+  'INSERT INTO related_persons_internal(id,declaration_id,related_name,related_kind,info,timing) VALUES(?,?,?,?,?,?)',
+);
 const personId = (name) => `person:${companyNameKey(name)}`;
 // Financial-interest kinds (a genuine stake), as opposed to management-only or listed securities.
 const OWN_KINDS = new Set(['shares', 'participation', 'sole_trader']);
 const agg = new Map();
 // `${pid}|${scope}` → latest year that scope filed a MATERIAL ownership holding (E11 divestment horizon).
 const ownMaxByScope = new Map();
-let diN = 0, noMatch = 0, quarantined = 0, immaterialFamily = 0;
+let diN = 0,
+  noMatch = 0,
+  quarantined = 0,
+  immaterialFamily = 0;
 
 db.exec('BEGIN');
 for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
   const pid = personId(h.person);
   const did = `decl:${h.xmlFile}`;
   insPerson.run(pid, h.person);
-  insDecl.run(did, pid, h.xmlFile, h.controlHash ?? null, h.folder, h.year ?? null, h.template, h.category ?? '', h.institution ?? '', h.position ?? '', `https://register.cacbg.bg/${h.folder}/${h.xmlFile}`);
+  insDecl.run(
+    did,
+    pid,
+    h.xmlFile,
+    h.controlHash ?? null,
+    h.folder,
+    h.year ?? null,
+    h.template,
+    h.category ?? '',
+    h.institution ?? '',
+    h.position ?? '',
+    `https://register.cacbg.bg/${h.folder}/${h.xmlFile}`,
+  );
   const key = companyNameKey(h.entity);
-  insDI.run(`di:${did}:${diN++}`, did, h.entity, key, h.kind, h.detail ?? '', h.timing ?? 'annual', h.seat ?? '');
+  insDI.run(
+    `di:${did}:${diN++}`,
+    did,
+    h.entity,
+    key,
+    h.kind,
+    h.detail ?? '',
+    h.timing ?? 'annual',
+    h.seat ?? '',
+  );
   // scope = whose stake this is. holderRelation='related' ⇒ a CLOSE RELATIVE's stake declared by the
   // official (anonymized downstream — the relative's name never enters staging). Everything else is the
   // official's own. Materiality gate = a real financial-interest kind in a CLOSELY-HELD company; listed
@@ -127,18 +209,43 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
   const material = OWN_KINDS.has(h.kind) && closelyHeldForm(h.entity);
   // A family row is ONLY meaningful as an ownership signal — a relative's management role or listed
   // securities is not a publishable interest — so immaterial family rows form no link (still in declared_interests).
-  if (scope === 'family' && !material) { immaterialFamily++; continue; }
+  if (scope === 'family' && !material) {
+    immaterialFamily++;
+    continue;
+  }
   // resolve (clean name → declared ЕИК → extracted-from-prose name)
   const res = resolveEntity(h.entity);
-  if (!res || res.ambiguous) { if (res?.ambiguous) quarantined++; else noMatch++; continue; }
+  if (!res || res.ambiguous) {
+    if (res?.ambiguous) quarantined++;
+    else noMatch++;
+    continue;
+  }
   const eik = res.eik;
   const bidder = bidderByEik.get(eik);
   const gid = `${pid}|${eik}|${scope}`; // self and family stakes in the same company are distinct claims
   let rec = agg.get(gid);
-  if (!rec) rec = agg.set(gid, { pid, eik, scope, bidder, person: h.person, key: companyNameKey(bidder.name), kinds: new Set(), hasMaterialOwn: false, declYears: new Set(), ownYears: new Set(), seats: new Set(), institutions: new Set(), method: res.method }).get(gid);
+  if (!rec)
+    rec = agg
+      .set(gid, {
+        pid,
+        eik,
+        scope,
+        bidder,
+        person: h.person,
+        key: companyNameKey(bidder.name),
+        kinds: new Set(),
+        hasMaterialOwn: false,
+        declYears: new Set(),
+        ownYears: new Set(),
+        seats: new Set(),
+        institutions: new Set(),
+        method: res.method,
+      })
+      .get(gid);
   if (METHOD_RANK[res.method] > METHOD_RANK[rec.method]) rec.method = res.method; // strongest evidence wins
   rec.kinds.add(h.kind);
-  const y = yr(h.year); if (Number.isFinite(y)) rec.declYears.add(y);
+  const y = yr(h.year);
+  if (Number.isFinite(y)) rec.declYears.add(y);
   // Material ownership years, per (person,company,scope) AND per (person,scope). A later ownership filing
   // that omits a company = divested → the link is withdrawn (§8/E11), so a stale link never asserts a
   // CURRENT stake. Material-ownership only: management filing cadence is unverified (spec §6). Blind spot
@@ -161,27 +268,60 @@ for (const r of readJsonl(path.join(STAGING, 'related.jsonl'))) {
   const did = `decl:${r.xmlFile}`;
   if (!db.prepare('SELECT 1 FROM declarations WHERE id=?').get(did)) {
     insPerson.run(personId(r.person), r.person);
-    insDecl.run(did, personId(r.person), r.xmlFile, null, r.folder, r.year ?? null, 'interests', '', r.institution ?? '', '', `https://register.cacbg.bg/${r.folder}/${r.xmlFile}`);
+    insDecl.run(
+      did,
+      personId(r.person),
+      r.xmlFile,
+      null,
+      r.folder,
+      r.year ?? null,
+      'interests',
+      '',
+      r.institution ?? '',
+      '',
+      `https://register.cacbg.bg/${r.folder}/${r.xmlFile}`,
+    );
   }
-  insRP.run(`rp:${did}:${rpN++}`, did, r.related_name, r.related_kind, r.info ?? '', r.timing ?? 'current');
+  insRP.run(
+    `rp:${did}:${rpN++}`,
+    did,
+    r.related_name,
+    r.related_kind,
+    r.info ?? '',
+    r.timing ?? 'current',
+  );
 }
 db.exec('COMMIT');
 
 // --- enrich each (person,eik) → interest_links (+ per-authority breakdown) -----------------------
-const contractStmt = db.prepare("SELECT strftime('%Y', c.signed_at) yr, a.id auth_id, a.name authority, c.amount_eur eur FROM contracts c JOIN tenders t ON t.id=c.tender_id JOIN authorities a ON a.id=t.authority_id JOIN bidders b ON b.id=c.bidder_id WHERE b.eik_normalized=?");
-const insLink = db.prepare('INSERT INTO interest_links(id,link_key,person_id,bidder_id,eik,entity_key,match_method,matcher_version,publish_tier,relation,interest_class,contemporaneous,own_institution,evidence_count,first_declared_year,last_declared_year,contract_count,contract_value_eur,first_contract_year,last_contract_year,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-const insILA = db.prepare('INSERT OR IGNORE INTO interest_link_authorities(link_key,authority_id,authority_name,contract_count,value_eur,own) VALUES(?,?,?,?,?,?)');
+const contractStmt = db.prepare(
+  "SELECT strftime('%Y', c.signed_at) yr, a.id auth_id, a.name authority, c.amount_eur eur FROM contracts c JOIN tenders t ON t.id=c.tender_id JOIN authorities a ON a.id=t.authority_id JOIN bidders b ON b.id=c.bidder_id WHERE b.eik_normalized=?",
+);
+const insLink = db.prepare(
+  'INSERT INTO interest_links(id,link_key,person_id,bidder_id,eik,entity_key,match_method,matcher_version,publish_tier,relation,interest_class,contemporaneous,own_institution,evidence_count,first_declared_year,last_declared_year,contract_count,contract_value_eur,first_contract_year,last_contract_year,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+);
+const insILA = db.prepare(
+  'INSERT OR IGNORE INTO interest_link_authorities(link_key,authority_id,authority_name,contract_count,value_eur,own) VALUES(?,?,?,?,?,?)',
+);
 // classify one authority (whose name may be a ';'-joined blob) against the official's institutions.
 // exact = deterministic name equality; name_contains/locality = DISCLOSED heuristics (candidate, not proof).
 const OWN_RANK = { exact: 3, name_contains: 2, locality: 1, none: 0 };
 function authOwn(authorityName, instNorms, instNormsLong, locTokens) {
-  const parts = String(authorityName).split(';').map((s) => norm(s)).filter(Boolean);
+  const parts = String(authorityName)
+    .split(';')
+    .map((s) => norm(s))
+    .filter(Boolean);
   if (parts.some((p) => instNorms.includes(p))) return 'exact';
   // heuristic: a LONG institution name (≥12 chars — guards against short-abbreviation false positives)
   // that is a normalized substring of an authority component or vice versa (e.g. „Народно събрание"
   // ⊂ „Народно събрание на Република България"). Disclosed, not deterministic.
-  if (instNormsLong.length && parts.some((p) => instNormsLong.some((i) => p.includes(i) || i.includes(p)))) return 'name_contains';
-  if (locTokens.length && parts.some((p) => locTokens.some((t) => p.includes(t)))) return 'locality';
+  if (
+    instNormsLong.length &&
+    parts.some((p) => instNormsLong.some((i) => p.includes(i) || i.includes(p)))
+  )
+    return 'name_contains';
+  if (locTokens.length && parts.some((p) => locTokens.some((t) => p.includes(t))))
+    return 'locality';
   return 'none';
 }
 // Distinct officials who declared each company (ЕИК). A private interest has ONE owner-declarant; a
@@ -211,14 +351,22 @@ for (const rec of agg.values()) {
   const instNormsLong = instNorms.filter((i) => i.length >= 12);
   const locTokens = [...rec.institutions].map(localityToken).filter(Boolean);
   const years = new Set();
-  let cCount = 0, cValue = 0, hasValue = false;
+  let cCount = 0,
+    cValue = 0,
+    hasValue = false;
   const perAuth = new Map(); // auth_id → {name, count, value, own}
   for (const r of contractStmt.all(rec.eik)) {
     cCount++;
     if (r.yr) years.add(Number(r.yr));
-    if (r.eur != null) { cValue += r.eur; hasValue = true; }
+    if (r.eur != null) {
+      cValue += r.eur;
+      hasValue = true;
+    }
     let a = perAuth.get(r.auth_id);
-    if (!a) a = perAuth.set(r.auth_id, { name: r.authority ?? '', count: 0, value: 0, own: 'none' }).get(r.auth_id);
+    if (!a)
+      a = perAuth
+        .set(r.auth_id, { name: r.authority ?? '', count: 0, value: 0, own: 'none' })
+        .get(r.auth_id);
     a.count++;
     if (r.eur != null) a.value += r.eur;
   }
@@ -228,18 +376,31 @@ for (const rec of agg.values()) {
   // (declared_eik). B_distinctive's premise is "the name alone identifies the company"; a colliding
   // name violates it. Such a link publishes only if the declared SEAT disambiguates (A_seat), else held.
   const nameUnique = nameGloballyUnique(rec.key);
-  const tier = publishTier({ seatOk, distinctiveness: nameUnique ? nameDistinctiveness(rec.key) : 'generic' });
-  const contemporaneous = [...years].some((cy) => temporalStatus(declYears, cy) === 'contemporaneous') ? 1 : 0;
+  const tier = publishTier({
+    seatOk,
+    distinctiveness: nameUnique ? nameDistinctiveness(rec.key) : 'generic',
+  });
+  const contemporaneous = [...years].some(
+    (cy) => temporalStatus(declYears, cy) === 'contemporaneous',
+  )
+    ? 1
+    : 0;
   // link-level own_institution = strongest per-authority verdict (exact > name_contains > locality > none)
   let ownInst = 'none';
-  for (const [, a] of perAuth) { a.own = authOwn(a.name, instNorms, instNormsLong, locTokens); if (OWN_RANK[a.own] > OWN_RANK[ownInst]) ownInst = a.own; }
+  for (const [, a] of perAuth) {
+    a.own = authOwn(a.name, instNorms, instNormsLong, locTokens);
+    if (OWN_RANK[a.own] > OWN_RANK[ownInst]) ownInst = a.own;
+  }
   // Family scope = the official's declaration discloses a related person's stake (relation 'related').
   // Self scope: owns / manages / owns+manages from material ownership + management roles.
-  const relation = rec.scope === 'family'
-    ? 'related'
-    : rec.kinds.has('management')
-      ? (rec.hasMaterialOwn ? 'owns+manages' : 'manages')
-      : 'owns'; // hasMaterialOwn is guaranteed here (immaterial self skipped above)
+  const relation =
+    rec.scope === 'family'
+      ? 'related'
+      : rec.kinds.has('management')
+        ? rec.hasMaterialOwn
+          ? 'owns+manages'
+          : 'manages'
+        : 'owns'; // hasMaterialOwn is guaranteed here (immaterial self skipped above)
   const iClass = interestClass(rec, relation);
   // Self link_key stays `pid|eik` (preserves human-curated suppression keys); family is a distinct claim.
   const linkKey = rec.scope === 'family' ? `${rec.pid}|${rec.eik}|family` : `${rec.pid}|${rec.eik}`;
@@ -250,7 +411,9 @@ for (const rec of agg.values()) {
   const scopeOwnMax = ownMaxByScope.get(`${rec.pid}|${rec.scope}`) ?? null;
   const divested =
     (relation === 'owns' || relation === 'owns+manages' || relation === 'related') &&
-    recOwnMax != null && scopeOwnMax != null && scopeOwnMax > recOwnMax;
+    recOwnMax != null &&
+    scopeOwnMax != null &&
+    scopeOwnMax > recOwnMax;
   const status = suppressed.has(linkKey)
     ? 'suppressed'
     : divested
@@ -259,11 +422,31 @@ for (const rec of agg.values()) {
         ? 'held'
         : 'published';
   const yrs = [...years];
-  insLink.run(`il:${linkKey}`, linkKey, rec.pid, rec.bidder.id, rec.eik, rec.key, rec.method, MATCHER_VERSION,
-    tier, relation, iClass, contemporaneous, ownInst, rec.kinds.size,
-    declYears.length ? String(Math.min(...declYears)) : null, declYears.length ? String(Math.max(...declYears)) : null,
-    cCount, hasValue ? cValue : null, yrs.length ? String(Math.min(...yrs)) : null, yrs.length ? String(Math.max(...yrs)) : null, status);
-  for (const [auth_id, a] of perAuth) insILA.run(linkKey, auth_id, a.name, a.count, a.value || null, a.own);
+  insLink.run(
+    `il:${linkKey}`,
+    linkKey,
+    rec.pid,
+    rec.bidder.id,
+    rec.eik,
+    rec.key,
+    rec.method,
+    MATCHER_VERSION,
+    tier,
+    relation,
+    iClass,
+    contemporaneous,
+    ownInst,
+    rec.kinds.size,
+    declYears.length ? String(Math.min(...declYears)) : null,
+    declYears.length ? String(Math.max(...declYears)) : null,
+    cCount,
+    hasValue ? cValue : null,
+    yrs.length ? String(Math.min(...yrs)) : null,
+    yrs.length ? String(Math.max(...yrs)) : null,
+    status,
+  );
+  for (const [auth_id, a] of perAuth)
+    insILA.run(linkKey, auth_id, a.name, a.count, a.value || null, a.own);
 }
 db.exec('COMMIT');
 
@@ -283,45 +466,99 @@ const S = {
   suppressed: one("SELECT COUNT(*) n FROM interest_links WHERE status='suppressed'").n,
   withdrawn_divested: one("SELECT COUNT(*) n FROM interest_links WHERE status='withdrawn'").n, // E11 expiry
   officials_linked: one('SELECT COUNT(DISTINCT person_id) n FROM interest_links').n,
-  officials_managing: one("SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE relation LIKE '%manages%'").n,
+  officials_managing: one(
+    "SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE relation LIKE '%manages%'",
+  ).n,
   contemporaneous: one('SELECT COUNT(*) n FROM interest_links WHERE contemporaneous=1').n,
-  own_institution_exact: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='exact'").n,
-  own_institution_name_contains: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='name_contains'").n,
-  own_institution_locality: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='locality'").n,
-  published_contract_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published'").v),
+  own_institution_exact: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='exact'")
+    .n,
+  own_institution_name_contains: one(
+    "SELECT COUNT(*) n FROM interest_links WHERE own_institution='name_contains'",
+  ).n,
+  own_institution_locality: one(
+    "SELECT COUNT(*) n FROM interest_links WHERE own_institution='locality'",
+  ).n,
+  published_contract_value_eur: Math.round(
+    one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published'")
+      .v,
+  ),
   // headline conflict number = PRIVATE ownership only (ADR-0019); ex-officio state boards excluded
-  published_private_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='private_ownership'").n,
-  published_private_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='private_ownership'").v),
+  published_private_ownership_links: one(
+    "SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='private_ownership'",
+  ).n,
+  published_private_ownership_value_eur: Math.round(
+    one(
+      "SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='private_ownership'",
+    ).v,
+  ),
   // family (close-relative) ownership — the previously-discarded half of the map (anonymized surface, ADR-0023)
-  published_family_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='family_ownership'").n,
-  published_family_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='family_ownership'").v),
-  family_officials: one("SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE interest_class='family_ownership'").n,
-  published_by_interest_class: Object.fromEntries(q("SELECT interest_class, COUNT(*) n, ROUND(COALESCE(SUM(contract_value_eur),0)) v FROM interest_links WHERE status='published' GROUP BY interest_class").map((r) => [r.interest_class, { links: r.n, value_eur: r.v }])),
-  published_own_institution_value_eur: Math.round(one("SELECT COALESCE(SUM(value_eur),0) v FROM interest_link_authorities ila JOIN interest_links il ON il.link_key=ila.link_key WHERE il.status='published' AND ila.own='exact'").v),
+  published_family_ownership_links: one(
+    "SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='family_ownership'",
+  ).n,
+  published_family_ownership_value_eur: Math.round(
+    one(
+      "SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='family_ownership'",
+    ).v,
+  ),
+  family_officials: one(
+    "SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE interest_class='family_ownership'",
+  ).n,
+  published_by_interest_class: Object.fromEntries(
+    q(
+      "SELECT interest_class, COUNT(*) n, ROUND(COALESCE(SUM(contract_value_eur),0)) v FROM interest_links WHERE status='published' GROUP BY interest_class",
+    ).map((r) => [r.interest_class, { links: r.n, value_eur: r.v }]),
+  ),
+  published_own_institution_value_eur: Math.round(
+    one(
+      "SELECT COALESCE(SUM(value_eur),0) v FROM interest_link_authorities ila JOIN interest_links il ON il.link_key=ila.link_key WHERE il.status='published' AND ila.own='exact'",
+    ).v,
+  ),
   // strongest signal: material ownership (self OR family) whose company sold to the official's OWN institution
-  published_own_institution_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND own_institution='exact' AND interest_class IN ('private_ownership','family_ownership')").n,
-  by_match_method: Object.fromEntries(q('SELECT match_method, COUNT(*) n FROM interest_links GROUP BY match_method').map((r) => [r.match_method, r.n])),
-  trueOverMerge_LIBEL_GATE: trueOverMerges, noMatch, quarantined, immaterialFamilySkipped: immaterialFamily,
+  published_own_institution_links: one(
+    "SELECT COUNT(*) n FROM interest_links WHERE status='published' AND own_institution='exact' AND interest_class IN ('private_ownership','family_ownership')",
+  ).n,
+  by_match_method: Object.fromEntries(
+    q('SELECT match_method, COUNT(*) n FROM interest_links GROUP BY match_method').map((r) => [
+      r.match_method,
+      r.n,
+    ]),
+  ),
+  trueOverMerge_LIBEL_GATE: trueOverMerges,
+  noMatch,
+  quarantined,
+  immaterialFamilySkipped: immaterialFamily,
 };
 console.log(JSON.stringify(S, null, 2));
 
 const examples = q(
-  "SELECT p.name official, d.institution, b.name winner, il.eik, il.relation, il.publish_tier, il.status, " +
-  "il.contemporaneous, il.own_institution, il.contract_count, ROUND(il.contract_value_eur) value_eur, " +
-  "il.first_contract_year||'–'||il.last_contract_year contract_years, " +
-  "(SELECT GROUP_CONCAT(authority_name,' | ') FROM interest_link_authorities WHERE link_key=il.link_key AND own='exact') own_bought_by " +
-  'FROM interest_links il JOIN persons p ON p.id=il.person_id JOIN bidders b ON b.id=il.bidder_id ' +
-  'JOIN declarations d ON d.person_id=il.person_id ' +
-  "GROUP BY il.id ORDER BY (il.own_institution='exact')*4+(il.relation LIKE '%manages%')*2+il.contemporaneous+(il.status='published') DESC, il.contract_value_eur DESC LIMIT 25",
+  'SELECT p.name official, d.institution, b.name winner, il.eik, il.relation, il.publish_tier, il.status, ' +
+    'il.contemporaneous, il.own_institution, il.contract_count, ROUND(il.contract_value_eur) value_eur, ' +
+    "il.first_contract_year||'–'||il.last_contract_year contract_years, " +
+    "(SELECT GROUP_CONCAT(authority_name,' | ') FROM interest_link_authorities WHERE link_key=il.link_key AND own='exact') own_bought_by " +
+    'FROM interest_links il JOIN persons p ON p.id=il.person_id JOIN bidders b ON b.id=il.bidder_id ' +
+    'JOIN declarations d ON d.person_id=il.person_id ' +
+    "GROUP BY il.id ORDER BY (il.own_institution='exact')*4+(il.relation LIKE '%manages%')*2+il.contemporaneous+(il.status='published') DESC, il.contract_value_eur DESC LIMIT 25",
 );
 const md = [
   '# Свързани лица — resolved domain (Phase 1 load)',
-  '', `_matcher ${MATCHER_VERSION}; DB ${path.relative(ROOT, DB)}_`, '',
-  '## Persisted domain', '```json', JSON.stringify(S, null, 1), '```', '',
-  '## Strongest published leads', '```json', JSON.stringify(examples, null, 1), '```', '',
+  '',
+  `_matcher ${MATCHER_VERSION}; DB ${path.relative(ROOT, DB)}_`,
+  '',
+  '## Persisted domain',
+  '```json',
+  JSON.stringify(S, null, 1),
+  '```',
+  '',
+  '## Strongest published leads',
+  '```json',
+  JSON.stringify(examples, null, 1),
+  '```',
+  '',
 ].join('\n');
 fs.writeFileSync(REPORT, md);
-console.log(trueOverMerges ? `\n!! LIBEL GATE FAILED (${trueOverMerges})` : '\n✓ libel gate: 0 over-merges');
+console.log(
+  trueOverMerges ? `\n!! LIBEL GATE FAILED (${trueOverMerges})` : '\n✓ libel gate: 0 over-merges',
+);
 console.log(`report → ${REPORT}`);
 db.close();
 process.exitCode = trueOverMerges ? 1 : 0;

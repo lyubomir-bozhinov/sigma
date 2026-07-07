@@ -34,17 +34,27 @@ export function getPinned(url, { headers = {}, timeoutMs = 30000 } = {}) {
   return new Promise((resolve, reject) => {
     const req = https.get(
       url,
-      { agent, headers: { 'user-agent': 'sigma-transparency-spike (+github.com/midt-bg/sigma)', ...headers } },
+      {
+        agent,
+        headers: {
+          'user-agent': 'sigma-transparency-spike (+github.com/midt-bg/sigma)',
+          ...headers,
+        },
+      },
       (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+        res.on('end', () =>
+          resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }),
+        );
         res.on('error', reject);
       },
     );
     // No default socket timeout: a connection the server accepts but never answers would hang this slot
     // forever. Bound it and surface as an error so politeGet's retry/backoff handles it like any 5xx.
-    req.setTimeout(timeoutMs, () => req.destroy(new Error(`request timeout after ${timeoutMs}ms: ${url}`)));
+    req.setTimeout(timeoutMs, () =>
+      req.destroy(new Error(`request timeout after ${timeoutMs}ms: ${url}`)),
+    );
     req.on('socket', (socket) => {
       const verify = () => {
         const cert = socket.getPeerX509Certificate?.();
@@ -55,7 +65,10 @@ export function getPinned(url, { headers = {}, timeoutMs = 30000 } = {}) {
       // keep-alive reuses sockets: verify immediately if already handshaked, else once on connect.
       // Marking the socket stops listeners accumulating across reuse (no MaxListeners leak).
       if (socket.getPeerX509Certificate?.()) verify();
-      else if (!socket.__cacbgPinned) { socket.__cacbgPinned = true; socket.once('secureConnect', verify); }
+      else if (!socket.__cacbgPinned) {
+        socket.__cacbgPinned = true;
+        socket.once('secureConnect', verify);
+      }
     });
     req.on('error', reject);
   });

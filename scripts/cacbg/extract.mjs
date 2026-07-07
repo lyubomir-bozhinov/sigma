@@ -19,7 +19,17 @@ function run() {
   fs.mkdirSync(STAGING, { recursive: true });
   const holdingsOut = fs.createWriteStream(path.join(STAGING, 'holdings.jsonl'));
   const relatedOut = fs.createWriteStream(path.join(STAGING, 'related.jsonl'));
-  const stats = { decls: 0, assets: 0, interests: 0, unknown: 0, egnHits: 0, holdings: 0, related: 0, dupSkipped: 0, byKind: {} };
+  const stats = {
+    decls: 0,
+    assets: 0,
+    interests: 0,
+    unknown: 0,
+    egnHits: 0,
+    holdings: 0,
+    related: 0,
+    dupSkipped: 0,
+    byKind: {},
+  };
 
   // Same declaration is republished across sets (filing set + end-of-year *y + compliance nc/nonc). It
   // carries the SAME ControlHash (content hash) everywhere, so dedup globally by ControlHash — first
@@ -28,11 +38,19 @@ function run() {
   // their *y republication, so the primary copy is the one retained.
   const seenHash = new Set();
   const folderRe = /^20\d{2}[A-Za-z0-9_]{0,8}$/;
-  const folders = fs.existsSync(RAW) ? fs.readdirSync(RAW).filter((f) => folderRe.test(f)).sort() : [];
+  const folders = fs.existsSync(RAW)
+    ? fs
+        .readdirSync(RAW)
+        .filter((f) => folderRe.test(f))
+        .sort()
+    : [];
   for (const folder of folders) {
     const dir = path.join(RAW, folder);
     const listPath = path.join(dir, 'list.xml');
-    if (!fs.existsSync(listPath)) { console.log(`  ${folder}: no list.xml, skip`); continue; }
+    if (!fs.existsSync(listPath)) {
+      console.log(`  ${folder}: no list.xml, skip`);
+      continue;
+    }
     // xmlFile → context (first listing wins; a person with multiple positions shares one filing)
     const ctx = new Map();
     for (const r of parseList(fs.readFileSync(listPath, 'utf8'))) {
@@ -43,7 +61,10 @@ function run() {
       if (file === 'list.xml' || !file.endsWith('.xml')) continue;
       const d = parseDeclaration(fs.readFileSync(path.join(dir, file), 'utf8'));
       if (d.controlHash) {
-        if (seenHash.has(d.controlHash)) { stats.dupSkipped++; continue; } // republished declaration
+        if (seenHash.has(d.controlHash)) {
+          stats.dupSkipped++;
+          continue;
+        } // republished declaration
         seenHash.add(d.controlHash);
       }
       stats.decls++;
@@ -52,21 +73,42 @@ function run() {
       const c = ctx.get(file) ?? {};
       const person = c.person || d.declarant;
       for (const it of d.interests) {
-        holdingsOut.write(JSON.stringify({
-          folder, xmlFile: file, year: d.year, template: d.templateType,
-          category: c.category ?? '', institution: c.institution ?? '', person, position: c.position ?? d.position ?? '',
-          entity: it.entity, kind: it.kind, detail: it.detail, timing: it.timing, seat: it.seat ?? '',
-          holderRelation: it.holderRelation ?? 'self',
-          controlHash: d.controlHash,
-        }) + '\n');
+        holdingsOut.write(
+          JSON.stringify({
+            folder,
+            xmlFile: file,
+            year: d.year,
+            template: d.templateType,
+            category: c.category ?? '',
+            institution: c.institution ?? '',
+            person,
+            position: c.position ?? d.position ?? '',
+            entity: it.entity,
+            kind: it.kind,
+            detail: it.detail,
+            timing: it.timing,
+            seat: it.seat ?? '',
+            holderRelation: it.holderRelation ?? 'self',
+            controlHash: d.controlHash,
+          }) + '\n',
+        );
         stats.holdings++;
         stats.byKind[it.kind] = (stats.byKind[it.kind] ?? 0) + 1;
       }
       for (const rp of d.relatedPersons) {
-        relatedOut.write(JSON.stringify({
-          folder, xmlFile: file, year: d.year, person, institution: c.institution ?? '',
-          related_name: rp.name, related_kind: rp.kind, info: rp.info, timing: rp.timing,
-        }) + '\n');
+        relatedOut.write(
+          JSON.stringify({
+            folder,
+            xmlFile: file,
+            year: d.year,
+            person,
+            institution: c.institution ?? '',
+            related_name: rp.name,
+            related_kind: rp.kind,
+            info: rp.info,
+            timing: rp.timing,
+          }) + '\n',
+        );
         stats.related++;
       }
       n++;

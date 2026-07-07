@@ -67,10 +67,10 @@ describe('companyNameKey', () => {
       (byCompany.get(companyId) ?? byCompany.set(companyId, new Set()).get(companyId)!).add(key);
     }
     for (const [companyId, keys] of byCompany) {
-      expect(keys, `company ${companyId} split across keys: ${[...keys].join(' | ')}`).toHaveProperty(
-        'size',
-        1,
-      );
+      expect(
+        keys,
+        `company ${companyId} split across keys: ${[...keys].join(' | ')}`,
+      ).toHaveProperty('size', 1);
     }
   });
 
