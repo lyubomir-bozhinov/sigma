@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { classifyHttpError, networkError } from './errors';
+import { nextTurnstileToken, withTurnstileHeader } from './turnstile-token';
 import { isPhasePart, type AssistantPhase } from '../assistant-contract/stream';
 import { condenseForPost } from './condense';
 import { clearTranscript, loadTranscript, saveTranscript, trimMessages } from './storage';
@@ -28,9 +29,14 @@ export const classifyingFetch = async (
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> => {
+  // Attach a fresh Turnstile token when the gate is active; a no-op (unchanged init) otherwise.
+  const token = await nextTurnstileToken();
+  const requestInit = token
+    ? { ...init, headers: withTurnstileHeader(init?.headers, token) }
+    : init;
   let response: Response;
   try {
-    response = await fetch(input, init);
+    response = await fetch(input, requestInit);
   } catch (error) {
     if (isAbortError(error)) throw error;
     throw new Error(networkError());
