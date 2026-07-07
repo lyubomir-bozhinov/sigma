@@ -1,30 +1,36 @@
-# Architecture Decision Records — Свързани лица (related-persons / conflict-of-interest)
+# Architecture Decision Records
 
-ADRs capture the *why* behind non-obvious, hard-to-reverse decisions for the свързани-лица data
-foundation. One decision per file, Nygard format (Context → Decision → Consequences). Superseding
-happens by writing a new ADR that references the old one; old ADRs stay for the audit trail.
+Архитектурните решения на СИГМА се записват тук като **ADR** — по едно решение на файл, така че
+контекстът да не се губи в код-коментари и PR-и. Новите решения се добавят със следващия пореден
+номер; приетите не се пренаписват — заменят се с нов ADR със статус „Заменено от ADR-MMMM".
 
-Numbering is sequential. Add a new ADR the moment a decision is made — not retroactively.
+Нов ADR: копирай [`_template.md`](_template.md), вземи следващия номер, добави ред в таблицата долу.
 
-| ADR | Title | Status |
-|---|---|---|
-| [0001](0001-scope-and-certainty-bar.md) | Scope & certainty bar (public data, deterministic auto-publish) | Accepted |
-| [0002](0002-deterministic-name-to-eik-resolution.md) | Deterministic name→ЕИК via own bidder data + conservative normalizer | Accepted |
-| [0003](0003-name-uniqueness-guard-and-publish-tiers.md) | Name-uniqueness is not absolute → single-ЕИК guard + publish tiers | Accepted |
-| [0004](0004-pii-posture.md) | PII posture (raw in scratch only; third-party/family internal; EGN stripped) | Accepted |
-| [0005](0005-host-scoped-tls-pinning.md) | Host-scoped TLS SPKI pinning for register.cacbg.bg | Accepted |
-| [0006](0006-crawler-and-persistence-architecture.md) | Crawler + persistence (raw cache → extract; R2 + D1; cron refresh) | Accepted |
-| [0007](0007-two-declaration-templates.md) | Two declaration templates — shares + participation + management + related persons | Accepted |
-| [0008](0008-match-output-layers-and-interpretation.md) | Match output layers (own vs control, temporal, own-institution) + interpretation caveats | Accepted |
-| [0009](0009-tr-name-uniqueness-census.md) | TR name-uniqueness census — promotes globally-unique tier-C matches | Accepted |
-| [0010](0010-free-text-entity-resolution.md) | Free-text entity resolution — declared ЕИК + prose company extraction | Accepted |
-| [0011](0011-name-collision-tier-gate.md) | Name-collision tier gate — a non-unique name can't be name-distinctive, even with a certain ЕИК | Accepted |
-| [0012](0012-folder-discovery-and-republication-dedup.md) | Discover declaration-set folders from the register index; dedup republications by ControlHash | Accepted |
-| [0013](0013-private-interest-vs-ex-officio-classification.md) | Separate private financial interest from ex-officio public-board roles (multi-declarant tell) | Accepted |
-| [0014](0014-conflict-explorer-surface-posture.md) | Conflict-explorer surface — interest_links-only read model, noindex-until-gated, provenance on every row | Accepted |
-| [0015](0015-methodology-page-and-temporal-freshness.md) | Public methodology/corrections page (E10) + temporal dating & divestment expiry (E11) | Accepted |
-| [0016](0016-public-surface-private-ownership-only.md) | Public surface shows ONLY declared private ownership (removes the ex-officio list; term „длъжностно лице") | Accepted |
-| [0017](0017-anonymized-family-ownership-surface.md) | Anonymized close-relative (family) ownership surface: relative unnamed, materiality = closely-held form, nexus-ranked | Accepted |
+| # | Решение | Статус |
+| --- | --- | --- |
+| [0001](0001-rendering-and-security.md) | Стратегия за рендиране (React Router v7 на Workers) и модел на сигурност | Прието |
+| [0002](0002-d1-as-datastore.md) | Cloudflare D1 като обслужващо хранилище | Прието |
+| [0003](0003-value-flag-data-quality.md) | `value_flag`/`date_flag` verdict + единна стойностна база | Прието |
+| [0004](0004-style-src-unsafe-inline.md) | `style-src` запазва `'unsafe-inline'` (CSP) | Прието |
+| [0005](0005-blue-green-d1-rollback.md) | Blue/green D1 слотове за rollback на refresh | Прието |
+| [0006](0006-eop-wins-dedup.md) | Dedup на два източника: EOP печели по `contract_number` | Прието |
+| [0007](0007-scope-and-certainty-bar.md) | Свързани лица: обхват и праг на сигурност (само 100% детерминистични съвпадения) | Прието |
+| [0008](0008-deterministic-name-to-eik-resolution.md) | Детерминистично разрешаване име→ЕИК (авто-публикуване; ръчна опашка само при двусмислие) | Прието |
+| [0009](0009-name-uniqueness-guard-and-publish-tiers.md) | Пазач за уникалност на името + нива на публикуване (A_seat / B_distinctive / C_hold) | Прието |
+| [0010](0010-pii-posture.md) | Позиция за лични данни: без ЕГН/адреси; третите лица — само за вътрешна проверка | Прието |
+| [0011](0011-host-scoped-tls-pinning.md) | TLS pinning само за хоста (счупена верига на register.cacbg.bg), не глобален байпас | Прието |
+| [0012](0012-crawler-and-persistence-architecture.md) | Архитектура на обхождането и съхранението (resumable; кеш по xml_file + ControlHash) | Прието |
+| [0013](0013-two-declaration-templates.md) | Два шаблона декларации (имущество + интереси) в един парсер | Прието |
+| [0014](0014-match-output-layers-and-interpretation.md) | Слоеве на съвпадението и тълкуване (собственост/контрол, времеви, собствена институция) | Прието |
+| [0015](0015-tr-name-uniqueness-census.md) | Преброяване за уникалност на имена от ТР — промотира глобално уникални tier-C връзки | Прието |
+| [0016](0016-free-text-entity-resolution.md) | Разрешаване на субекти от свободен текст (деклариран ЕИК + извличане от проза) | Прието |
+| [0017](0017-name-collision-tier-gate.md) | Гейт срещу колизия на имена извън отличаващото ниво | Прието |
+| [0018](0018-folder-discovery-and-republication-dedup.md) | Откриване на папки от индекса + dedup на препубликувани декларации (ControlHash) | Прието |
+| [0019](0019-private-interest-vs-ex-officio-classification.md) | Разделяне на частен финансов интерес от служебни борд-роли (multi-declarant tell) | Прието |
+| [0020](0020-conflict-explorer-surface-posture.md) | Повърхност на експлорера — само interest_links, noindex до одобрение, произход на всеки ред | Прието |
+| [0021](0021-methodology-page-and-temporal-freshness.md) | Публична страница методология/поправки (E10) + времево датиране и изтичане при освобождаване (E11) | Прието |
+| [0022](0022-public-surface-private-ownership-only.md) | Публичната повърхност показва само деклариран частен дял (маха служебния списък; „длъжностно лице") | Прието |
+| [0023](0023-anonymized-family-ownership-surface.md) | Анонимизирана повърхност за дял на свързано лице: свързаното лице неназовано, материалност = затворена форма, подредба по силата на връзката | Прието |
 
-Related design docs: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
-[implementation-plans/phase0-related-persons-feasibility.md](../implementation-plans/phase0-related-persons-feasibility.md).
+Свързани проектни документи: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
+[implementation-plans/related-persons-data-layer-delivery.md](../implementation-plans/related-persons-data-layer-delivery.md).

@@ -1,17 +1,17 @@
-# ADR-0014: Conflict-explorer surface — read-model boundary, noindex-until-gated, provenance on every row
+# ADR-0020: Conflict-explorer surface — read-model boundary, noindex-until-gated, provenance on every row
 
 - Status: Accepted
 - Date: 2026-07-06
 - Deciders: lb, Claude
-- Related: [ADR-0001](0001-scope-and-certainty-bar.md), [ADR-0004](0004-pii-posture.md), [ADR-0013](0013-private-interest-vs-ex-officio-classification.md); `packages/db/src/queries/related-persons.ts`, `apps/web/app/routes/conflicts*.tsx`, `docs/implementation-plans/related-persons-data-layer-delivery.md` (§E)
+- Related: [ADR-0007](0007-scope-and-certainty-bar.md), [ADR-0010](0010-pii-posture.md), [ADR-0019](0019-private-interest-vs-ex-officio-classification.md); `packages/db/src/queries/related-persons.ts`, `apps/web/app/routes/conflicts*.tsx`, `docs/implementation-plans/related-persons-data-layer-delivery.md` (§E)
 
 ## Context
 
 Block 5 ships the first **public-facing** свързани-лица surface: a leaderboard (`/conflicts`), an official
 page (`/conflicts/official/:id`), and a winner page (`/conflicts/company/:eik`). Prod is live, public, and
 unauthenticated, so this ADR fixes the posture the routes must hold — the pipeline's certainty guarantees
-(ADR-0001/0013) protect *what* is a link, not *how* it is served. Two hazards are specific to the surface:
-a served route could reach past the published links into third-party/family data (ADR-0004), and a page
+(ADR-0007/0019) protect *what* is a link, not *how* it is served. Two hazards are specific to the surface:
+a served route could reach past the published links into third-party/family data (ADR-0010), and a page
 naming an individual, indexed by search engines, is a stronger and more permanent exposure than the same
 page reachable only on-site.
 
@@ -34,7 +34,7 @@ page reachable only on-site.
    disclosure: the link is derived from the official's *own* KPKONPI declaration, exact-matched by
    nationally-unique фирма name, means *declared interest* and **not** a legal violation, and points to
    Методология → Поправки. Private ownership leads; ex-officio board roles are a separate, labelled list
-   (ADR-0013), never summed into the headline.
+   (ADR-0019), never summed into the headline.
 
 4. **`officialSlug`, not the raw key, in URLs.** The DTO exposes `officialSlug` = base64url(`person_id`)
    (`identity.personSlug`). `person_id` is uppercase-Cyrillic-with-spaces and feeds `link_key` as

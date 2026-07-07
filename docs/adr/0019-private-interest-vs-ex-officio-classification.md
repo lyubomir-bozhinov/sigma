@@ -1,9 +1,9 @@
-# ADR-0013: Separate private financial interest from ex-officio public-board roles
+# ADR-0019: Separate private financial interest from ex-officio public-board roles
 
-- Status: Accepted (display superseded by [ADR-0016](0016-public-surface-private-ownership-only.md) — the ex-officio *list* is no longer shown; the classification stands and now gates the public surface to private ownership only)
+- Status: Accepted (display superseded by [ADR-0022](0022-public-surface-private-ownership-only.md) — the ex-officio *list* is no longer shown; the classification stands and now gates the public surface to private ownership only)
 - Date: 2026-07-06
 - Deciders: lb, Claude
-- Related: [ADR-0008](0008-match-output-layers-and-interpretation.md), [ADR-0001](0001-scope-and-certainty-bar.md); `scripts/cacbg/load.mjs`, `packages/db/migrations/0002_related_persons_foundation.sql`
+- Related: [ADR-0014](0014-match-output-layers-and-interpretation.md), [ADR-0007](0007-scope-and-certainty-bar.md); `scripts/cacbg/load.mjs`, `packages/db/migrations/0002_related_persons_foundation.sql`
 
 ## Context
 
@@ -13,7 +13,7 @@ who were **appointed to manage state-owned companies**. The top links are ИО �
 (€302.9 M), „Български пощи" ЕАД (€122.6 M), and „Фонд мениджър на финансови инструменти в България" ЕАД
 (€108.9 M), each declared by multiple officials sitting on the company's board *ex officio*. Presenting that
 as "conflict of interest" would defame civil servants performing their statutory duty — precisely the harm
-the certainty bar (ADR-0001) exists to prevent. A management seat on a public body is categorically different
+the certainty bar (ADR-0007) exists to prevent. A management seat on a public body is categorically different
 from a private person owning shares in a company that wins public money.
 
 The underlying link (official X declared an interest in company Y with ЕИК Z) is certain in every case; what
@@ -34,7 +34,7 @@ Persist a deterministic `interest_class` on every `interest_link`, computed once
 The load summary now reports `published_private_ownership_{links,value_eur}` as the headline figure
 (**207 links / €330.5 M**) alongside the full `published_by_interest_class` breakdown, so the €2.3 B is never
 presented as conflict. The classification is a presentation aid — it changes neither the certainty of a link
-nor its publish tier (ADR-0003); a link's `interest_class` and its `publish_tier` are orthogonal.
+nor its publish tier (ADR-0009); a link's `interest_class` and its `publish_tier` are orthogonal.
 
 ## Consequences
 
@@ -44,7 +44,7 @@ nor its publish tier (ADR-0003); a link's `interest_class` and its `publish_tier
   ИО/БЕХ/ФМФИБ entirely).
 - `management_role` is deliberately *not* auto-labelled ex-officio: a single-declarant management entry could
   be a private manager (e.g. an owner who declared only the control role), so it stays in its own bucket
-  pending ownership data (the TR census, ADR-0009) rather than being guessed either way.
+  pending ownership data (the TR census, ADR-0015) rather than being guessed either way.
 - Edge case: two officials who genuinely co-own one private company surface as `owns`/`owns+manages` →
   `private_ownership`, correctly — the ex-officio class is gated on `manages`, so co-ownership is never
   misclassified as a board role.

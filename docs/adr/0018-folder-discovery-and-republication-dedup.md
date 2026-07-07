@@ -1,9 +1,9 @@
-# ADR-0012: Discover declaration-set folders from the register index; dedup republications by ControlHash
+# ADR-0018: Discover declaration-set folders from the register index; dedup republications by ControlHash
 
 - Status: Accepted
 - Date: 2026-07-05
 - Deciders: lb, Claude
-- Related: [ADR-0006](0006-crawler-and-persistence-architecture.md), [ADR-0007](0007-two-declaration-templates.md); `scripts/cacbg/fetch.mjs`, `scripts/cacbg/extract.mjs`, `scripts/cacbg/guard.mjs`
+- Related: [ADR-0012](0012-crawler-and-persistence-architecture.md), [ADR-0013](0013-two-declaration-templates.md); `scripts/cacbg/fetch.mjs`, `scripts/cacbg/extract.mjs`, `scripts/cacbg/guard.mjs`
 
 ## Context
 
@@ -29,7 +29,7 @@ claim was an artifact of the assumption, not a property of the source (2026 genu
 1. **Discover, don't guess.** `fetch.mjs` parses the register root index for `href="<folder>/index.html"`
    and crawls every folder it finds. `guard.safeFolder` constrains a folder id to `20\d{2}` + up to 8
    `[A-Za-z0-9_]` chars, so a hostile index cannot inject a path segment. A `--folders a,b` override
-   remains for targeted re-crawls. This is also correct for the cron refresh (ADR-0006): new folders
+   remains for targeted re-crawls. This is also correct for the cron refresh (ADR-0012): new folders
    (next year's filing set, new compliance sets) are picked up automatically.
 2. **Dedup republications by ControlHash.** The same signed declaration is republished across sets (the
    filing set, its end-of-year `*y` copy, and often a compliance `nc/nonc` copy) carrying the **same

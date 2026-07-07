@@ -1,4 +1,4 @@
-# ADR-0005: Host-scoped TLS SPKI pinning for register.cacbg.bg
+# ADR-0011: Host-scoped TLS SPKI pinning for register.cacbg.bg
 
 - Status: Accepted
 - Date: 2026-07-05

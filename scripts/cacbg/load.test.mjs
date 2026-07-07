@@ -50,7 +50,7 @@ before(() => {
     -- both colliding ГЕНЕРИК ЕИК are real winners → declared_eik can resolve a certain ЕИК behind an ambiguous name
     INSERT INTO contracts VALUES ('c4','t2','eik:222222229','2023-07-01',70000);
     INSERT INTO contracts VALUES ('c5','t2','eik:333333338','2023-08-01',80000);
-    -- distinctive winner MANAGED by two different officials → ex-officio public board (ADR-0013)
+    -- distinctive winner MANAGED by two different officials → ex-officio public board (ADR-0019)
     INSERT INTO bidders VALUES ('eik:555555556','ХОЛДИНГ 9 ЕАД','555555556',1,'София');
     INSERT INTO contracts VALUES ('c6','t1','eik:555555556','2023-09-01',500000);
     -- two distinctive winners for the divestment (E11) case: Николай owns ДИВЕСТ 1 in 2019, then ДИВЕСТ 2

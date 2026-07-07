@@ -1,13 +1,13 @@
-# ADR-0015: Public methodology/corrections page (E10) + temporal freshness & divestment expiry (E11)
+# ADR-0021: Public methodology/corrections page (E10) + temporal freshness & divestment expiry (E11)
 
 - Status: Accepted
 - Date: 2026-07-06
 - Deciders: lb, Claude
-- Related: [ADR-0001](0001-scope-and-certainty-bar.md), [ADR-0013](0013-private-interest-vs-ex-officio-classification.md), [ADR-0014](0014-conflict-explorer-surface-posture.md); spec §5/§8/§9; `scripts/cacbg/load.mjs`, `apps/web/app/routes/conflict.methodology.tsx`, `packages/db/src/queries/related-persons.ts`
+- Related: [ADR-0007](0007-scope-and-certainty-bar.md), [ADR-0019](0019-private-interest-vs-ex-officio-classification.md), [ADR-0020](0020-conflict-explorer-surface-posture.md); spec §5/§8/§9; `scripts/cacbg/load.mjs`, `apps/web/app/routes/conflict.methodology.tsx`, `packages/db/src/queries/related-persons.ts`
 
 ## Context
 
-The conflict-explorer surface (B5, ADR-0014) is built but two spec gates block public exposure. **§9** requires a
+The conflict-explorer surface (B5, ADR-0020) is built but two spec gates block public exposure. **§9** requires a
 plain-language methodology page as part of the libel defence — a reader must see exactly how a link is made and be
 able to re-derive it. **§8/§6.7 (E11)** requires that withdrawn/amended declarations and officials leaving office
 expire stale `interest_link`s, else a link asserts a *current* conflict that has ended — a live accuracy defect.
@@ -20,13 +20,13 @@ sections verbatim: sources + legal basis (ЗПКОНПИ/КПКОНПИ public d
 isn't shown (own declared holdings only; family internal; ЕГН/addresses never), the matching rule word-for-word
 (exact full-name incl. legal form → national uniqueness → single-ЕИК guard; ambiguous excluded/human-confirmed),
 certainty & framing („модел за проверка, не обвинение"; a floor, not hidden ownership), temporal meaning,
-known gaps, corrections & appeal, and refresh/validity. Unlike the individual-naming routes (noindex, ADR-0014),
+known gaps, corrections & appeal, and refresh/validity. Unlike the individual-naming routes (noindex, ADR-0020),
 this page **is** indexed — it is the credibility anchor and names nobody. All conflict routes' disclosure links
 now point at its `#contest` anchor.
 
 **Corrections workflow — designed, not just named.** Contest via the impressum contact with (page URL, ЕИК +
 name, grounds); review target **7 working days**; a valid contest suppresses the link **immediately** and it
-**survives every re-import** (`link_suppressions` is loaded first in `load.mjs` and shipped first — ADR-0003).
+**survives every re-import** (`link_suppressions` is loaded first in `load.mjs` and shipped first — ADR-0009).
 The 7-day target is a proposed default to confirm operationally.
 
 **E11 — two mechanisms:**

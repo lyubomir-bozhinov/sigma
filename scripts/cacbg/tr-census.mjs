@@ -1,4 +1,4 @@
-// TR name-uniqueness census (ADR-0009). Promotes tier-C held interest_links — generic company names
+// TR name-uniqueness census (ADR-0015). Promotes tier-C held interest_links — generic company names
 // with a single WINNER namesake — to 'published' iff the name is GLOBALLY unique in the Trade Register.
 //
 // Source: the Commercial Register open-data dump on data.egov.bg (DPA-safe: ЕГН/ЛНЧ hashed out, company

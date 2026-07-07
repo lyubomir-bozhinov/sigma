@@ -1,4 +1,4 @@
-# ADR-0001: Scope and certainty bar
+# ADR-0007: Scope and certainty bar
 
 - Status: Accepted
 - Date: 2026-07-05
@@ -33,4 +33,4 @@ We must decide how much certainty a claim needs before it is published, and what
 - Every published item carries a provenance receipt (source URL, raw declared strings, matcher version).
 - The build is phased behind falsifiable proof-gates (see the implementation plan); the libel-safety
   gate (0 over-merge) is a hard no-go if unmet.
-- Third-party personal data (family, declared related persons) is out of scope for publication (ADR-0004).
+- Third-party personal data (family, declared related persons) is out of scope for publication (ADR-0010).

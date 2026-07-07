@@ -1,9 +1,9 @@
-# ADR-0008: Match output layers and interpretation caveats
+# ADR-0014: Match output layers and interpretation caveats
 
 - Status: Accepted
 - Date: 2026-07-05
 - Deciders: lb, Claude
-- Related: spec §5; `scripts/cacbg/analyze.mjs`, `classify.mjs`; builds on [ADR-0003](0003-name-uniqueness-guard-and-publish-tiers.md), [ADR-0007](0007-two-declaration-templates.md)
+- Related: spec §5; `scripts/cacbg/analyze.mjs`, `classify.mjs`; builds on [ADR-0009](0009-name-uniqueness-guard-and-publish-tiers.md), [ADR-0013](0013-two-declaration-templates.md)
 
 ## Context
 
@@ -19,7 +19,7 @@ labelled signals — deterministic unless marked heuristic:
 1. **Interest kind — ownership vs control.** `owns` (shares/participation) is separated from
    `manages` (управител / board / control body, from the interests declaration). Management is reported
    as its own headline because control without ownership is often the more serious conflict.
-2. **Publish tier** (ADR-0003): A seat-confirmed / B distinctive-name / C held-for-census. Only A+B are
+2. **Publish tier** (ADR-0009): A seat-confirmed / B distinctive-name / C held-for-census. Only A+B are
    publishable. (Empirically tier A rarely fires — winner `settlement` is ~28% populated — so tier B
    carries most publishable matches; disclosed.)
 3. **Temporal validity.** Asset declarations are annual snapshots; a match is `contemporaneous` only when

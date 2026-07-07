@@ -1,6 +1,6 @@
-# ADR-0002: Deterministic name→ЕИК resolution via own bidder data + a conservative normalizer
+# ADR-0008: Deterministic name→ЕИК resolution via own bidder data + a conservative normalizer
 
-- Status: Accepted (refined by [ADR-0003](0003-name-uniqueness-guard-and-publish-tiers.md))
+- Status: Accepted (refined by [ADR-0009](0009-name-uniqueness-guard-and-publish-tiers.md))
 - Date: 2026-07-05
 - Deciders: lb, Claude
 - Related: spec §5
@@ -10,7 +10,7 @@
 CACBG declarations name the companies an official holds an interest in, but carry **no ЕИК** (the
 company's unique registry id) — and no ЕГН. To join a declared holding to a contract winner we need
 the ЕИК. Fetching it from the Trade Register in bulk is DPA-hostile and slow. We need a resolution
-path that is both lawful and *deterministic* (per the certainty bar, ADR-0001).
+path that is both lawful and *deterministic* (per the certainty bar, ADR-0007).
 
 ## Decision
 
@@ -36,4 +36,4 @@ Resolve the ЕИК from **our own contract data**, not an external registry:
 - The normalizer's over-merge count is the empirically-measurable libel gate (bar 0), proven in Phase 0
   on both the labelled sample and the full 17.7k-winner corpus.
 - The universal-uniqueness assumption in point 2 turned out **not to be absolute** for a class of generic
-  municipal names — see ADR-0003, which adds the single-ЕИК guard and publish tiers on top of this.
+  municipal names — see ADR-0009, which adds the single-ЕИК guard and publish tiers on top of this.

@@ -10,7 +10,7 @@ import { COMPANY_SQL, LEADERBOARD_SQL, OFFICIAL_SQL } from './queries/related-pe
 // Integration test for the свързани-лица SQL. The query layer's unit tests (queries/related-persons.test)
 // use a fake D1 and never run the aggregation; this runs the EXACT exported SQL against a real SQLite
 // built from the production migrations (0000 + 0002) with a deterministic fixture, asserting the private
-// vs ex-officio separation (ADR-0013), the value ordering, and the source_url provenance subquery.
+// vs ex-officio separation (ADR-0019), the value ordering, and the source_url provenance subquery.
 // Mirrors the sqlite3-CLI harness of competition-sql.test.ts (no better-sqlite3 dependency).
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');

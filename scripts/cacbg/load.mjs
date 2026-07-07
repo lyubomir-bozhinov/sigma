@@ -185,7 +185,7 @@ function authOwn(authorityName, instNorms, instNormsLong, locTokens) {
   return 'none';
 }
 // Distinct officials who declared each company (ЕИК). A private interest has ONE owner-declarant; a
-// public body's board is declared by MANY rotating members — the deterministic ex-officio tell (ADR-0013).
+// public body's board is declared by MANY rotating members — the deterministic ex-officio tell (ADR-0019).
 const declarantsByEik = new Map();
 for (const rec of agg.values()) {
   if (rec.scope !== 'self') continue; // ex-officio tell counts SELF declarants of a public board only
@@ -289,10 +289,10 @@ const S = {
   own_institution_name_contains: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='name_contains'").n,
   own_institution_locality: one("SELECT COUNT(*) n FROM interest_links WHERE own_institution='locality'").n,
   published_contract_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published'").v),
-  // headline conflict number = PRIVATE ownership only (ADR-0013); ex-officio state boards excluded
+  // headline conflict number = PRIVATE ownership only (ADR-0019); ex-officio state boards excluded
   published_private_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='private_ownership'").n,
   published_private_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='private_ownership'").v),
-  // family (close-relative) ownership — the previously-discarded half of the map (anonymized surface, ADR-0017)
+  // family (close-relative) ownership — the previously-discarded half of the map (anonymized surface, ADR-0023)
   published_family_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='family_ownership'").n,
   published_family_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='family_ownership'").v),
   family_officials: one("SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE interest_class='family_ownership'").n,

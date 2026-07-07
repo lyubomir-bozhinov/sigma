@@ -1,13 +1,13 @@
-# ADR-0003: Name-uniqueness is not absolute → single-ЕИК guard + publish tiers
+# ADR-0009: Name-uniqueness is not absolute → single-ЕИК guard + publish tiers
 
 - Status: Accepted
 - Date: 2026-07-05
 - Deciders: lb, Claude
-- Related: spec §5; refines [ADR-0002](0002-deterministic-name-to-eik-resolution.md)
+- Related: spec §5; refines [ADR-0008](0008-deterministic-name-to-eik-resolution.md)
 
 ## Context
 
-ADR-0002 assumed a normalized full name maps to exactly one ЕИК (national trade-name uniqueness).
+ADR-0008 assumed a normalized full name maps to exactly one ЕИК (national trade-name uniqueness).
 Phase 0 measured this on the real 17,669-winner corpus and found it **partly false**: 53 normalized
 keys map to >1 real ЕИК. Two causes, neither a normalizer fault (true normalizer over-merges = 0):
 - **Genuinely shared generic names** — e.g. „Водоснабдяване и канализация" ЕООД / „В и К" ООД are

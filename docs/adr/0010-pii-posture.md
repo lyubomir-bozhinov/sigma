@@ -1,4 +1,4 @@
-# ADR-0004: PII posture
+# ADR-0010: PII posture
 
 - Status: Accepted
 - Date: 2026-07-05

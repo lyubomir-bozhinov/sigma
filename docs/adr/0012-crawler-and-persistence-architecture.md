@@ -1,4 +1,4 @@
-# ADR-0006: Crawler + persistence architecture
+# ADR-0012: Crawler + persistence architecture
 
 - Status: Accepted
 - Date: 2026-07-05
@@ -21,7 +21,7 @@ PII contained, and fits SIGMA's existing Cloudflare ETL rather than bolting on n
   present), polite (concurrency ≤6, 403/429/5xx exponential backoff, circuit breaker, jitter), and
   404-tolerant (listed-but-unpublished files are source gaps, not errors). Path-sanitizes every `xmlFile`.
 - `extract.mjs` — no network. Re-parses the raw cache into structured staging, so the parser can evolve
-  without re-fetching. Splits public holdings from internal third-party data (ADR-0004).
+  without re-fetching. Splits public holdings from internal third-party data (ADR-0010).
 
 **Production mapping (rides the existing pipeline, no new store type):**
 - Immutable raw XML → **R2**, keyed by `xml_file`, ETag-tagged (mirrors the local raw cache).

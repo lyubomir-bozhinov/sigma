@@ -1,9 +1,9 @@
-# ADR-0011: A globally non-unique name cannot ride the name-distinctive tier — even with a certain ЕИК
+# ADR-0017: A globally non-unique name cannot ride the name-distinctive tier — even with a certain ЕИК
 
 - Status: Accepted
 - Date: 2026-07-05
 - Deciders: lb, Claude
-- Related: [ADR-0003](0003-name-uniqueness-guard-and-publish-tiers.md), [ADR-0010](0010-free-text-entity-resolution.md); `scripts/cacbg/load.mjs`, `scripts/cacbg/audit.mjs`
+- Related: [ADR-0009](0009-name-uniqueness-guard-and-publish-tiers.md), [ADR-0016](0016-free-text-entity-resolution.md); `scripts/cacbg/load.mjs`, `scripts/cacbg/audit.mjs`
 
 ## Context
 
@@ -16,7 +16,7 @@ does **not** hold for generic municipal utilities (В и К, Водоснабд�
 
 The link's ЕИК was itself *correct*: the official wrote „…, ЕИК 812115210" in the declaration and the
 `declared_eik` cross-check passed. The defect was not the resolution — it was the **tier**. The
-`declared_eik` and `extracted_name` fallbacks (ADR-0010) resolve straight to a specific ЕИК and so
+`declared_eik` and `extracted_name` fallbacks (ADR-0016) resolve straight to a specific ЕИК and so
 bypass the resolver's own single-name-key → single-ЕИК guard (which only fires on the `exact_name_key`
 path). `nameDistinctiveness()` is a string-shape heuristic (does the key carry a legal form + a
 distinguishing token) — it cannot see that the *string* is shared by two different companies. So a

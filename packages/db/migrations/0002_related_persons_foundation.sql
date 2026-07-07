@@ -2,11 +2,11 @@
 -- contract winners. See docs/spec/related-persons-foundation.md and docs/adr/0001..0009.
 --
 -- Publish rule = certainty 1.0: a link is 'published' only when the resolution is deterministic
--- (single normalized key → single valid ЕИК in the winner set, publish_tier A|B; ADR-0003). Ambiguous
+-- (single normalized key → single valid ЕИК in the winner set, publish_tier A|B; ADR-0009). Ambiguous
 -- links stay 'held'. Every link carries full provenance. Third-party people live in a separate,
--- internal-only table (ADR-0004) and are never joined into the published surface.
+-- internal-only table (ADR-0010) and are never joined into the published surface.
 
--- Public officials who filed declarations. No national person id (ЕГН is stripped, ADR-0004), so a
+-- Public officials who filed declarations. No national person id (ЕГН is stripped, ADR-0010), so a
 -- person is keyed by normalized name; the rare namesake collision is documented, not silently merged.
 CREATE TABLE persons (
   id           TEXT PRIMARY KEY,            -- 'person:' || companyNameKey-style normalized full name
@@ -30,7 +30,7 @@ CREATE TABLE declarations (
   UNIQUE (xml_file, control_hash)
 );
 
--- One row per company-bearing declared interest (the declarant's OWN interests only; ADR-0004/0007).
+-- One row per company-bearing declared interest (the declarant's OWN interests only; ADR-0010/0013).
 CREATE TABLE declared_interests (
   id             TEXT PRIMARY KEY,          -- 'di:' || decl id || ':' || ordinal
   declaration_id TEXT NOT NULL REFERENCES declarations(id),
@@ -56,18 +56,18 @@ CREATE TABLE interest_links (
   entity_key        TEXT NOT NULL,          -- the normalized declared name that resolved
   match_method      TEXT NOT NULL DEFAULT 'exact_name_key',
   matcher_version   TEXT NOT NULL,          -- companyNameKey/classify version — reproducibility
-  publish_tier      TEXT NOT NULL,          -- A_seat | B_distinctive | C_hold (ADR-0003/0009)
-  relation          TEXT NOT NULL,          -- owns | manages | owns+manages | related — ADR-0008
-  -- interpretation class for the published surface (ADR-0013/0016). Separates genuine PRIVATE financial
+  publish_tier      TEXT NOT NULL,          -- A_seat | B_distinctive | C_hold (ADR-0009/0015)
+  relation          TEXT NOT NULL,          -- owns | manages | owns+manages | related — ADR-0014
+  -- interpretation class for the published surface (ADR-0019/0022). Separates genuine PRIVATE financial
   -- interest from EX-OFFICIO public-board roles so the headline can't defame appointed civil servants:
   --   private_ownership — self, relation owns/owns+manages (declared a stake): the real conflict signal
   --   family_ownership  — a CLOSE RELATIVE's declared stake (relation related). Official + company + value
-  --                       shown; the relative is anonymized as „свързано лице" (name never stored) — ADR-0017
+  --                       shown; the relative is anonymized as „свързано лице" (name never stored) — ADR-0023
   --   ex_officio_board  — self, relation manages AND ≥2 distinct officials declared the same company
   --                       (a rotating/multi-member board = a public body, not a private interest)
   --   management_role   — self, relation manages, a single declarant (ambiguous: private manager or small board)
   -- Materiality: only CLOSELY-HELD forms (ООД/ЕООД/ЕТ/…) reach ownership classes; listed АД/ЕАД securities
-  -- and management-only roles never become private_ownership/family_ownership (ADR-0016).
+  -- and management-only roles never become private_ownership/family_ownership (ADR-0022).
   interest_class    TEXT NOT NULL DEFAULT 'private_ownership',
   contemporaneous   INTEGER NOT NULL DEFAULT 0,
   own_institution   TEXT NOT NULL DEFAULT 'none', -- exact (deterministic) | locality (heuristic) | none
@@ -103,7 +103,7 @@ CREATE TABLE interest_link_authorities (
 );
 CREATE INDEX idx_ila_authority ON interest_link_authorities(authority_id);
 
--- Contested/corrected links that MUST stay removed across refreshes (ADR-0001 correction path).
+-- Contested/corrected links that MUST stay removed across refreshes (ADR-0007 correction path).
 CREATE TABLE link_suppressions (
   link_key      TEXT PRIMARY KEY,           -- matches interest_links.link_key
   reason        TEXT NOT NULL,
@@ -111,7 +111,7 @@ CREATE TABLE link_suppressions (
   suppressed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Declared THIRD-PARTY people (interests tables 21/22). PII → INTERNAL only (ADR-0004): never joined
+-- Declared THIRD-PARTY people (interests tables 21/22). PII → INTERNAL only (ADR-0010): never joined
 -- into published surfaces; masked on every output format. Feeds only the internal свързани-лица graph.
 CREATE TABLE related_persons_internal (
   id             TEXT PRIMARY KEY,          -- 'rp:' || decl id || ':' || ordinal

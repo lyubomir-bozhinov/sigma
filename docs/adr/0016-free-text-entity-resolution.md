@@ -1,9 +1,9 @@
-# ADR-0010: Free-text entity resolution (declared ЕИК + prose company extraction)
+# ADR-0016: Free-text entity resolution (declared ЕИК + prose company extraction)
 
 - Status: Accepted
 - Date: 2026-07-05
 - Deciders: lb, Claude
-- Related: [ADR-0002](0002-deterministic-name-to-eik-resolution.md), [ADR-0003](0003-name-uniqueness-guard-and-publish-tiers.md); `scripts/cacbg/extract-companies.mjs`
+- Related: [ADR-0008](0008-deterministic-name-to-eik-resolution.md), [ADR-0009](0009-name-uniqueness-guard-and-publish-tiers.md); `scripts/cacbg/extract-companies.mjs`
 
 ## Context
 
@@ -22,9 +22,9 @@ Extend the resolver with two deterministic fallbacks, tried after the clean-name
    (name-key substring or an extracted candidate) — this cross-check blocks a typo'd ЕИК from pointing at
    the wrong company. This is the *strongest* signal: the official stated the id directly.
 2. **`extracted_name`** — pull „NAME"-ФОРМА company substrings from the prose; a candidate is accepted
-   only if it normalizes (same companyNameKey, ADR-0002) to **exactly one** winner ЕИК.
+   only if it normalizes (same companyNameKey, ADR-0008) to **exactly one** winner ЕИК.
 
-Both feed the *same* single-key + single-ЕИК guard and publish tiers (ADR-0003) — they only change *which
+Both feed the *same* single-key + single-ЕИК guard and publish tiers (ADR-0009) — they only change *which
 string* is resolved, never the certainty rule. Each link records its `match_method` for provenance, and
 the tier is computed on the resolved winner's name, not the prose.
 

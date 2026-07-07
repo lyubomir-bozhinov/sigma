@@ -8,7 +8,7 @@ import { seoMeta } from '../lib/meta';
 
 // Public methodology + corrections/appeal page for свързани лица (spec §9 — a hard libel-defence requirement).
 // Static content: it names no individual, states exactly how a link is derived and how to contest it, and is
-// the credibility anchor — so it IS indexed, unlike the individual-naming conflict routes (ADR-0014).
+// the credibility anchor — so it IS indexed, unlike the individual-naming conflict routes (ADR-0020).
 export function meta({ matches }: Route.MetaArgs) {
   return seoMeta({
     matches,

@@ -1,4 +1,4 @@
-# ADR-0007: Two declaration templates — shares + participation + management + related persons
+# ADR-0013: Two declaration templates — shares + participation + management + related persons
 
 - Status: Accepted
 - Date: 2026-07-05
@@ -29,7 +29,7 @@ The parser detects the root element and handles both templates, emitting a unifi
 - `sole_trader` (interests tables 17/20) — ЕТ activity.
 
 Third-party people (interests tables 21/22 — conflict-contracts and declared related persons) go to a
-**separate `relatedPersons[]`**, INTERNAL-only per ADR-0004. Column semantics are learned from each
+**separate `relatedPersons[]`**, INTERNAL-only per ADR-0010. Column semantics are learned from each
 table's header `@_Description`, with fixed fallbacks per template — robust to column reordering.
 
 ## Consequences
@@ -37,5 +37,5 @@ table's header `@_Description`, with fixed fallbacks per template — robust to 
 - The matcher gains the **management/control** dimension: officials who *run* a winner, not only own it —
   often the more egregious conflict.
 - The свързани-лица graph (issue #60 territory) gets its declared-related-persons feed, held internal.
-- Both templates share one deterministic name→ЕИК resolver (ADR-0002/0003); no per-template match logic.
+- Both templates share one deterministic name→ЕИК resolver (ADR-0008/0009); no per-template match logic.
 - Parser tests cover both templates plus the PII split (related names never enter `interests`).
