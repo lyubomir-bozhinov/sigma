@@ -8,8 +8,9 @@ export const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 export const TRANSCRIBE_LANGUAGE = 'bg';
 
 // Server body cap (~3 MB): must fit a full 60s clip — base64 inflates the audio ~1.33×, so a 60s
-// webm/opus clip is ~1–2.5 MB here. Bounds size, not duration; a tighter cap rejects legit 60s recordings,
-// so the account-wide breaker (deferred launch gate) is the real DoW control, not this cap.
+// webm/opus clip is ~1–2.5 MB here. Bounds size, not duration; a tighter cap rejects legit 60s recordings.
+// It is NOT the denial-of-wallet control — that is the account-wide circuit-breaker, a hard launch-gate
+// item (spec §8) required before ASSISTANT_ENABLED=true in prod.
 export const MAX_TRANSCRIBE_BODY_BYTES = 3 * 1024 * 1024;
 
 /** Transcript length cap — a ~60s clip is short; bounds a pathological model response. */
@@ -37,6 +38,40 @@ export function isAllowedAudioMime(mime: string): boolean {
  */
 export function sanitizeTranscript(text: string, maxLen: number = MAX_TRANSCRIPT_CHARS): string {
   return text.replace(UNSAFE_CHARS, '').replace(/\s+/g, ' ').trim().slice(0, maxLen);
+}
+
+/**
+ * Read the body as text, aborting the stream once it exceeds maxBytes — so an absent or understated
+ * Content-Length can't force buffering the whole payload into the isolate. Returns null when over the cap.
+ */
+export async function readCappedText(request: Request, maxBytes: number): Promise<string | null> {
+  const body = request.body;
+  if (!body) return '';
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const buf = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buf.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new TextDecoder().decode(buf);
 }
 
 export type TranscribeBody =

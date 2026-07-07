@@ -384,6 +384,11 @@ Guard-овете пътуват с инструментите, които защ
 
 - Turnstile + Rate Limiting binding + глобалният circuit-breaker. Staging може да върви без тях;
   публичното пускане не може.
+- **Гласовият платен път зад глобалния circuit-breaker.** `/assistant/transcribe` вика платен Whisper
+  (Workers AI) и BgGPT ключа **директно, без AI Gateway**, така че per-IP лимитът сам не спира
+  разпределен denial-of-wallet (IPv6 /64 / botnet ротация). Преди `ASSISTANT_ENABLED=true` в прод платеното
+  извикване ТРЯБВА да мине през акаунт-широк брояч (`BgGptCircuitBreaker` или отделен Whisper-RPM DO) —
+  hard gate, не код-коментар.
 - **WCAG 2.2 AA за асистентските повърхности** (виж [Достъпност](#достъпност-wcag-22-aa)):
   таблици с данни за всеки графичен блок, фокус-модел на dock-а/sheet-а, live-region за
   stream-натите токени, reduced-motion, минимални размери на целите.

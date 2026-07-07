@@ -1,8 +1,7 @@
 // Resource route: the voice-transcription endpoint. The dock POSTs a short base64 audio clip; we
 // transcribe it to Bulgarian text and hand it back EDITABLE (never auto-sent). Two server-side Whisper
 // providers are tried in order for availability:
-//   1. BgGPT/INSAIT Whisper (primary) — free via the partner key; audio goes to BgGPT (a partner/internal
-//      provider, accepted).
+//   1. BgGPT/INSAIT Whisper (primary) — free via the BgGPT key; audio goes to BgGPT (internal, accepted).
 //   2. Cloudflare Workers AI Whisper (fallback) — no key, on-platform, called DIRECTLY with no gateway so
 //      the fallback audio is never written to gateway logs.
 // Which is primary is config-driven via TRANSCRIBE_PRIMARY (`bggpt` default, or `workers-ai`), so ops can
@@ -19,6 +18,7 @@ import {
   TRANSCRIBE_LANGUAGE,
   WHISPER_MODEL,
   parseTranscribeBody,
+  readCappedText,
   sanitizeTranscript,
 } from '../lib/assistant/transcribe';
 
@@ -94,21 +94,21 @@ export async function action({ request, context }: Route.ActionArgs) {
   const turnstile = await turnstileRejection(request, env);
   if (turnstile) return Response.json({ error: turnstile.error }, { status: turnstile.status });
 
-  // Reject an over-cap body by its DECLARED Content-Length before buffering; the measured check is the
-  // fallback for an absent/understated header. Duration is client-only — this byte cap is the real bound.
+  // Fast-reject an honestly-declared over-cap body, then a CAPPED STREAMING read is the real bound: it
+  // aborts past the cap, so an absent/understated Content-Length can't force buffering the whole body.
   const declaredLength = Number(request.headers.get('Content-Length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_TRANSCRIBE_BODY_BYTES) {
     return Response.json({ error: 'аудиото е твърде голямо' }, { status: 413 });
   }
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).length > MAX_TRANSCRIBE_BODY_BYTES) {
+  const raw = await readCappedText(request, MAX_TRANSCRIBE_BODY_BYTES);
+  if (raw === null) {
     return Response.json({ error: 'аудиото е твърде голямо' }, { status: 413 });
   }
 
   const body = parseTranscribeBody(raw);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
 
-  // Providers: BgGPT (partner key) primary, Workers AI (on-platform binding) fallback. At least one must
+  // Providers: BgGPT (via ASSISTANT_API_KEY) primary, Workers AI (on-platform binding) fallback. At least one must
   // be provisioned. The BgGPT key + STT endpoint/model are read off the env (defaults below).
   const cfg = env as unknown as {
     ASSISTANT_API_KEY?: string;

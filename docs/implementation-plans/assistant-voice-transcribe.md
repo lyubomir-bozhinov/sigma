@@ -181,9 +181,11 @@ CSS cascade, conventions) confirmed the security-critical surface clean (key nev
 solid, sanitization complete, no SQL/malicious code) and surfaced 12 findings — **11 fixed**: the mic leak,
 the empty-text fallback-bypass, the hung-fetch timeout (+ removed dead `cancel`), the error clobber, the
 tick re-render, the transcript double-space, `canSend` DRY, `micStatusText` SRP, the `TODO`/comment/test-loop
-conventions, plus the auto-stop suspended-context bug. **Deferred (#8):** an **account-wide
-denial-of-wallet circuit-breaker** for the paid endpoint — a launch-gate item (like Turnstile on voice),
-not this branch.
+conventions, plus the auto-stop suspended-context bug. **PR review (#66)** added a capped streaming body
+read (an upload-DoS: the old declared-Content-Length check buffered the whole body before the cap). **#8 —
+the account-wide denial-of-wallet circuit-breaker** is now a **hard launch-gate item** in spec §8 (required
+before `ASSISTANT_ENABLED=true`), not a deferred code comment — the paid path bypasses the gateway, so the
+per-IP cap alone can't stop a distributed DoW.
 
 ## 12. Deferred
 
