@@ -48,8 +48,9 @@ jobs:
       # keeps each preview's (and the dev env's) dedup keys distinct, so no preview can cross-serve reports.
       SIGMA_BUILD_ID: ${{ github.event.pull_request.head.sha }}
       # A preview exists to exercise the assistant, so opt it IN over the committed fail-dark "false"
-      # (wrangler-render stamps ASSISTANT_ENABLED). TURNSTILE_SECRET stays unset here, so the edge gate is a
-      # no-op — a preview has no bot-check widget.
+      # (wrangler-render stamps ASSISTANT_ENABLED). TURNSTILE_SECRET is provisioned per-preview in a
+      # dedicated step below (like ASSISTANT_API_KEY) from the 'preview' Environment, so the bot gate is
+      # live on previews when that secret is set; if it is unset the gate stays a no-op (fail-open).
       SIGMA_ASSISTANT_ENABLED: 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -130,6 +131,22 @@ jobs:
             exit 0
           fi
           printf '%s' "${ASSISTANT_API_KEY}" | pnpm --filter @sigma/web exec wrangler secret put ASSISTANT_API_KEY --name "$SIGMA_WEB_NAME"
+
+      # Same per-script secret story as ASSISTANT_API_KEY above: a freshly-deployed sigma-pr-<n> worker
+      # starts with NO secrets, so the Turnstile edge gate would silently be a no-op on every new/redeployed
+      # preview unless we attach the widget secret here. The PUBLIC site key ships in wrangler.jsonc vars;
+      # this is its secret half. Runs AFTER the deploy (the worker must exist before a secret can be put on
+      # it) and fails OPEN: if TURNSTILE_SECRET is unset on the 'preview' Environment, skip it — the gate
+      # degrades to a no-op rather than failing an otherwise-good preview deploy.
+      - name: Provision Turnstile secret (TURNSTILE_SECRET) on the preview worker
+        env:
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
+        run: |
+          if [ -z "${TURNSTILE_SECRET}" ]; then
+            echo "::notice::TURNSTILE_SECRET is not set on the 'preview' Environment — the assistant bot gate is a no-op in this preview (see docs/dev-environments.md)."
+            exit 0
+          fi
+          printf '%s' "${TURNSTILE_SECRET}" | pnpm --filter @sigma/web exec wrangler secret put TURNSTILE_SECRET --name "$SIGMA_WEB_NAME"
 
       - name: Comment preview URL on PR
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
