@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-07-06
 - Deciders: lb, Claude
-- Related: [ADR-0007](0007-scope-and-certainty-bar.md), [ADR-0010](0010-pii-posture.md), [ADR-0019](0019-private-interest-vs-ex-officio-classification.md); `packages/db/src/queries/related-persons.ts`, `apps/web/app/routes/conflicts*.tsx`, `docs/implementation-plans/related-persons-data-layer-delivery.md` (§E)
+- Related: [ADR-0007](0007-scope-and-certainty-bar.md), [ADR-0010](0010-pii-posture.md), [ADR-0019](0019-private-interest-vs-ex-officio-classification.md); `packages/db/src/queries/related-persons.ts`, `apps/web/app/routes/conflicts*.tsx`
 
 ## Context
 

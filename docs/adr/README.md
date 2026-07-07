@@ -32,5 +32,4 @@
 | [0022](0022-public-surface-private-ownership-only.md) | Публичната повърхност показва само деклариран частен дял (маха служебния списък; „длъжностно лице") | Прието |
 | [0023](0023-anonymized-family-ownership-surface.md) | Анонимизирана повърхност за дял на свързано лице: свързаното лице неназовано, материалност = затворена форма, подредба по силата на връзката | Прието |
 
-Свързани проектни документи: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
-[implementation-plans/related-persons-data-layer-delivery.md](../implementation-plans/related-persons-data-layer-delivery.md).
+Свързан проектен документ: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md).
