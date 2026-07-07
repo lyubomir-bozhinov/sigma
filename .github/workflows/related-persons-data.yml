@@ -104,6 +104,38 @@ jobs:
       - name: Extract declarations → staging (dedup by ControlHash)
         run: node scripts/cacbg/extract.mjs
 
+      # Provision the EOP winners the resolver matches against. load.mjs reads bidders + contracts/tenders/
+      # authorities from a local work DB (data/work/backfill.sqlite); CI has none. Export EXACTLY those four
+      # tables from the target D1 into a fresh work DB. This is READ-ONLY on the D1 and cannot mutate it;
+      # the only writer to the D1 in this pipeline is the ship step, whose table list is свързани-лица only
+      # (bidders/contracts/tenders/authorities are never written) — so the live EOP corpus is never touched.
+      # Parity gate: exported row counts must equal the source counts, else the export was partial → fail
+      # BEFORE the resolver runs, rather than resolve/ship against an incomplete winner set.
+      - name: Hydrate EOP winners into the work DB (read-only export from D1)
+        run: |
+          set -euo pipefail
+          node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
+          work="$GITHUB_WORKSPACE/data/work"
+          mkdir -p "$work"
+          rm -f "$work/eop.sql" "$work/backfill.sqlite"
+          pnpm --filter @sigma/web exec wrangler d1 export "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote -y \
+            --table bidders --table contracts --table tenders --table authorities \
+            --output "$work/eop.sql"
+          sqlite3 "$work/backfill.sqlite" < "$work/eop.sql"
+          for t in bidders contracts tenders authorities; do
+            local_n=$(sqlite3 "$work/backfill.sqlite" "SELECT COUNT(*) FROM $t;")
+            remote_json=$(pnpm --filter @sigma/web exec wrangler d1 execute "$SIGMA_D1_NAME" \
+              --config wrangler.deploy.jsonc --remote --json \
+              --command "SELECT COUNT(*) AS n FROM $t;")
+            remote_n=$(printf '%s' "$remote_json" | python3 -c "import json,re,sys; m=re.search(r'\[.*\]', sys.stdin.read(), re.S); print(json.loads(m.group(0))[0]['results'][0]['n'])")
+            echo "  $t: local=$local_n remote=$remote_n"
+            if [ "$local_n" != "$remote_n" ]; then
+              echo "::error::EOP export incomplete for $t (local=$local_n remote=$remote_n) — refusing to resolve/ship."
+              exit 1
+            fi
+          done
+
       - name: Resolve → build domain in a work sqlite (libel gate must pass)
         run: node --import ./scripts/cacbg/register-ts.mjs scripts/cacbg/load.mjs
 
