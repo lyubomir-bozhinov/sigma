@@ -56,6 +56,7 @@ function run() {
           folder, xmlFile: file, year: d.year, template: d.templateType,
           category: c.category ?? '', institution: c.institution ?? '', person, position: c.position ?? d.position ?? '',
           entity: it.entity, kind: it.kind, detail: it.detail, timing: it.timing, seat: it.seat ?? '',
+          holderRelation: it.holderRelation ?? 'self',
           controlHash: d.controlHash,
         }) + '\n');
         stats.holdings++;

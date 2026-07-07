@@ -63,7 +63,7 @@ test('parseList flattens the hierarchy and handles multiple persons/positions', 
 test('asset decl: extracts self SHARES, skips empty template rows', () => {
   const d = parseDeclaration(assetDecl({ rows: selfRow + emptyRow }));
   assert.equal(d.templateType, 'assets');
-  assert.deepEqual(d.interests, [{ entity: '"ТЕСТ АГРО" ЕООД', kind: 'shares', detail: 'София', timing: 'annual', seat: 'София' }]);
+  assert.deepEqual(d.interests, [{ entity: '"ТЕСТ АГРО" ЕООД', kind: 'shares', detail: 'София', timing: 'annual', seat: 'София', holderRelation: 'self' }]);
   assert.equal(d.familyHoldingCount, 0);
 });
 
@@ -71,11 +71,38 @@ test('asset year comes from <Year>, not the folder (off-by-one guard)', () => {
   assert.equal(parseDeclaration(assetDecl({ year: '2023' })).year, '2023');
 });
 
-test('family holdings counted, names never retained', () => {
+test('family holdings CAPTURED as related interests, holder names never retained', () => {
   const d = parseDeclaration(assetDecl({ rows: selfRow + familyRow }));
   assert.equal(d.familyHoldingCount, 1);
+  assert.equal(d.interests.length, 2, 'family holding now captured, not discarded');
+  const self = d.interests.find((i) => i.holderRelation === 'self');
+  const fam = d.interests.find((i) => i.holderRelation === 'related');
+  assert.equal(self.entity, '"ТЕСТ АГРО" ЕООД');
+  assert.equal(fam.entity, '"ФАМИЛНА" ЕООД'); // the company is captured…
+  assert.equal(fam.kind, 'shares');
+  assert.ok(!JSON.stringify(d).includes('Мария'), 'family holder name leaked'); // …but the relative's NAME never is
+});
+
+// АД securities table: issuer is in the „Емитент" column (≈col 6), NOT the ООД company column — a
+// declarant's blue-chip share holding must not be mis-read as closely-held ownership.
+const secDecl = `<?xml version="1.0"?>
+<PublicPerson>
+  <Personal><Name>Иван Петров Тестов</Name><EGN></EGN></Personal>
+  <DeclarationData><Year>2023</Year><ControlHash>AB12</ControlHash></DeclarationData>
+  <Tables><Table Num="9" Description="Ценни книги, поименни акции в акционерни дружества">
+    <Row>
+      <Cell Num="1" Description="Ном. по ред">1</Cell>
+      <Cell Num="2" Description="Вид на ценните книги">акции</Cell>
+      <Cell Num="3" Description="Брой на ценните книги">25</Cell>
+      <Cell Num="4" Description="Ценни книжа"></Cell>
+      <Cell Num="6" Description="Емитент">ТРЕЙС ГРУП ХОЛД АД</Cell>
+      <Cell Num="8" Description="Име: собствено, бащино и фамилно">Иван Петров Тестов</Cell></Row></Table></Tables>
+</PublicPerson>`;
+
+test('asset decl: АД securities read from Емитент (col 6), tagged kind=securities', () => {
+  const d = parseDeclaration(secDecl);
   assert.equal(d.interests.length, 1);
-  assert.ok(!JSON.stringify(d).includes('Мария'), 'family name leaked');
+  assert.deepEqual(d.interests[0], { entity: 'ТРЕЙС ГРУП ХОЛД АД', kind: 'securities', detail: '', timing: 'annual', seat: '', holderRelation: 'self' });
 });
 
 test('address never extracted', () => {

@@ -12,7 +12,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken } from './classify.mjs';
+import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken, closelyHeldForm } from './classify.mjs';
 import { companyCandidates, declaredEiks } from './extract-companies.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -104,9 +104,12 @@ const insDecl = db.prepare('INSERT OR IGNORE INTO declarations(id,person_id,xml_
 const insDI = db.prepare('INSERT INTO declared_interests(id,declaration_id,entity_raw,entity_key,kind,detail,timing,seat) VALUES(?,?,?,?,?,?,?,?)');
 const insRP = db.prepare('INSERT INTO related_persons_internal(id,declaration_id,related_name,related_kind,info,timing) VALUES(?,?,?,?,?,?)');
 const personId = (name) => `person:${companyNameKey(name)}`;
+// Financial-interest kinds (a genuine stake), as opposed to management-only or listed securities.
+const OWN_KINDS = new Set(['shares', 'participation', 'sole_trader']);
 const agg = new Map();
-const ownMaxByPerson = new Map(); // pid → latest year the person filed ANY shares/participation holding (E11)
-let diN = 0, noMatch = 0, quarantined = 0;
+// `${pid}|${scope}` → latest year that scope filed a MATERIAL ownership holding (E11 divestment horizon).
+const ownMaxByScope = new Map();
+let diN = 0, noMatch = 0, quarantined = 0, immaterialFamily = 0;
 
 db.exec('BEGIN');
 for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
@@ -116,25 +119,38 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
   insDecl.run(did, pid, h.xmlFile, h.controlHash ?? null, h.folder, h.year ?? null, h.template, h.category ?? '', h.institution ?? '', h.position ?? '', `https://register.cacbg.bg/${h.folder}/${h.xmlFile}`);
   const key = companyNameKey(h.entity);
   insDI.run(`di:${did}:${diN++}`, did, h.entity, key, h.kind, h.detail ?? '', h.timing ?? 'annual', h.seat ?? '');
+  // scope = whose stake this is. holderRelation='related' ⇒ a CLOSE RELATIVE's stake declared by the
+  // official (anonymized downstream — the relative's name never enters staging). Everything else is the
+  // official's own. Materiality gate = a real financial-interest kind in a CLOSELY-HELD company; listed
+  // securities (АД/ЕАД) and management-only roles are not ownership (the „11 listed shares → €88M" trap).
+  const scope = h.holderRelation === 'related' ? 'family' : 'self';
+  const material = OWN_KINDS.has(h.kind) && closelyHeldForm(h.entity);
+  // A family row is ONLY meaningful as an ownership signal — a relative's management role or listed
+  // securities is not a publishable interest — so immaterial family rows form no link (still in declared_interests).
+  if (scope === 'family' && !material) { immaterialFamily++; continue; }
   // resolve (clean name → declared ЕИК → extracted-from-prose name)
   const res = resolveEntity(h.entity);
   if (!res || res.ambiguous) { if (res?.ambiguous) quarantined++; else noMatch++; continue; }
   const eik = res.eik;
   const bidder = bidderByEik.get(eik);
-  const gid = `${pid}|${eik}`;
+  const gid = `${pid}|${eik}|${scope}`; // self and family stakes in the same company are distinct claims
   let rec = agg.get(gid);
-  if (!rec) rec = agg.set(gid, { pid, eik, bidder, person: h.person, key: companyNameKey(bidder.name), kinds: new Set(), declYears: new Set(), ownYears: new Set(), seats: new Set(), institutions: new Set(), method: res.method }).get(gid);
+  if (!rec) rec = agg.set(gid, { pid, eik, scope, bidder, person: h.person, key: companyNameKey(bidder.name), kinds: new Set(), hasMaterialOwn: false, declYears: new Set(), ownYears: new Set(), seats: new Set(), institutions: new Set(), method: res.method }).get(gid);
   if (METHOD_RANK[res.method] > METHOD_RANK[rec.method]) rec.method = res.method; // strongest evidence wins
   rec.kinds.add(h.kind);
   const y = yr(h.year); if (Number.isFinite(y)) rec.declYears.add(y);
-  // Ownership-declaration years, per (person,company) AND per person. A later ownership filing that omits
-  // a company = divested → the link is withdrawn (§8/E11), so a stale link never asserts a CURRENT stake.
-  // Scoped to shares/participation only: management filing cadence is unverified (spec §6), so board/manager
-  // links are dated but not divestment-expired. Blind spot (documented): a divest-to-ZERO filing produces no
-  // holdings row, so it can't be seen here — the temporal dating on the surface is the residual mitigation.
-  if ((h.kind === 'shares' || h.kind === 'participation') && Number.isFinite(y)) {
-    rec.ownYears.add(y);
-    ownMaxByPerson.set(pid, Math.max(ownMaxByPerson.get(pid) ?? y, y));
+  // Material ownership years, per (person,company,scope) AND per (person,scope). A later ownership filing
+  // that omits a company = divested → the link is withdrawn (§8/E11), so a stale link never asserts a
+  // CURRENT stake. Material-ownership only: management filing cadence is unverified (spec §6). Blind spot
+  // (documented): a divest-to-ZERO filing produces no holdings row, so the temporal dating is the residual
+  // mitigation.
+  if (material) {
+    rec.hasMaterialOwn = true;
+    if (Number.isFinite(y)) {
+      rec.ownYears.add(y);
+      const sk = `${pid}|${scope}`;
+      ownMaxByScope.set(sk, Math.max(ownMaxByScope.get(sk) ?? y, y));
+    }
   }
   if (h.seat) rec.seats.add(h.seat);
   if (h.institution) rec.institutions.add(h.institution);
@@ -172,18 +188,24 @@ function authOwn(authorityName, instNorms, instNormsLong, locTokens) {
 // public body's board is declared by MANY rotating members — the deterministic ex-officio tell (ADR-0013).
 const declarantsByEik = new Map();
 for (const rec of agg.values()) {
+  if (rec.scope !== 'self') continue; // ex-officio tell counts SELF declarants of a public board only
   let s = declarantsByEik.get(rec.eik);
   if (!s) declarantsByEik.set(rec.eik, (s = new Set()));
   s.add(rec.pid);
 }
 // Interpretation class for the published surface — separates genuine private financial interest from
 // ex-officio public-board roles so the headline never treats an appointed civil servant as a conflict.
-function interestClass(relation, eik) {
+// A family-scope link is its own class (relative's declared stake, official anonymized as свързано лице).
+function interestClass(rec, relation) {
+  if (rec.scope === 'family') return 'family_ownership';
   if (relation === 'owns' || relation === 'owns+manages') return 'private_ownership';
-  return (declarantsByEik.get(eik)?.size ?? 1) > 1 ? 'ex_officio_board' : 'management_role';
+  return (declarantsByEik.get(rec.eik)?.size ?? 1) > 1 ? 'ex_officio_board' : 'management_role';
 }
 db.exec('BEGIN');
 for (const rec of agg.values()) {
+  // Immaterial self record (listed securities / АД-form, no management role): recorded in
+  // declared_interests for census, but it is not a publishable financial interest — form no link.
+  if (rec.scope === 'self' && !rec.hasMaterialOwn && !rec.kinds.has('management')) continue;
   const declYears = [...rec.declYears];
   const instNorms = [...rec.institutions].map(norm);
   const instNormsLong = instNorms.filter((i) => i.length >= 12);
@@ -211,17 +233,24 @@ for (const rec of agg.values()) {
   // link-level own_institution = strongest per-authority verdict (exact > name_contains > locality > none)
   let ownInst = 'none';
   for (const [, a] of perAuth) { a.own = authOwn(a.name, instNorms, instNormsLong, locTokens); if (OWN_RANK[a.own] > OWN_RANK[ownInst]) ownInst = a.own; }
-  const relation = rec.kinds.has('management') ? (rec.kinds.has('shares') || rec.kinds.has('participation') ? 'owns+manages' : 'manages') : 'owns';
-  const iClass = interestClass(relation, rec.eik);
-  const linkKey = `${rec.pid}|${rec.eik}`;
-  // E11 divestment: an ownership link whose company is absent from the person's LATEST ownership filing has
-  // ended → 'withdrawn' (excluded from the published surface, like held/suppressed). Only owns/owns+manages,
-  // compared against ownership-declaration years only (see the holdings loop for why management is exempt).
+  // Family scope = the official's declaration discloses a related person's stake (relation 'related').
+  // Self scope: owns / manages / owns+manages from material ownership + management roles.
+  const relation = rec.scope === 'family'
+    ? 'related'
+    : rec.kinds.has('management')
+      ? (rec.hasMaterialOwn ? 'owns+manages' : 'manages')
+      : 'owns'; // hasMaterialOwn is guaranteed here (immaterial self skipped above)
+  const iClass = interestClass(rec, relation);
+  // Self link_key stays `pid|eik` (preserves human-curated suppression keys); family is a distinct claim.
+  const linkKey = rec.scope === 'family' ? `${rec.pid}|${rec.eik}|family` : `${rec.pid}|${rec.eik}`;
+  // E11 divestment: an ownership link whose company is absent from the scope's LATEST ownership filing has
+  // ended → 'withdrawn' (excluded from the published surface, like held/suppressed). Ownership relations
+  // (self owns/owns+manages, family related), compared against material-ownership years for that scope.
   const recOwnMax = rec.ownYears.size ? Math.max(...rec.ownYears) : null;
-  const personOwnMax = ownMaxByPerson.get(rec.pid) ?? null;
+  const scopeOwnMax = ownMaxByScope.get(`${rec.pid}|${rec.scope}`) ?? null;
   const divested =
-    (relation === 'owns' || relation === 'owns+manages') &&
-    recOwnMax != null && personOwnMax != null && personOwnMax > recOwnMax;
+    (relation === 'owns' || relation === 'owns+manages' || relation === 'related') &&
+    recOwnMax != null && scopeOwnMax != null && scopeOwnMax > recOwnMax;
   const status = suppressed.has(linkKey)
     ? 'suppressed'
     : divested
@@ -263,10 +292,16 @@ const S = {
   // headline conflict number = PRIVATE ownership only (ADR-0013); ex-officio state boards excluded
   published_private_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='private_ownership'").n,
   published_private_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='private_ownership'").v),
+  // family (close-relative) ownership — the previously-discarded half of the map (anonymized surface, ADR-0017)
+  published_family_ownership_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND interest_class='family_ownership'").n,
+  published_family_ownership_value_eur: Math.round(one("SELECT COALESCE(SUM(contract_value_eur),0) v FROM interest_links WHERE status='published' AND interest_class='family_ownership'").v),
+  family_officials: one("SELECT COUNT(DISTINCT person_id) n FROM interest_links WHERE interest_class='family_ownership'").n,
   published_by_interest_class: Object.fromEntries(q("SELECT interest_class, COUNT(*) n, ROUND(COALESCE(SUM(contract_value_eur),0)) v FROM interest_links WHERE status='published' GROUP BY interest_class").map((r) => [r.interest_class, { links: r.n, value_eur: r.v }])),
   published_own_institution_value_eur: Math.round(one("SELECT COALESCE(SUM(value_eur),0) v FROM interest_link_authorities ila JOIN interest_links il ON il.link_key=ila.link_key WHERE il.status='published' AND ila.own='exact'").v),
+  // strongest signal: material ownership (self OR family) whose company sold to the official's OWN institution
+  published_own_institution_links: one("SELECT COUNT(*) n FROM interest_links WHERE status='published' AND own_institution='exact' AND interest_class IN ('private_ownership','family_ownership')").n,
   by_match_method: Object.fromEntries(q('SELECT match_method, COUNT(*) n FROM interest_links GROUP BY match_method').map((r) => [r.match_method, r.n])),
-  trueOverMerge_LIBEL_GATE: trueOverMerges, noMatch, quarantined,
+  trueOverMerge_LIBEL_GATE: trueOverMerges, noMatch, quarantined, immaterialFamilySkipped: immaterialFamily,
 };
 console.log(JSON.stringify(S, null, 2));
 

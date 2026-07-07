@@ -43,7 +43,7 @@ before(() => {
     INSERT INTO bidders VALUES ('eik:222222229','ГЕНЕРИК ООД','222222229',1,'Пловдив');
     INSERT INTO bidders VALUES ('eik:333333338','Генерик ООД','333333338',1,'Варна');
     -- generic single-ЕИК winner with a seat → tier A when declared seat matches, tier C when not
-    INSERT INTO bidders VALUES ('eik:444444447','СИЙ АД','444444447',1,'Бургас');
+    INSERT INTO bidders VALUES ('eik:444444447','СИЙ ЕООД','444444447',1,'Бургас');
     INSERT INTO contracts VALUES ('c1','t1','eik:111111119','2023-05-01',100000); -- ДИСТИНКТ ← ТЕСТ ВЕДОМСТВО
     INSERT INTO contracts VALUES ('c3','t3','eik:111111119','2024-06-01',25000);  -- ДИСТИНКТ ← blob (own via split)
     INSERT INTO contracts VALUES ('c2','t2','eik:444444447','2022-03-01',50000);
@@ -59,6 +59,14 @@ before(() => {
     INSERT INTO bidders VALUES ('eik:777777773','ДИВЕСТ 2 ЕООД','777777773',1,'София');
     INSERT INTO contracts VALUES ('c7','t1','eik:666666665','2019-04-01',300000);
     INSERT INTO contracts VALUES ('c8','t1','eik:777777773','2022-04-01',400000);
+    -- FAMILY case: a close relative of Кмет owns ЕВРОСТРОЙ 21 ЕООД, which won from Кмет's OWN institution (ОБЩИНА ТЕСТ)
+    INSERT INTO authorities VALUES ('auth:4','ОБЩИНА ТЕСТ');
+    INSERT INTO tenders VALUES ('t4','auth:4');
+    INSERT INTO bidders VALUES ('eik:888888884','ЕВРОСТРОЙ 21 ЕООД','888888884',1,'София');
+    INSERT INTO contracts VALUES ('c9','t4','eik:888888884','2023-06-01',250000);
+    -- SECURITIES case: a self holding of LISTED joint-stock shares — must NOT become an ownership link
+    INSERT INTO bidders VALUES ('eik:999999998','ЛИСТЕД ТЕСТ АД','999999998',1,'София');
+    INSERT INTO contracts VALUES ('c10','t1','eik:999999998','2023-06-01',60000);
   `);
   db.close();
 
@@ -68,9 +76,9 @@ before(() => {
     // Мария declares the collision name → 2 ЕИК → quarantined, NO link
     { folder: '2024', xmlFile: 'B.xml', year: '2023', template: 'assets', category: '', institution: 'X', person: 'Мария Иванова', position: '', entity: '"ГЕНЕРИК" ООД', kind: 'shares', detail: '50%', timing: 'annual', seat: 'Пловдив', controlHash: 'H2' },
     // Петър owns the generic winner AND declares matching seat Бургас → tier A (seat-confirmed) published
-    { folder: '2024', xmlFile: 'C.xml', year: '2023', template: 'assets', category: '', institution: 'Y', person: 'Петър Николов', position: '', entity: 'СИЙ АД', kind: 'shares', detail: '10%', timing: 'annual', seat: 'Бургас', controlHash: 'H3' },
+    { folder: '2024', xmlFile: 'C.xml', year: '2023', template: 'assets', category: '', institution: 'Y', person: 'Петър Николов', position: '', entity: 'СИЙ ЕООД', kind: 'shares', detail: '10%', timing: 'annual', seat: 'Бургас', controlHash: 'H3' },
     // Георги owns the same generic winner but NO seat → tier C held
-    { folder: '2024', xmlFile: 'D.xml', year: '2023', template: 'assets', category: '', institution: 'Z', person: 'Георги Стоянов', position: '', entity: 'СИЙ АД', kind: 'shares', detail: '5%', timing: 'annual', seat: '', controlHash: 'H4' },
+    { folder: '2024', xmlFile: 'D.xml', year: '2023', template: 'assets', category: '', institution: 'Z', person: 'Георги Стоянов', position: '', entity: 'СИЙ ЕООД', kind: 'shares', detail: '5%', timing: 'annual', seat: '', controlHash: 'H4' },
     // Стефан writes a CERTAIN ЕИК (222222229) behind a COLLIDING name, no seat → declared_eik resolves the
     // right company, but the name maps to 2 ЕИК → cannot be name-distinctive → HELD (the fix under test)
     { folder: '2024', xmlFile: 'E.xml', year: '2023', template: 'assets', category: '', institution: 'W', person: 'Стефан Колев', position: '', entity: '"ГЕНЕРИК" ООД, ЕИК 222222229', kind: 'shares', detail: '20%', timing: 'annual', seat: '', controlHash: 'H5' },
@@ -83,6 +91,11 @@ before(() => {
     // ДИВЕСТ 1 divested (withdrawn/E11); ДИВЕСТ 2 still current (published).
     { folder: '2020', xmlFile: 'I.xml', year: '2019', template: 'assets', category: '', institution: 'T', person: 'Николай Дивестов', position: '', entity: 'ДИВЕСТ 1 ЕООД', kind: 'shares', detail: '40%', timing: 'annual', seat: '', controlHash: 'H9' },
     { folder: '2023', xmlFile: 'J.xml', year: '2022', template: 'assets', category: '', institution: 'T', person: 'Николай Дивестов', position: '', entity: 'ДИВЕСТ 2 ЕООД', kind: 'shares', detail: '60%', timing: 'annual', seat: '', controlHash: 'H10' },
+    // FAMILY: Кмет declares a CLOSE RELATIVE's stake (holderRelation:'related') in ЕВРОСТРОЙ 21 ЕООД, a winner that
+    // sold to Кмет's OWN institution → family_ownership, own_institution exact. Relative's name never in staging.
+    { folder: '2024', xmlFile: 'K.xml', year: '2023', template: 'assets', category: '', institution: 'ОБЩИНА ТЕСТ', person: 'Кмет Тестов', position: 'кмет', entity: 'ЕВРОСТРОЙ 21 ЕООД', kind: 'shares', detail: '100%', timing: 'annual', seat: '', holderRelation: 'related', controlHash: 'H11' },
+    // SECURITIES: Акционер holds LISTED joint-stock shares (kind securities) → excluded, no ownership link.
+    { folder: '2024', xmlFile: 'L.xml', year: '2023', template: 'assets', category: '', institution: 'S', person: 'Акционер Тестов', position: '', entity: 'ЛИСТЕД ТЕСТ АД', kind: 'securities', detail: '25', timing: 'annual', seat: '', holderRelation: 'self', controlHash: 'H12' },
   ];
   fs.writeFileSync(path.join(STAGING, 'holdings.jsonl'), holdings.map((h) => JSON.stringify(h)).join('\n') + '\n');
   fs.writeFileSync(path.join(STAGING, 'related.jsonl'), '');
@@ -155,6 +168,24 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(radka.match_method, 'declared_eik');
   assert.equal(radka.publish_tier, 'A_seat');
   assert.equal(radka.status, 'published');
+
+  // FAMILY: a close relative's declared stake in a winner that sold to the official's OWN institution.
+  // This is the strongest anonymized signal — relation 'related', class family_ownership, own_institution exact.
+  const family = link('888888884', 'Кмет Тестов');
+  assert.equal(family.relation, 'related');
+  assert.equal(family.interest_class, 'family_ownership');
+  assert.equal(family.status, 'published');
+  assert.equal(family.own_institution, 'exact'); // relative's company sold to the official's own institution
+  assert.equal(family.contemporaneous, 1);
+  assert.equal(family.contract_value_eur, 250000);
+  assert.equal(family.link_key, family.person_id + '|888888884|family'); // distinct from any self link
+  // PII rail: the relative's identity is never stored — no family holder name reaches the DB.
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM related_persons_internal").get().n, 0);
+
+  // SECURITIES/materiality: a self holding of LISTED joint-stock shares forms NO ownership link.
+  assert.equal(link('999999998', 'Акционер Тестов'), undefined);
+  // but it is still recorded as a declared interest (census), tagged kind securities
+  assert.equal(db.prepare("SELECT kind FROM declared_interests WHERE entity_raw='ЛИСТЕД ТЕСТ АД'").get().kind, 'securities');
   db.close();
 });
 
@@ -169,8 +200,10 @@ test('re-run is idempotent and honors link_suppressions (contested link stays re
 
   db = open();
   assert.equal(db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status, 'suppressed');
-  // idempotent: still exactly the same number of links + persons after a clean rebuild
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 9);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 9);
+  // idempotent: still exactly the same number of links + persons after a clean rebuild.
+  // 10 links: 9 self (incl. withdrawn/held) + 1 family; Мария (quarantined) & Акционер (securities) form none.
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM interest_links').get().n, 10);
+  // 11 persons: everyone who declared a holding, incl. no-link Мария & Акционер.
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 11);
   db.close();
 });

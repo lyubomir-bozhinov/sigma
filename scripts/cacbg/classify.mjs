@@ -20,6 +20,20 @@ export function nameDistinctiveness(key) {
 
 const norm = (s) => String(s ?? '').normalize('NFC').toUpperCase().replace(/[\s.\-–—]+/g, ' ').trim();
 
+// Joint-stock / listed legal form as a whole token (АД / ЕАД / АДСИЦ), bounded by string edge, whitespace
+// or quotes only — NOT hyphens/dots, so „АД-ХОК ЕООД" (a hyphenated ООД name) is not misread as a company.
+const JOINT_STOCK = /(?:^|[\s"„“”«»])(АД|ЕАД|АДСИЦ)(?:[\s"„“”«»]|$)/u;
+/**
+ * Materiality by legal form. The public ownership surface is CLOSELY-HELD companies only (ООД/ЕООД/ЕТ/
+ * КД/СД/ДЗЗД or a form-unspecified name from the closely-held table). Joint-stock forms (АД/ЕАД/АДСИЦ) are
+ * public-float securities — a declared parcel of listed shares is NOT a material ownership conflict, and
+ * presenting it as one defames (the „11 Trace shares → €88M" trap). Excludes only an explicit АД-form token,
+ * so it withholds rather than fabricates. @returns {boolean} true ⇒ material/closely-held.
+ */
+export function closelyHeldForm(name) {
+  return !JOINT_STOCK.test(String(name ?? '').normalize('NFC').toUpperCase());
+}
+
 /** Seat proof: declared seat and winner settlement both present and equal ⇒ same entity (deterministic). */
 export function seatConfirmed(declSeat, winnerSettlement) {
   const a = norm(declSeat);

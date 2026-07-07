@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken } from './classify.mjs';
+import { nameDistinctiveness, seatConfirmed, publishTier, temporalStatus, localityToken, closelyHeldForm } from './classify.mjs';
 
 test('nameDistinctiveness: numbers / Latin / ≥3 words are distinctive; bare 1-2 word Cyrillic is generic', () => {
   assert.equal(nameDistinctiveness('СТЕЛИТ 1 ЕООД'), 'distinctive'); // number
@@ -30,6 +30,20 @@ test('temporalStatus: contract within declared-year span is contemporaneous', ()
   assert.equal(temporalStatus([2022, 2023], 2019), 'before_first_decl');
   assert.equal(temporalStatus([], 2021), 'unknown');
   assert.equal(temporalStatus([2021], NaN), 'unknown');
+});
+
+test('closelyHeldForm: ООД/ЕООД/ЕТ material; АД/ЕАД/АДСИЦ (listed) excluded; hyphenated ООD name kept', () => {
+  assert.equal(closelyHeldForm('ЕНЕРДЖИ СЪПЛАЙ ЕООД'), true);
+  assert.equal(closelyHeldForm('"ТЕСТ АГРО" ЕООД'), true);
+  assert.equal(closelyHeldForm('ЕТ Алекс'), true);
+  assert.equal(closelyHeldForm('Вамос ООД'), true);
+  assert.equal(closelyHeldForm('Тексим Банк АД'), false); // listed bank mis-filed in the ООД table
+  assert.equal(closelyHeldForm('Наш Дом АД'), false);
+  assert.equal(closelyHeldForm('Транспроект ЕАД'), false);
+  assert.equal(closelyHeldForm('ТРЕЙС ГРУП ХОЛД АД'), false); // the €88M defamation trap
+  assert.equal(closelyHeldForm('НЕС АДСИЦ'), false);
+  assert.equal(closelyHeldForm('АД-ХОК ЕООД'), true); // „АД" glued by hyphen is not a form token
+  assert.equal(closelyHeldForm('КАДИЕВ ГЛОБАЛ ЕООД'), true); // „АД" inside a word is not a form token
 });
 
 test('localityToken: regional bodies yield a town; ministries yield null', () => {

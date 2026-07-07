@@ -590,7 +590,10 @@ export interface SearchResults {
 // are never surfaced. Every link is a PUBLISHED, certainty-1.0 match, dated to its declaration years.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-export type ConflictRelation = 'owns' | 'manages' | 'owns+manages';
+// 'related' = a CLOSE RELATIVE's declared stake (family_ownership). The official is named (their own
+// public declaration), the company is named (public winner), but the relative is anonymized — shown only
+// as „свързано лице", their name/relationship never stored or transmitted. self stakes are owns/manages.
+export type ConflictRelation = 'owns' | 'manages' | 'owns+manages' | 'related';
 
 /** One office-holder↔company ownership link with its contract facts and a provenance URL. */
 export interface ConflictLink {
@@ -599,7 +602,7 @@ export interface ConflictLink {
   official: string; // declarant (office-holder) name as declared
   company: string; // winner company name as registered
   eik: string; // winner ЕИК
-  relation: ConflictRelation;
+  relation: ConflictRelation; // 'related' ⇒ the stake is a close relative's (anonymized), not the official's own
   contemporaneous: boolean; // stake declared in a year overlapping a contract award
   ownInstitution: boolean; // ≥1 contract from the official's OWN institution (deterministic 'exact' only)
   firstDeclaredYear: string | null; // declared span — the link is DATED, never asserted "current"

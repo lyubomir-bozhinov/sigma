@@ -24,6 +24,7 @@ Numbering is sequential. Add a new ADR the moment a decision is made — not ret
 | [0014](0014-conflict-explorer-surface-posture.md) | Conflict-explorer surface — interest_links-only read model, noindex-until-gated, provenance on every row | Accepted |
 | [0015](0015-methodology-page-and-temporal-freshness.md) | Public methodology/corrections page (E10) + temporal dating & divestment expiry (E11) | Accepted |
 | [0016](0016-public-surface-private-ownership-only.md) | Public surface shows ONLY declared private ownership (removes the ex-officio list; term „длъжностно лице") | Accepted |
+| [0017](0017-anonymized-family-ownership-surface.md) | Anonymized close-relative (family) ownership surface: relative unnamed, materiality = closely-held form, nexus-ranked | Accepted |
 
 Related design docs: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md),
 [implementation-plans/phase0-related-persons-feasibility.md](../implementation-plans/phase0-related-persons-feasibility.md).

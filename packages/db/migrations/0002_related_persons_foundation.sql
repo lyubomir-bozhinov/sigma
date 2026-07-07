@@ -57,13 +57,17 @@ CREATE TABLE interest_links (
   match_method      TEXT NOT NULL DEFAULT 'exact_name_key',
   matcher_version   TEXT NOT NULL,          -- companyNameKey/classify version — reproducibility
   publish_tier      TEXT NOT NULL,          -- A_seat | B_distinctive | C_hold (ADR-0003/0009)
-  relation          TEXT NOT NULL,          -- owns | manages | owns+manages (control) — ADR-0008
-  -- interpretation class for the published surface (ADR-0013). Separates genuine PRIVATE financial
+  relation          TEXT NOT NULL,          -- owns | manages | owns+manages | related — ADR-0008
+  -- interpretation class for the published surface (ADR-0013/0016). Separates genuine PRIVATE financial
   -- interest from EX-OFFICIO public-board roles so the headline can't defame appointed civil servants:
-  --   private_ownership — relation owns/owns+manages (declared a stake): the real conflict signal
-  --   ex_officio_board  — relation manages AND ≥2 distinct officials declared the same company
+  --   private_ownership — self, relation owns/owns+manages (declared a stake): the real conflict signal
+  --   family_ownership  — a CLOSE RELATIVE's declared stake (relation related). Official + company + value
+  --                       shown; the relative is anonymized as „свързано лице" (name never stored) — ADR-0017
+  --   ex_officio_board  — self, relation manages AND ≥2 distinct officials declared the same company
   --                       (a rotating/multi-member board = a public body, not a private interest)
-  --   management_role   — relation manages, a single declarant (ambiguous: private manager or small board)
+  --   management_role   — self, relation manages, a single declarant (ambiguous: private manager or small board)
+  -- Materiality: only CLOSELY-HELD forms (ООД/ЕООД/ЕТ/…) reach ownership classes; listed АД/ЕАД securities
+  -- and management-only roles never become private_ownership/family_ownership (ADR-0016).
   interest_class    TEXT NOT NULL DEFAULT 'private_ownership',
   contemporaneous   INTEGER NOT NULL DEFAULT 0,
   own_institution   TEXT NOT NULL DEFAULT 'none', -- exact (deterministic) | locality (heuristic) | none

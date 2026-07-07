@@ -79,6 +79,17 @@ export function parseList(xml) {
 }
 
 // --- asset declaration (<PublicPerson>): company SHARES ------------------------------------------
+// TWO distinct holdings tables live here and must NOT be conflated:
+//   • „Дялове в дружества с ограничена отговорност" (ООД/ЕООД) — closely-held participation shares.
+//     Company in the „Наименование на дружеството" column (≈col 4). MATERIAL — where a real ownership
+//     conflict lives. kind='shares'.
+//   • „Ценни книги, поименни акции в акционерни дружества" (АД) — registered/listed securities.
+//     Company (issuer) in the „Емитент" column (≈col 6), NOT col 4 (col 4 is „Ценни книжа"). Mostly
+//     blue-chip public float — NOISE for ownership. kind='securities'.
+// Each table carries a holder-name column („Име: собствено, бащино и фамилно") identifying whether the
+// stake is the DECLARANT's own or a CLOSE RELATIVE's. We capture that as holderRelation ∈ self|related
+// — but the relative's NAME is never retained (PII rail, §8). The materiality/legal-form gate is applied
+// downstream (load.mjs closelyHeldForm), keeping this parser faithful to the source table.
 function parseAssets(pp) {
   const personal = pp.Personal ?? {};
   const dd = pp.DeclarationData ?? {};
@@ -87,21 +98,29 @@ function parseAssets(pp) {
   const interests = [];
   let familyHoldingCount = 0;
   for (const table of asArray(pp.Tables?.Table)) {
-    if (!/дружеств/i.test(String(table['@_Description'] ?? ''))) continue;
+    const desc = String(table['@_Description'] ?? '');
+    const isOod = /дялове в дружества|ограничена отговорн/i.test(desc);
+    const isSec = /ценни книги|акционерни дружеств|поименни акции/i.test(desc);
+    if (!isOod && !isSec) continue;
     const rows = asArray(table.Row);
-    const cCompany = colNum(rows[0], /наименование.*дружеств|фирма/i, '4');
+    const kind = isOod ? 'shares' : 'securities';
+    // Column resolution is description-first (robust across template renumberings); fallbacks are the
+    // observed column for that table type. Reading the wrong column is the libel risk, so the two table
+    // types resolve independently — a securities table never falls back to the ООД company column.
+    const cCompany = isOod ? colNum(rows[0], /наименование.*дружеств|фирма/i, '4') : colNum(rows[0], /емитент/i, '6');
     const cSeat = colNum(rows[0], /седалище/i, '5');
-    const cHolder = colNum(rows[0], /собствено.*фамил/i, '7');
-    const cEgn = colNum(rows[0], /^егн$/i, '8');
-    const kind = /акци/i.test(String(table['@_Description'])) ? 'shares' : 'shares';
+    const cHolder = colNum(rows[0], /собствено.*фамил/i, isOod ? '7' : '8');
+    const cEgn = colNum(rows[0], /^егн$/i, isOod ? '8' : '9');
     for (const row of rows) {
       const by = cellsByNum(row);
       const company = by[cCompany] ?? '';
       if (!company) continue;
       if ((by[cEgn] ?? '').length > 0) egnPresent = true;
       const holder = by[cHolder] ?? '';
-      if (!holder || holder === declarant) interests.push({ entity: company, kind, detail: by[cSeat] ?? '', timing: 'annual', seat: by[cSeat] ?? '' });
-      else familyHoldingCount += 1;
+      const holderRelation = !holder || holder === declarant ? 'self' : 'related';
+      if (holderRelation === 'related') familyHoldingCount += 1;
+      const seat = isOod ? (by[cSeat] ?? '') : '';
+      interests.push({ entity: company, kind, detail: seat, timing: 'annual', seat, holderRelation });
     }
   }
   return {
@@ -155,7 +174,9 @@ function parseInterests(ppd) {
     for (const row of rows) {
       const by = cellsByNum(row);
       const entity = by[cEntity] ?? '';
-      if (entity) interests.push({ entity, kind, detail: by[cDetail] ?? '', timing, seat: '' });
+      // Interests-declaration holdings are the declarant's own (family stakes are declared separately, as
+      // related persons) — holderRelation:'self' keeps the staging shape uniform with parseAssets.
+      if (entity) interests.push({ entity, kind, detail: by[cDetail] ?? '', timing, seat: '', holderRelation: 'self' });
     }
   }
   return {

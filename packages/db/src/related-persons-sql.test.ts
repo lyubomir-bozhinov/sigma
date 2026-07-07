@@ -39,14 +39,19 @@ function rows(dbPath: string, sql: string): Record<string, string | number | nul
 }
 
 // Иван OWNS ТРЕЙС (private_ownership, own institution, €88M). Борис + Виктор both MANAGE ХОЛДИНГ 9
-// (declared by two officials → ex_officio_board, €5M each). Only Иван has a declaration row → his link
-// resolves a source_url; the board links do not (NULL).
+// (declared by two officials → ex_officio_board, €5M each). Кмет declares a CLOSE RELATIVE's stake in
+// ЕВРОСТРОЙ (family_ownership, own institution, €250k — anonymized). Голям owns ГОЛЯМ (private, €50M, NO
+// nexus) — a high-value link with no own-institution tie, to prove NEXUS-first ordering beats raw value.
+// Only Иван has a declaration row → his link resolves a source_url; the others do not (NULL).
 const FIXTURE = `
 INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, kind) VALUES
   ('eik:111','ТРЕЙС ГРУП ХОЛД АД','111','111',1,'company'),
-  ('eik:222','ХОЛДИНГ 9 ЕАД','222','222',1,'company');
+  ('eik:222','ХОЛДИНГ 9 ЕАД','222','222',1,'company'),
+  ('eik:333','ЕВРОСТРОЙ 21 ЕООД','333','333',1,'company'),
+  ('eik:444','ГОЛЯМ ООД','444','444',1,'company');
 INSERT INTO persons (id, name) VALUES
-  ('person:ivan','Иван Минев'),('person:boris','Борис Манолов'),('person:viktor','Виктор Асенов');
+  ('person:ivan','Иван Минев'),('person:boris','Борис Манолов'),('person:viktor','Виктор Асенов'),
+  ('person:kmet','Кмет Тестов'),('person:big','Голям Официал');
 INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, declared_year, template, category, institution, position, source_url) VALUES
   ('decl:i','person:ivan','i.xml','H1','2024','2023','assets','','ТЕСТ','', 'https://register.cacbg.bg/2024/i.xml');
 INSERT INTO declared_interests (id, declaration_id, entity_raw, entity_key, kind, detail, timing, seat) VALUES
@@ -56,6 +61,8 @@ INSERT INTO interest_links
   ('il:ivan','person:ivan|111','person:ivan','eik:111','111','ТРЕЙС ГРУП ХОЛД АД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'exact',1,'2019','2023',35,88000000,'2021','2024','published'),
   ('il:boris','person:boris|222','person:boris','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,'2023','2023',10,5000000,'2023','2023','published'),
   ('il:viktor','person:viktor|222','person:viktor','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,'2023','2023',10,5000000,'2023','2023','published'),
+  ('il:fam','person:kmet|333|family','person:kmet','eik:333','333','ЕВРОСТРОЙ 21 ЕООД','exact_name_key','v1','B_distinctive','related','family_ownership',1,'exact',1,'2018','2020',5,250000,'2019','2020','published'),
+  ('il:big','person:big|444','person:big','eik:444','444','ГОЛЯМ ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'none',1,'2020','2021',10,50000000,'2020','2021','published'),
   -- a HELD link must never surface in any query
   ('il:held','person:ivan|999','person:ivan','eik:111','999','НЯКОЙ ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,'2022','2022',3,1000,'2022','2022','held'),
   -- a WITHDRAWN (divested — later filing omits the company) link must never surface either (§8/E11)
@@ -76,16 +83,34 @@ describe('свързани-лица SQL (real SQLite)', () => {
     }
   }
 
-  it('leaderboard returns ONLY private ownership with provenance; held/withdrawn/ex-officio excluded', () => {
+  it('leaderboard returns material ownership (self + family), NEXUS-ranked; held/withdrawn/ex-officio excluded', () => {
     withDb((dbPath) => {
-      const priv = rows(dbPath, lit(LEADERBOARD_SQL, 100));
-      // held €1000, withdrawn €2M, and BOTH ex-officio board links are NOT here — only Иван's private stake
-      expect(priv).toHaveLength(1);
-      expect(priv[0]!.official).toBe('Иван Минев');
-      expect(priv[0]!.contract_value_eur).toBe(88_000_000);
-      expect(priv[0]!.first_declared_year).toBe('2019'); // declared span carries through
-      expect(priv[0]!.last_declared_year).toBe('2023');
-      expect(priv[0]!.source_url).toBe('https://register.cacbg.bg/2024/i.xml'); // source_url subquery resolved
+      const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      // held €1000, withdrawn €2M, and BOTH ex-officio board links are excluded → 3 material links remain
+      expect(board.map((r) => r.official)).toEqual(['Иван Минев', 'Кмет Тестов', 'Голям Официал']);
+      // NEXUS-first: the €250k family link (own institution) OUTRANKS the €50M link with no nexus — the
+      // old value-only ordering would have put Голям (€50M) first. This is the anti-noise fix.
+      expect(board[1]!.official).toBe('Кмет Тестов');
+      expect(board[1]!.relation).toBe('related'); // family stake — the relative is anonymized in the UI
+      expect(board[2]!.official).toBe('Голям Официал'); // highest value, but no nexus → ranked last
+      // Иван's private stake keeps its provenance + declared span
+      expect(board[0]!.official).toBe('Иван Минев');
+      expect(board[0]!.contract_value_eur).toBe(88_000_000);
+      expect(board[0]!.first_declared_year).toBe('2019');
+      expect(board[0]!.last_declared_year).toBe('2023');
+      expect(board[0]!.source_url).toBe('https://register.cacbg.bg/2024/i.xml');
+    });
+  });
+
+  it('a family (close-relative) link surfaces on the winner + official views, carrying relation=related', () => {
+    withDb((dbPath) => {
+      const byCompany = rows(dbPath, lit(COMPANY_SQL, '333'));
+      expect(byCompany).toHaveLength(1);
+      expect(byCompany[0]!.official).toBe('Кмет Тестов'); // official named (their public declaration)
+      expect(byCompany[0]!.company).toBe('ЕВРОСТРОЙ 21 ЕООД'); // company named (public winner)
+      expect(byCompany[0]!.relation).toBe('related'); // holder anonymized as свързано лице in the UI layer
+      const byOfficial = rows(dbPath, lit(OFFICIAL_SQL, 'person:kmet'));
+      expect(byOfficial.map((r) => r.relation)).toEqual(['related']);
     });
   });
 

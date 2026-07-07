@@ -4,6 +4,7 @@ import {
   companyConflictsHref,
   companyProfileHref,
   contractYearsLabel,
+  isFamilyLink,
   officialHref,
   privateOwnershipHeadline,
   relationLabel,
@@ -36,9 +37,18 @@ describe('relationLabel', () => {
     expect(relationLabel('owns')).toBe('притежава дял');
     expect(relationLabel('manages')).toBe('управлява');
     expect(relationLabel('owns+manages')).toBe('притежава дял и управлява');
+    expect(relationLabel('related')).toBe('дял на свързано лице'); // family — relative never named
   });
   it('passes an unknown relation through rather than inventing a claim', () => {
     expect(relationLabel('mystery')).toBe('mystery');
+  });
+});
+
+describe('isFamilyLink', () => {
+  it('is true only for a related (close-relative) stake', () => {
+    expect(isFamilyLink(link({ relation: 'related' }))).toBe(true);
+    expect(isFamilyLink(link({ relation: 'owns' }))).toBe(false);
+    expect(isFamilyLink(link({ relation: 'owns+manages' }))).toBe(false);
   });
 });
 
@@ -61,22 +71,31 @@ describe('contractYearsLabel', () => {
 });
 
 describe('privateOwnershipHeadline', () => {
-  it('sums value, counts links, and de-dupes officials', () => {
+  it('sums value, counts links, de-dupes officials, and isolates the family subset', () => {
     const h = privateOwnershipHeadline([
       link({ officialSlug: 'a', contractValueEur: 100 }),
       link({ officialSlug: 'a', contractValueEur: 50 }), // same official, second company
-      link({ officialSlug: 'b', contractValueEur: 25 }),
+      link({ officialSlug: 'b', contractValueEur: 25, relation: 'related' }), // family stake
     ]);
     expect(h.linkCount).toBe(3);
     expect(h.officialCount).toBe(2); // de-duped
     expect(h.totalEur).toBe(175);
+    expect(h.familyLinkCount).toBe(1);
+    expect(h.familyEur).toBe(25);
   });
   it('treats a null contract value as zero, never NaN', () => {
-    const h = privateOwnershipHeadline([link({ contractValueEur: null })]);
+    const h = privateOwnershipHeadline([link({ contractValueEur: null, relation: 'related' })]);
     expect(h.totalEur).toBe(0);
+    expect(h.familyEur).toBe(0);
     expect(Number.isNaN(h.totalEur)).toBe(false);
   });
   it('is empty-safe', () => {
-    expect(privateOwnershipHeadline([])).toEqual({ linkCount: 0, officialCount: 0, totalEur: 0 });
+    expect(privateOwnershipHeadline([])).toEqual({
+      linkCount: 0,
+      officialCount: 0,
+      totalEur: 0,
+      familyLinkCount: 0,
+      familyEur: 0,
+    });
   });
 });

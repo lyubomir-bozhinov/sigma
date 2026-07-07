@@ -57,7 +57,7 @@ export default function ConflictCompany({ loaderData }: Route.ComponentProps) {
             </>
           }
           title={company}
-          lede={`Длъжностни лица, декларирали дял в това дружество пред КПКОНПИ. ${count(links.length)} ${plural(links.length, 'връзка', 'връзки')} — всяка е точно съвпадение по фирмено име.`}
+          lede={`Длъжностни лица, декларирали дял — свой или на свързано лице — в това дружество пред КПКОНПИ. ${count(links.length)} ${plural(links.length, 'връзка', 'връзки')} — всяка е точно съвпадение по фирмено име.`}
         />
 
         <Callout title="Източник и обхват">
@@ -73,7 +73,7 @@ export default function ConflictCompany({ loaderData }: Route.ComponentProps) {
         <Section
           id="officials"
           title="Длъжностни лица с деклариран дял"
-          hint="Подредени по публичните средства към дружеството."
+          hint="Подредени по силата на връзката: първо договори от собствената институция, после дял към момента на договора."
         >
           <ConflictTable
             links={links}
