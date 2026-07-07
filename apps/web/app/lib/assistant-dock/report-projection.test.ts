@@ -198,4 +198,14 @@ describe('dedupHitFromMessage', () => {
   it('ignores a dedup part carrying no data at all', () => {
     expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART }] })).toBeNull();
   });
+
+  it('rejects a dedup part whose layer is outside the known set (localStorage tamper)', () => {
+    const tampered = { ...hit, layer: 'L9' };
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART, data: tampered }] })).toBeNull();
+  });
+
+  it('accepts a fractional layer label that is valid (L2.5)', () => {
+    const l25 = { ...hit, layer: 'L2.5' };
+    expect(dedupHitFromMessage({ parts: [{ type: DEDUP_PART, data: l25 }] })).toEqual(l25);
+  });
 });
