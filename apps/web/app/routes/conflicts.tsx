@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useSearchParams, data } from 'react-router';
 import { count, money, plural } from '@sigma/shared';
 import { getConflictLeaderboard } from '@sigma/db';
 import type { Route } from './+types/conflicts';
@@ -7,10 +7,12 @@ import { PageHeader } from '../components/PageHeader';
 import { FactsList } from '../components/FactsList';
 import { Section, Callout } from '../components/ui';
 import { ConflictTable } from '../components/ConflictTable';
+import { Pagination } from '../components/Pagination';
 import { publicCache } from '../lib/cache';
 import { withDbRetry } from '../lib/retry';
 import { seoMeta } from '../lib/meta';
 import { privateOwnershipHeadline } from '../lib/conflicts';
+import { withParams, leaderboardRankOffset, type PageNav } from '../lib/filters';
 
 // Свързани лица — office-holders who declared a private ownership stake in a procurement winner. Every row
 // is a PUBLISHED, certainty-1.0 link from a person's own asset declaration, exact-matched to a winner. The
@@ -28,17 +30,39 @@ export function meta({ matches }: Route.MetaArgs) {
   return tags;
 }
 
-export function headers() {
-  return { 'Cache-Control': publicCache(3600) };
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+  return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? publicCache(3600) };
 }
+
+// All eligible published links (private + family). ~292 today; small enough to load whole and paginate
+// in the client, so the summary totals the full set rather than one page. ponytail: hard ceiling 1000 —
+// switch to keyset LIMIT/OFFSET (see companies.tsx) if the eligible set ever nears it.
+const LEADERBOARD_MAX = 1000;
+const PER_PAGE = 100;
 
 export async function loader({ context }: Route.LoaderArgs) {
   const db = context.cloudflare.env.DB;
-  return withDbRetry(() => getConflictLeaderboard(db, 100));
+  const links = await withDbRetry(() => getConflictLeaderboard(db, LEADERBOARD_MAX));
+  // Never pin an empty render: just after a (re)ship the read can briefly return 0 rows while the write
+  // propagates across D1; caching that for an hour + stale-while-revalidate is what made a refresh
+  // appear to "lose" the data. Only cache once there is data to cache.
+  return data(links, {
+    headers: { 'Cache-Control': links.length ? publicCache(3600) : 'no-store' },
+  });
 }
 
 export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
   const headline = privateOwnershipHeadline(links);
+  const [sp] = useSearchParams();
+  const pageCount = Math.max(1, Math.ceil(links.length / PER_PAGE));
+  const page = Math.min(Math.max(1, Math.floor(Number(sp.get('page')) || 1)), pageCount);
+  const pageLinks = links.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const nav: PageNav = {
+    page,
+    pageCount,
+    prevHref: page > 1 ? withParams(sp, { page: page - 1 }) : null,
+    nextHref: page < pageCount ? withParams(sp, { page: page + 1 }) : null,
+  };
 
   return (
     <>
@@ -103,9 +127,11 @@ export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
               hint="Лица, декларирали дял — свой или на свързано лице — в дружество, спечелило поръчка. Подредени по силата на връзката: първо договори от собствената институция, после дял към момента на договора."
             >
               <ConflictTable
-                links={links}
+                links={pageLinks}
+                startRank={leaderboardRankOffset(page, PER_PAGE)}
                 caption="Длъжностни лица с деклариран дял в компании изпълнители"
               />
+              {pageCount > 1 && <Pagination nav={nav} pageSize={PER_PAGE} unit="връзки" />}
             </Section>
           </>
         )}

@@ -17,10 +17,13 @@ export function ConflictTable({
   links,
   caption,
   omit,
+  startRank = 0,
 }: {
   links: ConflictLink[];
   caption: string;
   omit?: 'official' | 'company';
+  // Rank of the row BEFORE the first shown (paginated leaderboards); 0 on unpaginated per-entity views.
+  startRank?: number;
 }) {
   return (
     <div className="table-wrap tbl-cards">
@@ -46,7 +49,7 @@ export function ConflictTable({
           {links.map((l, i) => (
             <tr key={l.linkKey}>
               <td className="rank cell-rank" data-label="#">
-                {i + 1}
+                {startRank + i + 1}
               </td>
               {omit !== 'official' && (
                 <td className="cell-title" data-label="Длъжностно лице">
