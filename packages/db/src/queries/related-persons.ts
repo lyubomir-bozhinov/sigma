@@ -51,7 +51,18 @@ export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official
   FROM interest_links il
   JOIN persons p ON p.id = il.person_id
   JOIN bidders b ON b.id = il.bidder_id
-  WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')`;
+  WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+    -- Collapse each (official, company) to ONE nexus. An official can hold BOTH their own stake and a
+    -- relative's stake in the same winner — two published links (own→private_ownership, relative→
+    -- family_ownership), identical contract value, since load.mjs keys aggregation on (person|eik|scope).
+    -- Surfacing both would (a) double-count that winner's € in the headline and (b) show the same person
+    -- twice for one company: a de-anonymisation vector (own stake + a same-surname co-owner ⇒ ТР
+    -- cross-reference names the "anonymous" relative). When an own-stake link exists, drop the redundant
+    -- family link to the same winner. Standalone family links (a relative owns a firm the official does
+    -- not) are untouched. (per (person,eik) there is at most one link per scope, so this is the only dup.)
+    AND NOT (il.interest_class = 'family_ownership' AND EXISTS (
+      SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+        AND s.status = 'published' AND s.interest_class = 'private_ownership'))`;
 
 // own_institution is a 4-value verdict; only the deterministic 'exact' surfaces as true (the
 // name_contains/locality heuristics are disclosed elsewhere, never asserted as fact).

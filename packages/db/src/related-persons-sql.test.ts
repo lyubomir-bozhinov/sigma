@@ -48,10 +48,11 @@ INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, kind) VALUES
   ('eik:111','ТРЕЙС ГРУП ХОЛД АД','111','111',1,'company'),
   ('eik:222','ХОЛДИНГ 9 ЕАД','222','222',1,'company'),
   ('eik:333','ЕВРОСТРОЙ 21 ЕООД','333','333',1,'company'),
-  ('eik:444','ГОЛЯМ ООД','444','444',1,'company');
+  ('eik:444','ГОЛЯМ ООД','444','444',1,'company'),
+  ('eik:555','П2АРХ ООД','555','555',1,'company');
 INSERT INTO persons (id, name) VALUES
   ('person:ivan','Иван Минев'),('person:boris','Борис Манолов'),('person:viktor','Виктор Асенов'),
-  ('person:kmet','Кмет Тестов'),('person:big','Голям Официал');
+  ('person:kmet','Кмет Тестов'),('person:big','Голям Официал'),('person:dual','Двоен Тестов');
 INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, declared_year, template, category, institution, position, source_url) VALUES
   ('decl:i','person:ivan','i.xml','H1','2024','2023','assets','','ТЕСТ','', 'https://register.cacbg.bg/2024/i.xml');
 INSERT INTO declared_interests (id, declaration_id, entity_raw, entity_key, kind, detail, timing, seat) VALUES
@@ -63,6 +64,11 @@ INSERT INTO interest_links
   ('il:viktor','person:viktor|222','person:viktor','eik:222','222','ХОЛДИНГ 9 ЕАД','exact_name_key','v1','B_distinctive','manages','ex_officio_board',0,'none',1,'2023','2023',10,5000000,'2023','2023','published'),
   ('il:fam','person:kmet|333|family','person:kmet','eik:333','333','ЕВРОСТРОЙ 21 ЕООД','exact_name_key','v1','B_distinctive','related','family_ownership',1,'exact',1,'2018','2020',5,250000,'2019','2020','published'),
   ('il:big','person:big|444','person:big','eik:444','444','ГОЛЯМ ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'none',1,'2020','2021',10,50000000,'2020','2021','published'),
+  -- Двоен declared BOTH his OWN stake and a RELATIVE's stake in П2АРХ (eik 555): two published links, same
+  -- winner, same €79k. The surface must collapse them to the own-stake row — else €79k is counted twice and
+  -- Двоен appears twice for one company (de-anon). own_inst='none'/contemp=0 → ranks after Голям.
+  ('il:dual-self','person:dual|555','person:dual','eik:555','555','П2АРХ ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',0,'none',1,'2020','2022',4,79000,'2021','2022','published'),
+  ('il:dual-fam','person:dual|555|family','person:dual','eik:555','555','П2АРХ ООД','exact_name_key','v1','B_distinctive','related','family_ownership',0,'none',1,'2020','2022',4,79000,'2021','2022','published'),
   -- a HELD link must never surface in any query
   ('il:held','person:ivan|999','person:ivan','eik:111','999','НЯКОЙ ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,'2022','2022',3,1000,'2022','2022','held'),
   -- a WITHDRAWN (divested — later filing omits the company) link must never surface either (§8/E11)
@@ -86,8 +92,14 @@ describe('свързани-лица SQL (real SQLite)', () => {
   it('leaderboard returns material ownership (self + family), NEXUS-ranked; held/withdrawn/ex-officio excluded', () => {
     withDb((dbPath) => {
       const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
-      // held €1000, withdrawn €2M, and BOTH ex-officio board links are excluded → 3 material links remain
-      expect(board.map((r) => r.official)).toEqual(['Иван Минев', 'Кмет Тестов', 'Голям Официал']);
+      // held €1000, withdrawn €2M, both ex-officio board links, and Двоен's redundant family link are
+      // excluded → 4 material nexuses remain (Двоен's own+relative stakes collapse to one own-stake row)
+      expect(board.map((r) => r.official)).toEqual([
+        'Иван Минев',
+        'Кмет Тестов',
+        'Голям Официал',
+        'Двоен Тестов',
+      ]);
       // NEXUS-first: the €250k family link (own institution) OUTRANKS the €50M link with no nexus — the
       // old value-only ordering would have put Голям (€50M) first. This is the anti-noise fix.
       expect(board[1]!.official).toBe('Кмет Тестов');
@@ -131,6 +143,23 @@ describe('свързани-лица SQL (real SQLite)', () => {
       // ЕИК 111: only Иван (published) — Виктор's withdrawn (divested) link to the same winner is excluded
       const trace = rows(dbPath, lit(COMPANY_SQL, '111'));
       expect(trace.map((r) => r.official)).toEqual(['Иван Минев']);
+    });
+  });
+
+  it('collapses (official, company) to ONE nexus when an official declared both their own and a relative’s stake in the same winner (no €-double-count, no de-anon)', () => {
+    withDb((dbPath) => {
+      // Двоен has TWO published links to П2АРХ (own → private_ownership, relative → family_ownership). The
+      // own-stake link wins; the relative link is dropped on every surface so €79k is counted once and the
+      // official is not shown twice for one company. (The standalone family link at eik 333 still surfaces —
+      // proved by the family test above — so the dedup does not over-reach.)
+      const company = rows(dbPath, lit(COMPANY_SQL, '555'));
+      expect(company).toHaveLength(1);
+      expect(company[0]!.relation).toBe('owns');
+      const official = rows(dbPath, lit(OFFICIAL_SQL, 'person:dual'));
+      expect(official).toHaveLength(1);
+      expect(official[0]!.relation).toBe('owns');
+      const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      expect(board.filter((r) => r.official === 'Двоен Тестов')).toHaveLength(1);
     });
   });
 });
