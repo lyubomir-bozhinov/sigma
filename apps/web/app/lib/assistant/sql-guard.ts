@@ -170,8 +170,16 @@ export function assertReadOnlySelect(rawSql: string): GuardResult {
   // disables it, but block defensively); `randomblob`/`zeroblob` build arbitrarily large blobs; and
   // `printf`/`format` with a width specifier (`printf('%1000000d', x)`) build arbitrarily large STRINGS.
   // All materialise in Worker memory before capRows can measure the row — a single row can OOM the
-  // isolate. No analytics query needs any of them (review #80, red-team R2; printf/format f/u).
-  if (/\b(?:load_extension|randomblob|zeroblob|printf|format)\s*\(/i.test(sql)) {
+  // isolate. The json_group_array/json_group_object/json_object/json_array/json_quote builders are the
+  // same class: one aggregate/builder call collapses a whole table into a single giant JSON string that
+  // no LIMIT bounds. No analytics query needs any of them (review #80, red-team R2; printf/format +
+  // json_* f/u). The bare form is caught here; a double-quoted name slips this word-boundary regex and
+  // is caught by the AST guard (sql-ast-guard.ts DANGEROUS_FUNCTIONS).
+  if (
+    /\b(?:load_extension|randomblob|zeroblob|printf|format|json_group_array|json_group_object|json_object|json_array|json_quote)\s*\(/i.test(
+      sql,
+    )
+  ) {
     return { ok: false, reason: 'function not allowed' };
   }
   return { ok: true, sql };

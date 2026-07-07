@@ -80,6 +80,24 @@ describe('sql-guard adversarial / parser-differential', () => {
       expect(r.ok).toBe(false);
       expect(r.layer).toBe(2);
     });
+    // json_group_array/json_object/… are the JSON equivalents of group_concat — one aggregate call
+    // collapses the whole table into a single giant JSON string in the isolate. The bare form is caught
+    // cheaply at Layer 1 (added to the scalar regex); the double-quoted form slips L1's word-boundary
+    // regex and is caught by Layer 2's AST name blocklist — the same split as randomblob/"randomblob".
+    it('rejects bare json_group_array at Layer 1 — JSON string bomb', () => {
+      expectReject(
+        'SELECT json_group_array(name) AS n FROM authorities',
+        1,
+        /function not allowed/i,
+      );
+    });
+    it('rejects double-quoted "json_group_array" at Layer 2 — quoting slips L1', () => {
+      expectReject(
+        'SELECT "json_group_array"(name) AS n FROM authorities',
+        2,
+        /function not allowed/i,
+      );
+    });
   });
 
   describe('C. system-catalog enumeration', () => {

@@ -39,7 +39,9 @@ const deny = (reason: string): GuardResult => ({ ok: false, reason });
 // quoted identifier in call position as the function and runs it. node-sql-parser normalises both
 // `fn(…)` and `"fn"(…)` to the same name, so a name check here closes the quoting bypass AND the
 // long-known group_concat/quote/hex read-exfil gap. Classes: memory-amplification DoW
-// (randomblob/zeroblob/printf/format/group_concat), data exfil/encoding (quote/hex), and RCE where
+// (randomblob/zeroblob/printf/format/group_concat and the json_group_array/json_group_object/json_object/
+// json_array/json_quote builders — an aggregate/builder collapses a whole table into one giant JSON
+// string in the isolate, which no LIMIT bounds), data exfil/encoding (quote/hex), and RCE where
 // extensions can load (load_extension). None appear in any canonical query.
 const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'load_extension',
@@ -50,6 +52,11 @@ const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'group_concat',
   'quote',
   'hex',
+  'json_group_array',
+  'json_group_object',
+  'json_object',
+  'json_array',
+  'json_quote',
 ]);
 
 // The normalised, lowercased name of a function-call node, or null if `obj` is not one. A scalar call is

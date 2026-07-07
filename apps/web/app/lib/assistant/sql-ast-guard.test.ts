@@ -307,9 +307,19 @@ describe('guardSelect', () => {
       'SELECT "group_concat"(name) AS x FROM authorities',
       'SELECT quote(name) AS x FROM authorities',
       'SELECT hex(name) AS x FROM authorities',
+      // json_* aggregate/builder functions: same memory-amplification vector as group_concat —
+      // an aggregate collapses the whole table into one giant JSON string in the isolate (LIMIT
+      // cannot bound an aggregate), so they belong in the same denylist, quoted forms included.
+      'SELECT json_group_array(name) AS x FROM authorities',
+      'SELECT "json_group_array"(name) AS x FROM authorities',
+      'SELECT json_group_object(name, id) AS x FROM authorities',
+      "SELECT json_object('k', name) AS x FROM authorities",
+      'SELECT json_array(name) AS x FROM authorities',
+      'SELECT json_quote(name) AS x FROM authorities',
       // hidden in WHERE / nested, not just the SELECT list
       "SELECT id FROM authorities WHERE name = quote('x')",
       'SELECT id FROM authorities WHERE id IN (SELECT hex(name) FROM authorities)',
+      'SELECT id FROM authorities WHERE id IN (SELECT json_group_array(name) FROM authorities)',
     ];
     for (const sql of blocked) {
       const r = guardSelect(sql);
