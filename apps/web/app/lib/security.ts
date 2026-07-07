@@ -1,13 +1,19 @@
 // Cloudflare Turnstile (assistant bot gate, H3): the widget loads api.js, embeds an iframe, and calls
 // home — so its origin must be allowed for script/frame/connect. Harmless when the widget isn't mounted
 // (no TURNSTILE_SITE_KEY) — it only widens the allowlist, nothing loads from it.
-const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
+//
+// The interactive/PAT challenge (which Firefox triggers where Chrome does not) fetches from a challenge
+// SUBDOMAIN, e.g. `brunhild.challenges.cloudflare.com` — a wildcard host is required or that request is
+// blocked and the challenge can't complete (no token → the gate 403s the chat in Firefox). Firefox
+// surfaces the block as a CORS/`(null)` failure rather than a CSP report, so it's easy to misdiagnose.
+// `*.challenges.cloudflare.com` does NOT match the bare host, so both are listed.
+const TURNSTILE_ORIGINS = 'https://challenges.cloudflare.com https://*.challenges.cloudflare.com';
 
 function csp(scriptSrc: string[]): string {
   return [
     "default-src 'self'",
-    `script-src 'self' ${TURNSTILE_ORIGIN} ${scriptSrc.join(' ')}`.trim(),
-    `frame-src ${TURNSTILE_ORIGIN}`,
+    `script-src 'self' ${TURNSTILE_ORIGINS} ${scriptSrc.join(' ')}`.trim(),
+    `frame-src ${TURNSTILE_ORIGINS}`,
     // `style-src` keeps 'unsafe-inline': the only remaining inline `style=` attributes carry
     // genuinely dynamic, per-row values that cannot be enumerated as classes — chart-bar widths
     // (StackedBar, RankedBars, ShareBar, SingleOfferPortion) and the procedure-mix segment colours
@@ -19,7 +25,7 @@ function csp(scriptSrc: string[]): string {
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data:",
-    `connect-src 'self' ${TURNSTILE_ORIGIN}`,
+    `connect-src 'self' ${TURNSTILE_ORIGINS}`,
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
