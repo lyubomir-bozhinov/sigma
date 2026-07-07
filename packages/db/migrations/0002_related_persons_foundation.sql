@@ -8,14 +8,14 @@
 
 -- Public officials who filed declarations. No national person id (ЕГН is stripped, ADR-0010), so a
 -- person is keyed by normalized name; the rare namesake collision is documented, not silently merged.
-CREATE TABLE persons (
+CREATE TABLE IF NOT EXISTS persons (
   id           TEXT PRIMARY KEY,            -- 'person:' || companyNameKey-style normalized full name
   name         TEXT NOT NULL,               -- declarant full name as filed
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- One row per filed declaration (natural key xml_file + control_hash makes re-import idempotent).
-CREATE TABLE declarations (
+CREATE TABLE IF NOT EXISTS declarations (
   id            TEXT PRIMARY KEY,           -- 'decl:' || xml_file
   person_id     TEXT NOT NULL REFERENCES persons(id),
   xml_file      TEXT NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE declarations (
 );
 
 -- One row per company-bearing declared interest (the declarant's OWN interests only; ADR-0010/0013).
-CREATE TABLE declared_interests (
+CREATE TABLE IF NOT EXISTS declared_interests (
   id             TEXT PRIMARY KEY,          -- 'di:' || decl id || ':' || ordinal
   declaration_id TEXT NOT NULL REFERENCES declarations(id),
   entity_raw     TEXT NOT NULL,             -- company name exactly as declared
@@ -41,13 +41,13 @@ CREATE TABLE declared_interests (
   timing         TEXT NOT NULL DEFAULT 'annual', -- annual | current | prior (appointment-relative)
   seat           TEXT                       -- declared седалище (asset decls only; sparse)
 );
-CREATE INDEX idx_declared_interests_key ON declared_interests(entity_key);
-CREATE INDEX idx_declared_interests_decl ON declared_interests(declaration_id);
+CREATE INDEX IF NOT EXISTS idx_declared_interests_key ON declared_interests(entity_key);
+CREATE INDEX IF NOT EXISTS idx_declared_interests_decl ON declared_interests(declaration_id);
 
 -- The resolved match: a person↔winner ЕИК link, aggregated across that person's declarations (annual
 -- re-filings collapse to one link). Per-row evidence stays in declared_interests, joinable by person +
 -- entity_key. `link_key` is the stable natural key the suppression list and re-imports key on.
-CREATE TABLE interest_links (
+CREATE TABLE IF NOT EXISTS interest_links (
   id                TEXT PRIMARY KEY,       -- 'il:' || link_key
   link_key          TEXT NOT NULL UNIQUE,   -- person_id || '|' || eik  (suppression + idempotent re-import)
   person_id         TEXT NOT NULL REFERENCES persons(id),
@@ -85,14 +85,14 @@ CREATE TABLE interest_links (
   verified_at       TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_interest_links_eik ON interest_links(eik);
-CREATE INDEX idx_interest_links_status ON interest_links(status);
-CREATE INDEX idx_interest_links_person ON interest_links(person_id);
+CREATE INDEX IF NOT EXISTS idx_interest_links_eik ON interest_links(eik);
+CREATE INDEX IF NOT EXISTS idx_interest_links_status ON interest_links(status);
+CREATE INDEX IF NOT EXISTS idx_interest_links_person ON interest_links(person_id);
 
 -- Per-buying-authority breakdown for each link: which public bodies bought from the official's company,
 -- how much, and whether the body is the official's OWN institution (the strongest conflict signal).
 -- Authority `name` in the winner data is sometimes a ';'-joined framework blob — split into components.
-CREATE TABLE interest_link_authorities (
+CREATE TABLE IF NOT EXISTS interest_link_authorities (
   link_key       TEXT NOT NULL REFERENCES interest_links(link_key),
   authority_id   TEXT NOT NULL REFERENCES authorities(id),
   authority_name TEXT NOT NULL,             -- the matched name component
@@ -101,10 +101,10 @@ CREATE TABLE interest_link_authorities (
   own            TEXT NOT NULL DEFAULT 'none', -- exact (deterministic) | locality (heuristic) | none
   PRIMARY KEY (link_key, authority_id)
 );
-CREATE INDEX idx_ila_authority ON interest_link_authorities(authority_id);
+CREATE INDEX IF NOT EXISTS idx_ila_authority ON interest_link_authorities(authority_id);
 
 -- Contested/corrected links that MUST stay removed across refreshes (ADR-0007 correction path).
-CREATE TABLE link_suppressions (
+CREATE TABLE IF NOT EXISTS link_suppressions (
   link_key      TEXT PRIMARY KEY,           -- matches interest_links.link_key
   reason        TEXT NOT NULL,
   suppressed_by TEXT NOT NULL,
@@ -113,7 +113,7 @@ CREATE TABLE link_suppressions (
 
 -- Declared THIRD-PARTY people (interests tables 21/22). PII → INTERNAL only (ADR-0010): never joined
 -- into published surfaces; masked on every output format. Feeds only the internal свързани-лица graph.
-CREATE TABLE related_persons_internal (
+CREATE TABLE IF NOT EXISTS related_persons_internal (
   id             TEXT PRIMARY KEY,          -- 'rp:' || decl id || ':' || ordinal
   declaration_id TEXT NOT NULL REFERENCES declarations(id),
   related_name   TEXT NOT NULL,             -- third-party name — masked at every surface

@@ -84,13 +84,16 @@ jobs:
       - name: Audit published links (fails the run on any libel-invariant violation)
         run: node --import ./scripts/cacbg/register-ts.mjs scripts/cacbg/audit.mjs
 
-      - name: Apply migrations to the target D1
-        # migrations apply resolves the DB from the config, so render the real database_id + name first
-        # (committed config holds a zero-UUID placeholder + base name 'sigma') — same as the deploy path.
+      - name: Apply the свързани-лица schema to the target D1
+        # The base schema is created out-of-band via `d1 execute --file` (import.mjs), so wrangler's
+        # migration tracking is empty and `d1 migrations apply` would re-run 0000 and collide. Apply 0002
+        # directly the same way; it is idempotent (CREATE … IF NOT EXISTS). Render first for the real
+        # database_id + name (committed config holds placeholders) — same as the deploy path.
         run: |
           node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
-          pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" \
-            --config wrangler.deploy.jsonc --remote
+          pnpm --filter @sigma/web exec wrangler d1 execute "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote --yes \
+            --file ../../packages/db/migrations/0002_related_persons_foundation.sql
 
       - name: Ship свързани-лица tables → D1
         run: node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --remote --yes

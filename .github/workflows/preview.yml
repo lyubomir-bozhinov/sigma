@@ -81,16 +81,18 @@ jobs:
           check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || exit 1
 
-      # Schema before serving: the preview binds the shared dev D1, so any migration the branch adds
-      # (e.g. the свързани-лица tables) must exist there before the new Worker answers requests — else
-      # routes like /conflicts 500 on a missing table. migrations apply resolves the DB from the config,
-      # so render the real database_id + name first (committed config holds a zero-UUID placeholder and
-      # the base name 'sigma'). Idempotent (wrangler tracks applied migrations); guarded above vs prod.
-      - name: Apply D1 migrations to the shared dev database
+      # Schema before serving: the preview binds the shared dev D1, so the свързани-лица tables must
+      # exist there before the new Worker answers requests — else /conflicts 500s on a missing table.
+      # The dev D1's base schema was created out-of-band via `d1 execute --file` (import.mjs), so
+      # `d1 migrations apply` would try to re-run 0000 and collide; apply 0002 directly the same way.
+      # 0002 is idempotent (CREATE … IF NOT EXISTS), safe to run on every preview. Resolving the DB
+      # from the config needs the real id+name, so render first (committed config holds placeholders).
+      - name: Apply the свързани-лица schema to the shared dev database
         run: |
           node scripts/wrangler-render.mjs apps/web/wrangler.jsonc
-          pnpm --filter @sigma/web exec wrangler d1 migrations apply "$SIGMA_D1_NAME" \
-            --config wrangler.deploy.jsonc --remote
+          pnpm --filter @sigma/web exec wrangler d1 execute "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote --yes \
+            --file ../../packages/db/migrations/0002_related_persons_foundation.sql
 
       - name: Deploy preview worker
         id: deploy
