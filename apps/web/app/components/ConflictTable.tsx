@@ -62,7 +62,7 @@ export function ConflictTable({
                   <ExternalEikLink eik={l.eik} />
                 </td>
               )}
-              <td data-label="Деклариран интерес">
+              <td className="cell-prose" data-label="Деклариран интерес">
                 {relationLabel(l.relation)}
                 {l.ownInstitution && (
                   <>
