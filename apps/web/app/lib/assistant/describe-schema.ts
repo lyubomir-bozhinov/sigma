@@ -5,6 +5,8 @@
 // of `SUM(amount_eur)` returns a garbage total attributed to АОП — defamation/disinfo by accident.
 // Grounded in packages/db/migrations/0000_init.sql; keep in sync when the schema changes.
 
+import { CPV_CATEGORIES, CPV_SECTORS } from '@sigma/config';
+
 // Imperative rules — stated as MUST/NEVER so the model treats them as hard constraints, not hints.
 export const DATA_TRAPS: string[] = [
   'Парични агрегати: СУМИРАЙ САМО `contracts.amount_eur` (каноничен EUR, безопасен за сумиране). ' +
@@ -44,6 +46,12 @@ export const DATA_TRAPS: string[] = [
     '`contracts.annex_count > 0` без JOIN; `contracts.current_value_eur` дава EUR стойността след последния анекс.',
   'УНП на договор е `tenders.source_id` — достъпва се през `JOIN tenders t ON t.id = c.tender_id`. ' +
     "За да намериш всички договори по дадено УНП: `WHERE t.source_id = '00123-2024-0001'` (замени с реалния УНП).",
+  'CPV раздели (сектори): НЕ гадай кода на раздел по неговото име — ползвай „Речника на CPV раздели" ' +
+    'по-долу. Секторът е първите 2 цифри на `t.cpv_code`; филтрирай с префикс, напр. ' +
+    '`substr(t.cpv_code,1,2)` (напр. в списък от кодове). Внимание: „здравеопазване“/„лекарства“/„медицинско“ = ' +
+    'раздел 33 (медицинско оборудване и фармация) + по избор 85 (здравни/социални услуги) — НЕ раздел 38 ' +
+    '(лабораторно/оптично оборудване) и НЕ 31 (електрически уреди). За тематична група ползвай точния ' +
+    'списък раздели от речника, не свободна асоциация.',
   'Времеви серии (разход/брой по ГОДИНА или МЕСЕЦ — `substr(c.signed_at,1,4|7)` в SELECT/GROUP BY) ' +
     "ЗАДЪЛЖИТЕЛНО ограничавай обхвата: `c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')` " +
     "(или фиксирай период, напр. `substr(c.signed_at,1,4) = '2024'`) — иначе се отхвърля. Причината: " +
@@ -61,7 +69,8 @@ export const TABLES: TableDoc[] = [
   {
     name: 'authorities',
     grain: 'един възложител',
-    columns: 'id, name, type_group, settlement, region, bulstat',
+    columns:
+      "id, name, type_group, settlement, region (ИМЕ на областта, напр. 'София (столица)'; НЕ е NUTS3 код), nuts (NUTS3 код, напр. 'BG411'), bulstat",
   },
   {
     name: 'tenders',
@@ -110,7 +119,7 @@ export const TABLES: TableDoc[] = [
     name: 'authority_totals',
     grain: 'rollup на възложител',
     columns:
-      'authority_id, name, type_group, region (NUTS3 код; NULL=неразпределени — JOIN nuts_regions ON nuts_regions.nuts3 = region), spent_eur, contracts, suppliers, avg_eur, eu_eur, first_date, last_date',
+      "authority_id, name, type_group, region (ИМЕ на областта — = nuts_regions.nuts3_name, напр. 'София (столица)', 'Пловдив'; НЕ е NUTS3 код като 'BG411'. Филтрирай/групирай ДИРЕКТНО по това име; NULL=неразпределени), spent_eur, contracts, suppliers, avg_eur, eu_eur, first_date, last_date",
   },
   {
     name: 'company_totals',
@@ -159,7 +168,9 @@ export const TABLES: TableDoc[] = [
     columns:
       "nuts3 (PK, напр. 'BG411'), nuts3_name (напр. 'София (столица)'), " +
       "nuts2, nuts2_name (напр. 'Югозападен'), nuts1, nuts1_name — " +
-      'join с authority_totals: `JOIN nuts_regions n ON n.nuts3 = at.region`',
+      'ВАЖНО: `authority_totals.region` е ИМЕ (=nuts3_name), НЕ код, затова се join-ва по ИМЕ: ' +
+      '`JOIN nuts_regions n ON n.nuts3_name = at.region` (за макрорегион/NUTS2). За филтър по област ' +
+      "сравнявай направо с името, напр. `region = 'Пловдив'`.",
   },
 ];
 
@@ -200,8 +211,14 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
     sql: "SELECT substr(c.signed_at, 1, 7) AS period, SUM(c.amount_eur) AS total_eur, COUNT(*) AS contracts\nFROM contracts c\nWHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1\n  AND substr(c.signed_at, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'\n  AND c.signed_at >= '2020-01-01' AND c.signed_at <= date('now')\nGROUP BY period ORDER BY period;",
   },
   {
-    intent: 'Разход по област (NUTS3) — от rollup-а; празно region = неразпределени',
+    intent: 'Разход по област — от rollup-а; region е ИМЕ (не код); празно region = неразпределени',
     sql: 'SELECT region, SUM(spent_eur) AS value_eur, SUM(contracts) AS contracts\nFROM authority_totals GROUP BY region ORDER BY value_eur DESC;',
+  },
+  {
+    intent:
+      'Възложители/разход ИЗВЪН София — region е ИМЕ, затова изключвай по имена (НЕ по кодове BG411/BG412). ' +
+      "Столицата в данните са две области: 'София (столица)' (града) и 'София' (областта)",
+    sql: "SELECT region, SUM(spent_eur) AS value_eur, SUM(contracts) AS contracts\nFROM authority_totals\nWHERE region IS NOT NULL AND region NOT IN ('София (столица)', 'София')\nGROUP BY region ORDER BY value_eur DESC;",
   },
   {
     intent:
@@ -222,10 +239,27 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
   {
     intent:
       'Разход по NUTS2 макрорегион — агрегат от rollup-а на възложители ' +
-      '(LEFT JOIN включва и възложители без NUTS3 регион — те падат в „Неразпределени")',
-    sql: "SELECT COALESCE(n.nuts2_name, 'Неразпределени') AS macro_region, SUM(at.spent_eur) AS spent_eur, SUM(at.contracts) AS contracts\nFROM authority_totals at LEFT JOIN nuts_regions n ON n.nuts3 = at.region\nGROUP BY macro_region ORDER BY spent_eur DESC;",
+      '(join по ИМЕ, защото at.region е име; LEFT JOIN включва и възложители без регион — „Неразпределени")',
+    sql: "SELECT COALESCE(n.nuts2_name, 'Неразпределени') AS macro_region, SUM(at.spent_eur) AS spent_eur, SUM(at.contracts) AS contracts\nFROM authority_totals at LEFT JOIN nuts_regions n ON n.nuts3_name = at.region\nGROUP BY macro_region ORDER BY spent_eur DESC;",
   },
 ];
+
+// Canonical CPV division→label list + curated thematic groups, sourced from @sigma/config (the SAME
+// таксономия the site's explorer uses). Injected verbatim so the model resolves a sector NAME/theme to the
+// correct division code(s) instead of free-associating (the Q24 „здравеопазване"→38 defect). The groups are
+// the high-signal part: „Здравеопазване и социални дейности → 33, 85" fixes the health mapping outright.
+export function cpvReference(): string {
+  const divisions = CPV_SECTORS.map((s) => `${s.code} — ${s.label}`).join('\n');
+  const groups = CPV_CATEGORIES.map((c) => `${c.label} → раздели ${c.divisions.join(', ')}`).join(
+    '\n',
+  );
+  return [
+    'Тематични групи (тема → CPV раздели) — ползвай ги за въпроси по тема/сектор:',
+    groups,
+    '\nВсички CPV раздели (код — название):',
+    divisions,
+  ].join('\n');
+}
 
 /** Build the schema prompt asset the agent reads before writing SQL (returned by the tool). */
 export function describeSchema(): string {
@@ -236,6 +270,7 @@ export function describeSchema(): string {
     '# Речник на данните (чети преди да пишеш SQL)',
     '\n## Задължителни правила (капани в данните)\n' + traps,
     '\n## Таблици\n' + tables,
+    '\n## Речник на CPV раздели (за въпроси по сектор/тема — не гадай кода)\n' + cpvReference(),
     '\n## Канонични примерни заявки\n' + queries,
   ].join('\n');
 }
