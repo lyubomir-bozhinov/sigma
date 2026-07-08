@@ -7,8 +7,8 @@
 // `--config`. Optional deploy-time name env vars (`SIGMA_WEB_NAME`, `SIGMA_ETL_NAME`,
 // `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`, `SIGMA_CSV_CACHE_NAME`, `SIGMA_REPORTS_NAME`,
 // `SIGMA_VECTORIZE_NAME`) explicitly override resource names for alternate environments while
-// leaving committed names unchanged when unset. Deploy-time freshness/kill-switch overrides
-// (`SIGMA_BUILD_ID`, `SIGMA_ASSISTANT_ENABLED`) stamp the assistant's committed defaults.
+// leaving committed names unchanged when unset. Deploy-time freshness/kill-switch/gate overrides
+// (`SIGMA_BUILD_ID`, `SIGMA_ASSISTANT_ENABLED`, `SIGMA_ENVIRONMENT`) stamp the assistant's committed defaults.
 //
 // usage: node scripts/wrangler-render.mjs <path/to/wrangler.toml|jsonc>
 
@@ -81,6 +81,12 @@ if (ext === '.json' || ext === '.jsonc') {
     // assistant IN by setting SIGMA_ASSISTANT_ENABLED (preview + dev = "true"). Unset → committed "false"
     // stays, so staging/production remain dark until deliberately flipped at go-live.
     assistantEnabled: process.env.SIGMA_ASSISTANT_ENABLED || '',
+    // Runtime deploy-env binding for the §9.3 HMAC gate (ADR-0012). The gate (gateTranscript) requires a
+    // signing key ONLY when ENVIRONMENT ∈ {production, staging} — NOT off import.meta.env.PROD, which Vite
+    // inlines true for staging too. Committed value is "development" (fail-open); each target stamps its
+    // own name (preview="preview", staging="staging", production="production"). Unset → committed
+    // "development" stays, so local `wrangler dev` (no render step) is fail-open by construction.
+    environment: process.env.SIGMA_ENVIRONMENT || '',
   };
   if (
     names.webName ||
@@ -89,7 +95,8 @@ if (ext === '.json' || ext === '.jsonc') {
     names.reportsName ||
     names.vectorizeName ||
     names.buildId ||
-    names.assistantEnabled
+    names.assistantEnabled ||
+    names.environment
   ) {
     out = renderJson(out, names);
   }
@@ -182,6 +189,10 @@ function renderJson(text, names) {
   // Opt this environment's assistant IN over the committed fail-dark "false".
   if (names.assistantEnabled && obj.vars && typeof obj.vars === 'object')
     obj.vars.ASSISTANT_ENABLED = names.assistantEnabled;
+  // Stamp the runtime deploy-env over the committed "development" so the HMAC gate can tell a public
+  // env (production/staging → key required) from an ephemeral one (preview/dev → fail-open).
+  if (names.environment && obj.vars && typeof obj.vars === 'object')
+    obj.vars.ENVIRONMENT = names.environment;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 

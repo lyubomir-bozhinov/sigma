@@ -109,6 +109,12 @@ jobs:
       # wrangler-render leaves the committed fail-dark "false", so production stays dark until deliberately
       # flipped. Killing a live assistant is then just clearing this var + redeploy (or the runtime flag).
       SIGMA_ASSISTANT_ENABLED: ${{ vars.SIGMA_ASSISTANT_ENABLED }}
+      # Runtime deploy-env for the §9.3 HMAC gate (ADR-0012). Set the SIGMA_ENVIRONMENT *variable* per
+      # GitHub Environment: "production" and "staging" are public/unauthenticated → the gate REQUIRES the
+      # signing key (fail-closed 503 without it); any other value (or unset → committed "development")
+      # fails open. wrangler-render stamps this into ENVIRONMENT. Not derived from import.meta.env.PROD,
+      # which Vite inlines true for the staging build too (it would misclassify staging as production).
+      SIGMA_ENVIRONMENT: ${{ vars.SIGMA_ENVIRONMENT }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -233,6 +239,16 @@ jobs:
           # retroactive within a line, hence add-mask on the line right after generation.
           echo "::add-mask::$key"
           printf '%s' "$key" | pnpm --filter @sigma/web exec wrangler secret put LOG_IP_KEY --name "$SIGMA_WEB_NAME"
+
+      # The §9.3 transcript-signing key (ADR-0011/0012). Same generate-if-absent story as LOG_IP_KEY above:
+      # a purely internal HMAC key with no human value, generated once per worker and left stable across
+      # redeploys (rotating it would invalidate every in-flight client transcript at once). On production +
+      # staging the runtime gate fails CLOSED without it, so this step must run on every deploy to keep the
+      # required key present. The key is generated in-process and streamed to wrangler over stdin — it never
+      # appears in a log line, so no ::add-mask:: is needed. Runs after the deploy: the worker must exist first.
+      - name: Initialize ASSISTANT_HMAC_KEY secret if absent
+        if: steps.guard.outputs.ok == 'true' && success()
+        run: node scripts/ensure-worker-secret.mjs ASSISTANT_HMAC_KEY
 
       - name: Deploy refresh Workflow (sigma-etl)
         if: steps.guard.outputs.ok == 'true' && success()
