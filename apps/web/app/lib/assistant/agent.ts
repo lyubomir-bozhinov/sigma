@@ -554,11 +554,13 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
           const persisted = await persistReport(opts.ctx, verified.report, modelId, verified);
           if (persisted) opts.ctx.persistedReport = persisted;
           const toolCallId = `fallback_${randomReportId()}`;
-          writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
+          // Reuse EMIT_REPORT_TOOL (the same constant the tool registry and model path use) so a future
+          // rename of the tool name can't silently desync this synthesized fallback part from the real tool.
+          writer.write({ type: 'tool-input-start', toolCallId, toolName: EMIT_REPORT_TOOL });
           writer.write({
             type: 'tool-input-available',
             toolCallId,
-            toolName: 'emit_report',
+            toolName: EMIT_REPORT_TOOL,
             input: {},
           });
           writer.write({
