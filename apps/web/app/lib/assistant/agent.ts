@@ -493,31 +493,37 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
         // Skip the fallback when the model finalized its own report, or errored (a provider failure already
         // surfaced its own message — don't paste a report over it).
         if (modelErrored || opts.ctx.reportEmitted) return;
-        // No bindable data this turn → the fallback finalizer has nothing to synthesize from. If the model
-        // also produced no prose, the turn would otherwise be BLANK (empty completion). Write an explicit
-        // affordance so the dock shows guidance instead of an empty transcript. A legit prose-only answer
-        // (produced text, e.g. a clarifying reply) is left untouched.
+        // No publishable outcome — either no bindable data, or data too thin to synthesize a real report.
+        // If the model also produced no prose, the turn would otherwise be BLANK. Write an explicit
+        // affordance so the dock shows guidance instead of an empty transcript; a legit prose-only answer
+        // (produced text, e.g. a clarifying reply or a greeting) is left untouched.
+        const writeEmptyAffordance = () => {
+          if (modelProducedText) return;
+          const textId = `empty_${randomReportId()}`;
+          writer.write({ type: 'text-start', id: textId });
+          writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
+          writer.write({ type: 'text-end', id: textId });
+        };
         if (opts.ctx.results.length === 0) {
-          if (!modelProducedText) {
+          if (!modelProducedText)
             console.warn('[assistant] empty completion — no report, no data, no prose', {
               finishReason: modelFinishReason,
             });
-            const textId = `empty_${randomReportId()}`;
-            writer.write({ type: 'text-start', id: textId });
-            writer.write({ type: 'text-delta', id: textId, delta: EMPTY_COMPLETION_MESSAGE });
-            writer.write({ type: 'text-end', id: textId });
-          }
+          writeEmptyAffordance();
           return;
         }
         try {
           const built = buildFallbackReport(opts.ctx.results, opts.ctx.userQuestion ?? '');
           if (!built.ok) {
-            // We had bindable data yet still couldn't synthesize a valid report (e.g. bindReport rejected
-            // the shape). Log it — otherwise this „had data, still no report" case fails invisibly.
+            // Had rows yet no publishable report: bindReport rejected the shape, OR the result was too thin
+            // to be an answer (a single row with no measure — the „Division / 45" probe defect, refused in
+            // report-fallback.ts). Don't paste a hollow report; fall through to the same rephrase affordance
+            // as the no-data case so a probe-only turn with no prose isn't left blank.
             console.warn('[assistant] fallback finalizer produced no valid report', {
               errors: built.errors,
               resultCount: opts.ctx.results.length,
             });
+            writeEmptyAffordance();
             return;
           }
           if (built.warnings.length > 0)
