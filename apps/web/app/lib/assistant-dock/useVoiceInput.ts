@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { VOICE_ERROR_COPY, classifyMediaError, type VoiceErrorKind } from './errors';
+import { nextTurnstileToken, withTurnstileHeader } from './turnstile-token';
 
 // Records a short mic clip, transcribes it via /assistant/transcribe, and hands the text back to the
 // composer (editable, not auto-sent). Every exit path — stop, error, unmount — tears down the mic
@@ -162,9 +163,13 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       controller.abort();
     }, TRANSCRIBE_TIMEOUT_MS);
     try {
+      // Attach a fresh Turnstile token when the gate is active (mirrors the chat transport). Without it,
+      // every voice request 403s once TURNSTILE_SECRET is provisioned for chat (shared env, one widget).
+      const token = await nextTurnstileToken();
+      const baseHeaders: HeadersInit = { 'Content-Type': 'application/json' };
       const res = await fetch(ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: token ? withTurnstileHeader(baseHeaders, token) : baseHeaders,
         body: JSON.stringify({ audio, mime: mimeRef.current }),
         signal: controller.signal,
       });
