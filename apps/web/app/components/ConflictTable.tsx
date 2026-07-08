@@ -50,7 +50,7 @@ export function ConflictTable({
             <th scope="col" className="num">
               Договори
             </th>
-            <th scope="col" className="num">
+            <th scope="col" className="num funds-head">
               Публични средства (€)
             </th>
             <th scope="col">Период</th>
@@ -137,18 +137,20 @@ function ConflictRow({
           )}
         </td>
         <td className="num cell-count" data-label="Договори">
-          <span className="count-value">{contractsCountLabel(l)}</span>
-          {l.contractCount > 0 && (
+          {l.contractCount > 0 ? (
             <button
               type="button"
-              className="row-toggle"
+              className="count-toggle"
               aria-expanded={open}
               aria-controls={panelId}
+              aria-label={open ? 'Скрий договорите' : 'Виж договорите'}
               onClick={toggle}
             >
+              <span className="count-value">{contractsCountLabel(l)}</span>
               <span className="row-toggle-icon" aria-hidden="true" />
-              {open ? 'скрий договорите' : 'виж договорите'}
             </button>
+          ) : (
+            <span className="count-value">{contractsCountLabel(l)}</span>
           )}
         </td>
         <td className="money" data-label="Публични средства (€)">

@@ -371,47 +371,39 @@ td.rank {
 }
 
 /* свързани-лица: contemporaneous-contract split + the on-demand contract list (expandable row) -----
-   `.cell-count` gives the count value and its expander their own flex row (gap, not a jammed inline
-   link) on desktop; the card-mode override below drops the button to a full-width line so it never
-   collides with the "X от Y" figure at 360px. */
-td.cell-count {
-  display: flex;
+   The "X от Y" count IS the disclosure control (a compact inline button with a chevron), so the
+   „Договори" column stays narrow — a separate „виж договорите" text button widened the column ~140px
+   and pushed the right-hand columns off-screen. aria-label carries the action for screen readers. */
+.count-toggle {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--s-2);
+  gap: var(--s-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  cursor: pointer;
+}
+.count-toggle:hover {
+  color: var(--accent);
+}
+.count-toggle:hover .count-value {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
 }
 .count-value {
   font-variant-numeric: tabular-nums;
 }
-
-/* Row-level disclosure control — a real bordered button (not an inline text link jammed against a
-   number), with a chevron that flips on aria-expanded so the affordance is legible at a glance. */
-.row-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 3px var(--s-2);
-  border: 1px solid var(--rule);
-  background: var(--paper);
-  color: var(--ink-mid);
-  font: 500 11px/1.4 var(--font-mono);
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  cursor: pointer;
+/* Let the long „Публични средства (€)" header wrap to two lines so the column is content-sized (~115px)
+   rather than pinned to the single-line header width (~178px) — the last bit of horizontal room the 8th
+   column („Източник") needs to stay on-screen at ~1024px instead of scrolling off. */
+th.funds-head {
+  white-space: normal;
 }
-.row-toggle:hover {
-  border-color: var(--ink);
-  color: var(--ink);
-  background: var(--paper-warm);
-}
-/* :focus-visible outline for buttons is already handled globally in base.css
-   (:where(button, ...):focus-visible); no need to repeat it here. */
-.row-toggle[aria-expanded='true'] {
-  border-color: var(--ink);
-  color: var(--ink);
-  background: var(--paper-warm);
-}
+/* Chevron flips on expand; the affordance that the count is clickable. */
 .row-toggle-icon {
   flex: 0 0 auto;
   width: 0;
@@ -421,10 +413,10 @@ td.cell-count {
   border-top: 5px solid currentColor;
   transition: transform 0.15s ease;
 }
-.row-toggle[aria-expanded='true'] .row-toggle-icon {
+.count-toggle[aria-expanded='true'] .row-toggle-icon {
   transform: rotate(180deg);
 }
-/* Reduced-motion is already neutralised globally in base.css. */
+/* :focus-visible + reduced-motion are handled globally in base.css. */
 
 /* Conflict-window sum over the total, right-aligned to sit under the „(€)" header. Bolded primary
    figure + the existing .small.muted convention for the "от … общо" context line, with breathing
@@ -498,7 +490,7 @@ td.cell-count {
 
 /* Card mode: the detail row is a full-width block, not a label/value flex pair; it visually attaches
    to the row above (no gap, no repeated top border) so it reads as an expansion of that card, not a
-   separate floating one. The count cell's button drops to its own full-width line below the figure. */
+   separate floating one. */
 @media (max-width: 560px) {
   .tbl-cards td.cell-detail {
     display: block;
@@ -514,20 +506,6 @@ td.cell-count {
     border-top: 0;
     border-left-color: var(--rule);
     background: var(--paper-warm);
-  }
-
-  .tbl-cards td.cell-count {
-    flex-wrap: wrap;
-    /* Restore the card label↔value pairing (the desktop `td.cell-count` flex-end would otherwise leak
-       in and push the „ДОГОВОРИ" label off the left edge, unlike every sibling card cell). */
-    justify-content: space-between;
-  }
-  .tbl-cards td.cell-count .row-toggle {
-    flex: 1 0 100%;
-    justify-content: center;
-    margin-top: var(--s-2);
-    padding-top: 8px;
-    padding-bottom: 8px;
   }
 
   .contract-item {
