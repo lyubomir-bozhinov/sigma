@@ -24,6 +24,7 @@ const env = (over: Record<string, unknown> = {}) => ({
   ASSISTANT_ENABLED: 'true',
   ASSISTANT_API_KEY: 'k',
   AI_GATEWAY_ID: 'sigma-assistant',
+  BGGPT_STT_BASE_URL: 'https://gateway.example/v1/acct/sigma-assistant/custom-bggpt-voice',
   AI: { run: whisperRun('unused') },
   ...over,
 });
@@ -116,6 +117,18 @@ describe('assistant.transcribe action', () => {
       makeArgs(postJson(AUDIO), { ASSISTANT_ENABLED: 'true', AI: { run } }), // no ASSISTANT_API_KEY
     );
 
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await res.json()).toStrictEqual({ text: 'от Workers AI', source: 'workers-ai' });
+  });
+
+  it('skips BgGPT when BGGPT_STT_BASE_URL is unset (fail-closed to Workers AI, no api.bggpt.ai direct)', async () => {
+    const run = whisperRun('от Workers AI');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const res = await action(
+      makeArgs(postJson(AUDIO), env({ AI: { run }, BGGPT_STT_BASE_URL: undefined })),
+    );
+
+    // No base URL ⇒ BgGPT is skipped entirely (never a hardcoded direct-API fallback); Workers AI serves.
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(await res.json()).toStrictEqual({ text: 'от Workers AI', source: 'workers-ai' });
   });

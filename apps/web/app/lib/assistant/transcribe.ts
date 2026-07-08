@@ -1,7 +1,8 @@
 // Pure helpers for /assistant/transcribe (voice transcription). No DOM, no bindings — unit-tested in the
 // node project. The route composes these with firstPartyRejection + the byte cap + env.AI.run.
 
-/** Workers AI Whisper model — multilingual; called DIRECTLY (no AI Gateway) so audio is never logged. */
+/** Workers AI Whisper model — multilingual; routed through the AI Gateway with collectLog:false, so the
+ * gateway records metadata but never the audio. */
 export const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 
 /** Forced decode language (Bulgarian-first audience). Not a translate flag — Whisper cannot translate to Bulgarian. */
@@ -19,8 +20,9 @@ export const MAX_TRANSCRIPT_CHARS = 2000;
 // MediaRecorder only ever emits these containers (webm/opus on Chrome/FF, mp4/m4a on Safari, ogg rarely).
 const ALLOWED_AUDIO_MIMES: ReadonlySet<string> = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 
-// Control chars (C0/C1) + bidi overrides/isolates that can spoof a transcript's visible order.
-const UNSAFE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+// Control chars (C0/C1) + bidi overrides/isolates that can spoof a transcript's visible order, plus
+// zero-width chars (U+200B-200D) and the BOM (U+FEFF) that are invisible in the textarea/chat.
+const UNSAFE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
 /** Lowercase and drop codec params: `audio/webm;codecs=opus` → `audio/webm`. */
 export function normalizeMime(mime: string): string {

@@ -33,7 +33,10 @@ interface WhisperRunner {
   ): Promise<{ text?: unknown }>;
 }
 
-const BGGPT_STT_BASE_URL = 'https://api.bggpt.ai/v1';
+// The BgGPT STT base URL is env-only (wrangler.jsonc → BGGPT_STT_BASE_URL = the gateway's custom-bggpt-voice
+// provider) — no in-code default, so a missing var SKIPS BgGPT (falls back to Workers AI) rather than baking
+// an account-scoped URL into source or silently hitting api.bggpt.ai direct (ADR-0011). The model name is a
+// safe non-env default.
 const BGGPT_STT_MODEL = 'bggpt-whisper-large-v3';
 const UNCONFIGURED = 'Гласовото въвеждане не е конфигурирано.';
 const TRANSCRIBE_FAILED = 'Разпознаването на говор не бе успешно.';
@@ -134,7 +137,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     AI_GATEWAY_ID?: string;
   };
   const ai = env.AI as unknown as WhisperRunner | undefined;
-  const bgKey = cfg.VOICE_ASSISTANT_API_KEY ?? cfg.ASSISTANT_API_KEY;
+  // `||` (not `??`): an empty-string VOICE key must fall through to ASSISTANT_API_KEY, not skip BgGPT.
+  const bgKey = cfg.VOICE_ASSISTANT_API_KEY || cfg.ASSISTANT_API_KEY;
   if (!bgKey && !ai) {
     console.error('[transcribe] no STT provider — BgGPT key and AI binding both absent');
     return Response.json({ error: UNCONFIGURED }, { status: 503 });
@@ -143,10 +147,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   // One attempt per provider — each guards its own config, catches + logs its own failure (so a fallback
   // is visible in telemetry), and returns null so the caller can try the next.
   const tryBgGpt = async (): Promise<Attempt | null> => {
-    if (!bgKey) return null;
+    if (!bgKey || !cfg.BGGPT_STT_BASE_URL) return null;
     try {
       const text = await transcribeViaBgGpt(
-        cfg.BGGPT_STT_BASE_URL ?? BGGPT_STT_BASE_URL,
+        cfg.BGGPT_STT_BASE_URL,
         bgKey,
         cfg.BGGPT_STT_MODEL ?? BGGPT_STT_MODEL,
         body.audio,
