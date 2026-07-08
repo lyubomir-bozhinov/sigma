@@ -54,9 +54,17 @@ Dynamic routes `voice` + `voice-fallback` (custom-bggpt-voice / workers-ai) — 
 dynamic routing е за chat/LLM маршрутизиране, приема аудио само през несъществуващ audio-compat вход. Не
 опитвай пак за транскрипция. Причината е записана тук, за да не се преоткрива.
 
-## MUST-verify (преди да разчитаме на пътя)
+## Верификация (data-plane, проверено 2026-07-08)
 
-1. `cf-aig-collect-log: false` реално спира съхранението на аудио (провери през Logs API) — load-bearing.
-2. primary пътят `custom-bggpt-voice/audio/transcriptions` работи с реалния ключ (проверен е само
-   workers-ai кракът; BgGPT кракът — само по аналогия с chat-а).
-3. хедърът за log-suppression винаги присъства във voice заявките (тест).
+- ✅ **primary** — `POST .../sigma-assistant/custom-bggpt-voice/audio/transcriptions` (multipart, реалният
+  VOICE ключ) → 200 + BG транскрипция. Работят и двата суфикса `/audio/transcriptions` и
+  `/v1/audio/transcriptions`.
+- ✅ **fallback** — `POST .../sigma-assistant/workers-ai/@cf/openai/whisper-large-v3-turbo` (JSON base64,
+  CF токен) → 200 + транскрипция.
+- ✅ **no-persist (load-bearing)** — A/B през Logs API: заявка **без** `cf-aig-collect-log: false` оставя
+  запис (аудио се логва); заявка **с** хедъра не оставя никакъв запис. Значи хедърът спира логването
+  изцяло — аудиото не се персистира.
+
+Остава за code-level (lane на Niki): тест, че `cf-aig-collect-log: false` **винаги** присъства във voice
+заявките (иначе гаранцията пада); и DoW cap ([0009](0009-global-bggpt-cap-is-a-durable-object.md) — DO)
+да покрива `/assistant/transcribe`.
