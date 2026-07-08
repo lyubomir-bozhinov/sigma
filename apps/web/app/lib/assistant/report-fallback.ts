@@ -105,6 +105,24 @@ export function buildFallbackReport(results: QueryResult[], question: string): B
   const last = [...results].reverse().find((r) => r.rows.length > 0);
   if (!last) return { ok: false, errors: ['no results to summarise'] };
 
+  // Quality bar — the root cause of the „Division / 45" meaningless-report defect. This finalizer exists to
+  // surface real FIGURES the model gathered but failed to format (see the module header). A SINGLE-row
+  // result with NO numeric cell carries no figure: it is a stray dimensional probe (a lone CPV `division`
+  // code the weak model queried but never meant to report) or a bare label — publishing it as an
+  // authoritative „Справка" reads as scrap. Refuse; the turn then shows the rephrase affordance instead of
+  // a hollow report. Multi-row results are left alone (a list of rows is at least substantive), and any
+  // result with a numeric measure — a scalar total, an entity+figure row, a timeseries — still binds.
+  // ponytail: keyed on a numeric cell, matching the schema (a `division` code is TEXT everywhere:
+  // cpv-map.ts, reconcile-rollup grains); a dimension returned as an integer would slip past this, but the
+  // real safeguard against that is the model not running dimension-only probes.
+  const hasMeasure = last.rows.some((row) => row.some((v) => typeof v === 'number'));
+  if (last.rows.length === 1 && !hasMeasure) {
+    return {
+      ok: false,
+      errors: ['single-row result carries no measure — nothing quantitative to report'],
+    };
+  }
+
   // A `totals` block is the „one number" answer — use it only when the single row is ENTIRELY numeric.
   // A single row that also carries a text/label column (an entity name, a period) goes to a 1-row `table`
   // instead, so that context is preserved; a totals block would show the figures with no idea WHICH entity
