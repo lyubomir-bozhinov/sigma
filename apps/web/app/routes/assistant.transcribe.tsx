@@ -1,7 +1,7 @@
 // Resource route: the voice-transcription endpoint. The dock POSTs a short base64 audio clip; we
 // transcribe it to Bulgarian text and hand it back EDITABLE (never auto-sent). Two server-side Whisper
 // providers are tried in order for availability, BOTH routed through the sigma-assistant AI Gateway for
-// unified cost/latency observability (ADR-0011):
+// unified cost/latency observability (ADR-0013):
 //   1. BgGPT/INSAIT Whisper (primary) — the custom-bggpt-voice provider (multipart, VOICE key per-request).
 //   2. Cloudflare Workers AI Whisper (fallback) — the AI binding, routed through the same gateway.
 // Every request carries cf-aig-collect-log:false / collectLog:false so the gateway logs METADATA but NEVER
@@ -35,7 +35,7 @@ interface WhisperRunner {
 
 // The BgGPT STT base URL is env-only (wrangler.jsonc → BGGPT_STT_BASE_URL = the gateway's custom-bggpt-voice
 // provider) — no in-code default, so a missing var SKIPS BgGPT (falls back to Workers AI) rather than baking
-// an account-scoped URL into source or silently hitting api.bggpt.ai direct (ADR-0011). The model name is a
+// an account-scoped URL into source or silently hitting api.bggpt.ai direct (ADR-0013). The model name is a
 // safe non-env default.
 const BGGPT_STT_MODEL = 'bggpt-whisper-large-v3';
 const UNCONFIGURED = 'Гласовото въвеждане не е конфигурирано.';

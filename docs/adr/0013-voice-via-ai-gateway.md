@@ -1,4 +1,4 @@
-# ADR-0011 — Voice lane през AI Gateway (provider endpoints, без dynamic routes)
+# ADR-0013 — Voice lane през AI Gateway (provider endpoints, без dynamic routes)
 
 - **Статус:** Прието
 - **Дата:** 2026-07-08

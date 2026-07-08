@@ -43,7 +43,7 @@ describe('assistant.transcribe action', () => {
     const res = await action(makeArgs(postJson(AUDIO), env({ AI: { run } })));
 
     expect(fetchSpy).toHaveBeenCalledOnce();
-    // cf-aig-collect-log:false keeps the audio out of the gateway logs (load-bearing, ADR-0011).
+    // cf-aig-collect-log:false keeps the audio out of the gateway logs (load-bearing, ADR-0013).
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringContaining('/audio/transcriptions'),
       expect.objectContaining({
