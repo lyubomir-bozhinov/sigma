@@ -24,6 +24,15 @@ const ALLOWED_AUDIO_MIMES: ReadonlySet<string> = new Set(['audio/webm', 'audio/m
 // zero-width chars (U+200B-200D) and the BOM (U+FEFF) that are invisible in the textarea/chat.
 const UNSAFE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
+// Standard base64 alphabet with 0–2 trailing `=` pads. Rejects data: URLs, whitespace, and any
+// non-base64 byte before the value reaches atob()/the paid Whisper fallback.
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** Whether `s` is well-formed padded base64 (canonical alphabet, length a multiple of 4). */
+export function isValidBase64(s: string): boolean {
+  return s.length % 4 === 0 && BASE64_RE.test(s);
+}
+
 /** Lowercase and drop codec params: `audio/webm;codecs=opus` → `audio/webm`. */
 export function normalizeMime(mime: string): string {
   return mime.split(';', 1)[0].trim().toLowerCase();
@@ -97,6 +106,11 @@ export function parseTranscribeBody(raw: string): TranscribeBody {
   const body = parsed as { audio?: unknown; mime?: unknown };
   if (typeof body.audio !== 'string' || body.audio.length === 0) {
     return { ok: false, status: 400, error: 'липсва аудио' };
+  }
+  // Validate the base64 at the door so malformed input never reaches atob() (BgGPT leg) or the paid
+  // Workers-AI Whisper fallback — garbage is rejected as 400, not spent on a decode or a model call.
+  if (!isValidBase64(body.audio)) {
+    return { ok: false, status: 400, error: 'невалидно аудио кодиране' };
   }
   if (typeof body.mime !== 'string' || !isAllowedAudioMime(body.mime)) {
     return { ok: false, status: 415, error: 'неподдържан аудио формат' };
