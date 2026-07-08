@@ -181,8 +181,9 @@ export function assertReadOnlySelect(rawSql: string): GuardResult {
   // early-reject for the known-dangerous bare forms.
   //
   // NOTE: `replace` is deliberately NOT here — single-level replace is a legitimate read-only string
-  // function (Cyrillic↔Latin transliteration). Only NESTED replace is a string-bomb, and that needs the
-  // AST to detect (a text regex can't tell one replace from two); it is caught at L2 (denyNestedReplace).
+  // function (Cyrillic↔Latin transliteration). Only a COMPOUNDING replace (one re-expanding an already-
+  // amplified argument) or an amplifier chained across scopes is a string-bomb, and that needs the AST to
+  // detect (a text regex can't tell one replace from two); it is caught at L2 (denyAmplifyingStringChain).
   if (
     /\b(?:load_extension|randomblob|zeroblob|printf|format|string_agg|json_group_array|json_group_object|json_object|json_array|json_quote|json_pretty|json_set|json_insert|json_replace|json_patch|json_remove)\s*\(/i.test(
       sql,

@@ -221,41 +221,111 @@ function denyForbiddenFunction(node: unknown): string | null {
   return null;
 }
 
-// String-length AMPLIFICATION guard — WHOLE-QUERY, cross-CTE. A single-level `replace(x, a, b)` and a
-// single `||` concatenation are legitimate read-only string ops (e.g. Cyrillic↔Latin transliteration),
-// bounded by the row size × the byte-capped literals. But they MULTIPLY a value's length, so CHAINING
-// them is a memory-amplification string-bomb. Two shapes chain past every prior bound:
-//   • inline nesting — `replace(replace('A','A','AAAAAAAAAA')…)` grows ×N per level in one expression;
-//   • a CTE chain — `WITH l1 AS (SELECT replace(v,'X','XXXXXXXXXX') FROM l0), l2 AS (… FROM l1) …`
-//     (or the same with `v||v||…||v`, or `concat(…)`), each level reading the prior CTE's single cell.
-// The injected `LIMIT 500` bounds only the FINAL row count; capRows / RESULT_BYTE_CAP measure only AFTER
-// the value materialises in-engine → Worker OOM via run_sql. `denyForbiddenFunction`'s per-expression
-// checks miss the CTE chain, and the `||` operator is a `binary_expr` invisible to the function allowlist
-// entirely. No canonical query uses more than a single transliteration `replace` (and none uses `||`),
-// so we bound the WHOLE query to at most ONE amplifying string op: count every `replace` call
-// (quoting-proof via functionName) plus every `||` operator across the entire AST — all CTEs, sub-
-// queries, arguments — and reject on the second. Subsumes the old denyNestedReplace (inline nesting is
-// two replaces in one expression → count 2). `concat`/`concat_ws` are handled upstream (off the
-// allowlist → already rejected by denyForbiddenFunction before this runs).
-function countAmplifyingStringOps(node: unknown): number {
-  if (Array.isArray(node)) {
-    let total = 0;
-    for (const item of node) total += countAmplifyingStringOps(item);
-    return total;
-  }
-  if (!node || typeof node !== 'object') return 0;
+// String-length AMPLIFICATION guard. `replace(x, a, b)` and `||` concatenation are legitimate read-only
+// string ops (Cyrillic↔Latin transliteration, joining a couple of columns), each bounded by the row size
+// × the byte-capped literals. The DoW risk is not their COUNT but their COMPOUNDING — feeding an already-
+// amplified value back into another amplifier grows length GEOMETRICALLY (×k per level), and `capRows` /
+// `RESULT_BYTE_CAP` measure only AFTER the value materialises in-engine → Worker OOM via run_sql. Two
+// shapes compound; everything else is bounded and must PASS (a flat `a || ' ' || b` sums a few byte-capped
+// cells ONCE — not a bomb, and the old whole-query op-count over-blocked it):
+//
+//   (A) INLINE — a `replace()` fed an already-amplified argument: another `replace` nested in its args
+//       (`replace(replace('A','A','AAAAAAAAAA')…)` → ×10 per level) OR a `||`/concat inside its args
+//       (`replace(v,'x', v||v||…)`). `replace` re-scans and expands whatever it is given, so an amplified
+//       input multiplies. A `||` whose operands are themselves amplifiers is NOT compounding — `||` is
+//       associative, so `(a||b)||c` is just the bounded sum a+b+c; only `replace` re-expands its input.
+//   (B) CROSS-SCOPE — amplifying ops (`replace` or `||`) appearing in ≥2 distinct SELECT scopes (a CTE
+//       chain `WITH l1 AS (SELECT v||v||… FROM l0), l2 AS (… FROM l1)`, or a subquery feeding an outer
+//       amplifier), where each scope reads the prior scope's single already-amplified cell and amplifies
+//       again. A single scope's flat `v||v||…||v` is bounded (×N, N capped by the query length); the
+//       geometric blow-up needs the value to survive a scope boundary and be re-amplified.
+//
+// Quoting-proof (functionName normalises `fn`/`"fn"`). `concat`/`concat_ws` never reach here — they are
+// off ALLOWED_FUNCTIONS, so denyForbiddenFunction rejects them first.
+
+// Does this subtree contain any string-length amplifier — a `replace()` call or a `||` operator?
+function containsAmplifyingOp(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(containsAmplifyingOp);
+  if (!node || typeof node !== 'object') return false;
   const obj = node as Record<string, unknown>;
-  let total = 0;
-  if (functionName(obj) === 'replace') total += 1;
-  if (obj.type === 'binary_expr' && obj.operator === '||') total += 1;
-  for (const key of Object.keys(obj)) total += countAmplifyingStringOps(obj[key]);
-  return total;
+  if (functionName(obj) === 'replace') return true;
+  if (obj.type === 'binary_expr' && obj.operator === '||') return true;
+  return Object.keys(obj).some((key) => containsAmplifyingOp(obj[key]));
+}
+
+// (A) A `replace()` whose ARGUMENTS transitively contain another amplifier (nested replace, or a `||`/
+// concat feeding it) — the multiplicative inline bomb. The function-name identifier subtree is skipped so
+// the replace never counts itself.
+function denyCompoundingReplace(node: unknown): string | null {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = denyCompoundingReplace(item);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  if (functionName(obj) === 'replace') {
+    for (const key of Object.keys(obj)) {
+      if (key === 'name') continue; // the identifier of THIS replace, not an argument
+      if (containsAmplifyingOp(obj[key]))
+        return 'function not allowed: nested/compounding replace() string-bomb';
+    }
+  }
+  for (const key of Object.keys(obj)) {
+    const r = denyCompoundingReplace(obj[key]);
+    if (r) return r;
+  }
+  return null;
+}
+
+// Every SELECT node in the tree (main query, CTEs, sub-queries) — each is its own amplification scope.
+function collectSelectNodes(node: unknown, out: Record<string, unknown>[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectSelectNodes(item, out);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  const obj = node as Record<string, unknown>;
+  if (obj.type === 'select') out.push(obj);
+  for (const key of Object.keys(obj)) collectSelectNodes(obj[key], out);
+}
+
+// Does THIS select scope contain an amplifier in its OWN expressions — not counting deeper nested selects
+// (each is its own scope, counted separately by the caller)?
+function scopeHasLocalAmplify(selectRoot: Record<string, unknown>): boolean {
+  let found = false;
+  const walk = (node: unknown, isRoot: boolean): void => {
+    if (found || node == null) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, false);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    const obj = node as Record<string, unknown>;
+    if (!isRoot && obj.type === 'select') return; // a nested scope — attributed to its own count
+    if (functionName(obj) === 'replace' || (obj.type === 'binary_expr' && obj.operator === '||')) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(obj)) walk(obj[key], false);
+  };
+  walk(selectRoot, true);
+  return found;
 }
 
 function denyAmplifyingStringChain(ast: unknown): string | null {
-  // >1 amplifying op anywhere in the query can chain (a single one is bounded by the byte-capped seed).
-  return countAmplifyingStringOps(ast) > 1
-    ? 'function not allowed: amplifying string chain (replace/concat/|| — bomb)'
+  // (A) inline compounding — a replace re-expanding an already-amplified argument.
+  const compounding = denyCompoundingReplace(ast);
+  if (compounding) return compounding;
+  // (B) cross-scope chaining — amplifying ops in ≥2 SELECT scopes feed level-to-level.
+  const selects: Record<string, unknown>[] = [];
+  collectSelectNodes(ast, selects);
+  let amplifyingScopes = 0;
+  for (const select of selects) if (scopeHasLocalAmplify(select)) amplifyingScopes++;
+  return amplifyingScopes >= 2
+    ? 'function not allowed: amplifying string chain (replace/|| across scopes — bomb)'
     : null;
 }
 
@@ -551,9 +621,10 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   const badFn = denyForbiddenFunction(ast);
   if (badFn) return deny(badFn);
 
-  // String-length amplification (replace / `||`) is a memory-amplification bomb when CHAINED — inline or
-  // across a CTE graph — even though a single op is legitimate. Whole-AST count, quoting-proof, `||`
-  // operator included — see denyAmplifyingStringChain (concat/concat_ws already fail the allowlist above).
+  // String-length amplification is a memory-amplification bomb when it COMPOUNDS — a replace re-expanding
+  // an already-amplified argument (inline) or amplifying ops chained across ≥2 SELECT scopes (a CTE
+  // graph). A single op and flat `a || ' ' || b` concatenation are bounded and pass — see
+  // denyAmplifyingStringChain (concat/concat_ws already fail the allowlist above).
   const amplify = denyAmplifyingStringChain(ast);
   if (amplify) return deny(amplify);
 

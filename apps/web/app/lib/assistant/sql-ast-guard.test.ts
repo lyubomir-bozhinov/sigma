@@ -358,10 +358,42 @@ describe('guardSelect', () => {
       'SELECT rank() OVER (PARTITION BY bidder_id ORDER BY amount_eur) AS r FROM contracts',
       // single-level replace() is legitimate (Cyrillic↔Latin transliteration); only nesting is a bomb
       "SELECT replace(name, 'а', 'a') AS n FROM authorities",
+      // FLAT concatenation of DISTINCT operands sums a few byte-capped cells ONCE — bounded, NOT a bomb.
+      // The old whole-query op-count over-blocked any query with ≥2 `||`; the compounding/cross-scope
+      // guard now lets these through (regression fix — mirrors the opcode-guard SCALAR_READS corpus).
+      "SELECT upper(name) || '-' || lower(name) AS x FROM authorities",
+      "SELECT name || ' (' || id || ')' AS label FROM authorities",
+      // a single-scope transliteration replace ALONGSIDE a bounded flat concat — one amplifier per scope,
+      // no compounding, must still pass.
+      "SELECT replace(name, 'а', 'a') || '·' AS n FROM authorities",
     ];
     for (const sql of allowed) {
       const r = guardSelect(sql);
       expect(r.ok, sql).toBe(true);
+    }
+  });
+
+  it('rejects COMPOUNDING amplifiers but not flat/single ones (string-bomb boundary)', () => {
+    // Bombs: a replace re-expanding an already-amplified argument, or amplifiers chained across scopes.
+    const bombs: { sql: string; reason: RegExp }[] = [
+      // (A) inline — a `||` feeding a replace's replacement argument multiplies per pass
+      {
+        sql: "SELECT replace(v, 'x', v || v || v || v || v) AS b FROM (SELECT name AS v FROM authorities)",
+        reason: /nested\/compounding replace/i,
+      },
+      // (B) cross-scope — a CTE chain where each level re-amplifies the prior cell
+      {
+        sql: `WITH l0 AS (SELECT 'X' AS v),
+              l1 AS (SELECT v || v || v || v || v AS v FROM l0),
+              l2 AS (SELECT v || v || v || v || v AS v FROM l1)
+              SELECT v FROM l2`,
+        reason: /amplifying string chain/i,
+      },
+    ];
+    for (const { sql, reason } of bombs) {
+      const r = guardSelect(sql);
+      expect(r.ok, sql).toBe(false);
+      if (!r.ok) expect(r.reason, sql).toMatch(reason);
     }
   });
 });

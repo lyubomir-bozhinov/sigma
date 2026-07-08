@@ -19,7 +19,7 @@
 //   - CLOSED (was a read-only gap): scalar exfiltration (group_concat/quote/hex) and dangerous scalar
 //     functions re-reached by DOUBLE-QUOTING the name (`"randomblob"(…)`, `"load_extension"(…)`,
 //     `"printf"('%1000000d',…)`) — these slip Layer-1's `\bfn\s*\(` blocklist (the `"` breaks the
-//     boundary) but are now rejected by Layer 2's AST name blocklist (`denyDangerousFunction` in
+//     boundary) but are now rejected by Layer 2's AST name policy (`denyForbiddenFunction` in
 //     sql-ast-guard.ts), which normalises `fn` and `"fn"` to the same name. Sections B and G assert the
 //     rejection (at Layer 2) rather than the former pass.
 
@@ -63,7 +63,7 @@ describe('sql-guard adversarial / parser-differential', () => {
 
   describe('B. scalar exfiltration is blocked at Layer 2 (closed read-only gap)', () => {
     // The Layer-1 scalar blocklist never covered group_concat/quote/hex (column concat/encoding into one
-    // cell). Layer 2's AST name blocklist (denyDangerousFunction) now rejects them — closing the gap.
+    // cell). Layer 2's AST name policy (denyForbiddenFunction) now rejects them — closing the gap.
     it('rejects group_concat at Layer 2 — column concatenation', () => {
       const r = run('SELECT group_concat(name) AS n FROM authorities');
       expect(r.ok).toBe(false);
@@ -102,7 +102,8 @@ describe('sql-guard adversarial / parser-differential', () => {
     // per level with NO FROM, so the table allowlist never engages and LIMIT / rows-read budget / byte cap
     // can't bound it before it materialises. A SINGLE replace is legitimate (transliteration) and passes;
     // only nesting is a bomb, and a text regex can't tell one replace from two — so it is an L2 AST check
-    // (denyNestedReplace), quoting-proof for the double-quoted form too.
+    // (denyCompoundingReplace, folded into denyAmplifyingStringChain), quoting-proof for the double-quoted
+    // form too.
     it('rejects a bare NESTED replace() string-bomb at Layer 2 (single replace stays allowed at L1)', () => {
       expectReject(
         "SELECT replace(replace('A', 'A', 'AAAAAAAAAA'), 'A', 'BBBBBBBBBB') AS bomb",
@@ -142,12 +143,13 @@ describe('sql-guard adversarial / parser-differential', () => {
     });
 
     // STRING-LENGTH AMPLIFICATION via a CTE CHAIN (review follow-up, lyubomir-bozhinov). The per-
-    // expression checks (denyForbiddenFunction / the old denyNestedReplace) miss a chain where each CTE
-    // level reads the PRIOR CTE's single cell and multiplies it ×10 — the injected LIMIT 500 bounds only
-    // the final row count, and capRows / RESULT_BYTE_CAP measure only AFTER the value materialises in-
-    // engine → Worker OOM. Bounded now by denyAmplifyingStringChain (whole-AST count of replace + `||`,
-    // reject on the second). All three amplifiers — concat (off the allowlist), replace, and the `||`
-    // operator (a binary_expr, invisible to the function allowlist) — are covered.
+    // expression function checks (denyForbiddenFunction) miss a chain where each CTE level reads the PRIOR
+    // CTE's single cell and multiplies it ×10 — the injected LIMIT 500 bounds only the final row count, and
+    // capRows / RESULT_BYTE_CAP measure only AFTER the value materialises in-engine → Worker OOM. Bounded
+    // now by denyAmplifyingStringChain, which flags amplifying ops (replace + `||`) spread across ≥2 SELECT
+    // scopes (the cross-scope compounding signal) while letting a bounded flat concat in one scope pass.
+    // All three amplifiers — concat (off the allowlist), replace, and the `||` operator (a binary_expr,
+    // invisible to the function allowlist) — are covered.
     it('rejects a concat() CTE-chain string-bomb at Layer 2', () => {
       expectReject(
         `WITH l0 AS (SELECT 'X' AS v),
