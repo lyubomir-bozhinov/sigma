@@ -387,9 +387,11 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       // binding via a result handle, log a warning for the Promise observer. Not a hard block — false
       // positives exist (dates, IDs, CPV codes), so this is a signal, not an enforcement gate.
       if (modelProducedText && opts.ctx.results.length > 0 && hasBareNumbers(event.text)) {
+        // Redacted telemetry: the prose can contain personal names / a citizen's query echo, so log
+        // only non-identifying signal (length), never the text itself (GDPR — no PII to Workers logs).
         console.warn(
           '[assistant] prose-number leak: bare numeric token in assistant text outside report',
-          { sample: event.text.slice(0, 300) },
+          { textLen: event.text.length },
         );
       }
       resolveModelFinished();
