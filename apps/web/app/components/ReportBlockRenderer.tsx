@@ -233,7 +233,9 @@ export function ReportBlockRenderer({ blocks }: ReportBlockRendererProps) {
   return (
     <div className="report-blocks">
       {blocks.map((block, i) => (
-        <Block key={i} block={block} />
+        // Key by type + position: a report's block list is immutable and never reorders, so this is
+        // stable across streaming re-renders while keeping React's reconciliation type-aware.
+        <Block key={`${block.type}-${i}`} block={block} />
       ))}
     </div>
   );

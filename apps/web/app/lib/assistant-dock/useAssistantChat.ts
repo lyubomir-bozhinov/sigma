@@ -21,6 +21,10 @@ const ENDPOINT = '/assistant/chat';
 const isAbortError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError';
 
+// Upper bound for a single chat request. Streaming answers take seconds; 90s comfortably covers a slow
+// model turn while still rescuing the UI from a silently-dropped connection.
+const STREAM_TIMEOUT_MS = 90_000;
+
 // Pull a string `{ error }` out of an untrusted JSON body, or null.
 const errorField = (body: unknown): string | null =>
   typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
@@ -38,9 +42,15 @@ export const classifyingFetch = async (
 ): Promise<Response> => {
   // Attach a fresh Turnstile token when the gate is active; a no-op (unchanged init) otherwise.
   const token = await nextTurnstileToken();
-  const requestInit = token
+  const baseInit = token
     ? { ...init, headers: withTurnstileHeader(init?.headers, token) }
     : init;
+  // Bound the request so a wedged/half-open socket can't leave the dock stuck on a spinner forever.
+  // A timeout aborts with a TimeoutError (not AbortError), so it falls through to the network-error
+  // path below and surfaces the retry, while a user stop() stays a silent AbortError.
+  const timeout = AbortSignal.timeout(STREAM_TIMEOUT_MS);
+  const signal = baseInit?.signal ? AbortSignal.any([baseInit.signal, timeout]) : timeout;
+  const requestInit = { ...baseInit, signal };
   let response: Response;
   try {
     response = await fetch(input, requestInit);
