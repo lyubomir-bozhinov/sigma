@@ -109,7 +109,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   });
   if (rejection) return Response.json({ error: rejection.error }, { status: rejection.status });
 
-  const turnstile = await turnstileRejection(request, env);
+  const turnstile = await turnstileRejection(request, env, import.meta.env.PROD);
   if (turnstile) return Response.json({ error: turnstile.error }, { status: turnstile.status });
 
   // Fast-reject an honestly-declared over-cap body, then a CAPPED STREAMING read is the real bound: it
