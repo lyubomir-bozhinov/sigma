@@ -146,9 +146,11 @@ export function graphEqual(a, b) {
 
 // GET  /gateways/{g}/routes                 -> { data: { routes: [{ id, name, ... }] } }   (verified)
 // GET  /gateways/{g}/routes/{id}            -> { result: { version: { version_id, data, active } } }  (verified)
-// POST /gateways/{g}/routes                 -> create route (INFERRED: { name, data })
-// POST /gateways/{g}/routes/{id}/versions   -> new version (INFERRED: { data } -> { result:{version_id} })
-// POST /gateways/{g}/routes/{id}/deployments-> deploy      (INFERRED: { version_id })
+// POST /gateways/{g}/routes                 -> create route ({ name, elements })
+// POST /gateways/{g}/routes/{id}/versions   -> new version ({ elements } -> { result: { version_id } })
+// POST /gateways/{g}/routes/{id}/deployments-> deploy      ({ version_id }) — makes the version live
+// Asymmetry to watch: the WRITE key is `elements`, but reads return the same graph under `data` (sending
+// `data` yields Cloudflare's `7001 Required`). Verified against the AI Gateway dynamic-routing API docs.
 // Returns { routeId, changed }.
 export async function ensureRoute({
   accountId,
@@ -169,7 +171,7 @@ export async function ensureRoute({
   if (!existing) {
     // New route: create with the graph as its first version (the dashboard creates+deploys v1 in one
     // step this way). If the API does not auto-deploy, the deploy below is a harmless second step.
-    const created = await req(fetchImpl, base, { method: 'POST', token, body: { name, data: graph } });
+    const created = await req(fetchImpl, base, { method: 'POST', token, body: { name, elements: graph } });
     const routeId = created.result?.id ?? created.data?.id;
     return { routeId, changed: true };
   }
@@ -183,9 +185,9 @@ export async function ensureRoute({
   const version = await req(fetchImpl, `${base}/${routeId}/versions`, {
     method: 'POST',
     token,
-    body: { data: graph },
+    body: { elements: graph },
   });
-  const versionId = version.result?.version_id ?? version.data?.version_id;
+  const versionId = version.result?.version_id ?? version.result?.id ?? version.data?.version_id;
   await req(fetchImpl, `${base}/${routeId}/deployments`, {
     method: 'POST',
     token,

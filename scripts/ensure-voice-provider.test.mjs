@@ -131,7 +131,8 @@ describe('ensureRoute', () => {
     const p = posts(calls);
     assert.equal(p.length, 2);
     assert.ok(p[0].url.endsWith('/versions'));
-    assert.deepEqual(p[0].body.data, GRAPH);
+    assert.deepEqual(p[0].body.elements, GRAPH); // WRITE key is `elements`, not `data`
+    assert.equal(p[0].body.data, undefined);
     assert.ok(p[1].url.endsWith('/deployments'));
     assert.equal(p[1].body.version_id, 'v2');
   });
@@ -143,7 +144,7 @@ describe('ensureRoute', () => {
     const { routeId, changed } = await ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl });
     assert.equal(routeId, 'r-new');
     assert.equal(changed, true);
-    assert.deepEqual(posts(calls)[0].body, { name: ROUTE_NAME, data: GRAPH });
+    assert.deepEqual(posts(calls)[0].body, { name: ROUTE_NAME, elements: GRAPH });
   });
 
   it('rejects an empty graph rather than deploying nothing', async () => {
