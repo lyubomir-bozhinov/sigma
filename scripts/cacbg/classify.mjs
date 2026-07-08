@@ -29,9 +29,12 @@ const norm = (s) =>
     .replace(/[\s.\-–—]+/g, ' ')
     .trim();
 
-// Joint-stock / listed legal form as a whole token (АД / ЕАД / АДСИЦ), bounded by string edge, whitespace
-// or quotes only — NOT hyphens/dots, so „АД-ХОК ЕООД" (a hyphenated ООД name) is not misread as a company.
-const JOINT_STOCK = /(?:^|[\s"„“”«»])(АД|ЕАД|АДСИЦ)(?:[\s"„“”«»]|$)/u;
+// Joint-stock / listed legal form (АД / ЕАД / АДСИЦ) as the TRAILING form token. In BG company names the
+// legal form is always the suffix, so anchor to the end (optionally followed by quotes/whitespace); a whole
+// token bounded on the left by string edge, whitespace or quotes — NOT hyphens/dots, so „АД-ХОК ЕООД" (a
+// hyphenated ООД name) is not misread. Anchoring to the suffix is what stops „АД ГРУП ООД" (an ООД whose
+// NAME begins with the token „АД") being wrongly excluded as joint-stock — the form there is ООД.
+const JOINT_STOCK = /(?:^|[\s"„“”«»])(АД|ЕАД|АДСИЦ)[\s"„“”«»]*$/u;
 /**
  * Materiality by legal form. The public ownership surface is CLOSELY-HELD companies only (ООД/ЕООД/ЕТ/
  * КД/СД/ДЗЗД or a form-unspecified name from the closely-held table). Joint-stock forms (АД/ЕАД/АДСИЦ) are

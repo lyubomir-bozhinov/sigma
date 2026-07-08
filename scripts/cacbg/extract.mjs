@@ -59,7 +59,17 @@ function run() {
     let n = 0;
     for (const file of fs.readdirSync(dir)) {
       if (file === 'list.xml' || !file.endsWith('.xml')) continue;
-      const d = parseDeclaration(fs.readFileSync(path.join(dir, file), 'utf8'));
+      // A single malformed/truncated XML must not abort the whole corpus crawl — skip it and keep going,
+      // counting the skip so a spike is visible. (The crawl is a long polite fetch; losing it to one bad
+      // file mid-run wastes hours.)
+      let d;
+      try {
+        d = parseDeclaration(fs.readFileSync(path.join(dir, file), 'utf8'));
+      } catch (err) {
+        stats.parseErrors = (stats.parseErrors ?? 0) + 1;
+        console.warn(`  ! skipped ${folder}/${file}: ${err instanceof Error ? err.message : err}`);
+        continue;
+      }
       if (d.controlHash) {
         if (seenHash.has(d.controlHash)) {
           stats.dupSkipped++;

@@ -51,6 +51,10 @@ test('closelyHeldForm: ООД/ЕООД/ЕТ material; АД/ЕАД/АДСИЦ (li
   assert.equal(closelyHeldForm('НЕС АДСИЦ'), false);
   assert.equal(closelyHeldForm('АД-ХОК ЕООД'), true); // „АД" glued by hyphen is not a form token
   assert.equal(closelyHeldForm('КАДИЕВ ГЛОБАЛ ЕООД'), true); // „АД" inside a word is not a form token
+  // „АД" as a LEADING name token, with a closely-held suffix — the form is ООД/ЕООД, not joint-stock.
+  // The old „match АД anywhere" rule wrongly excluded these (a dropped conflict); the suffix anchor fixes it.
+  assert.equal(closelyHeldForm('АД ГРУП ООД'), true);
+  assert.equal(closelyHeldForm('АД СТИЛ ЕООД'), true);
 });
 
 test('localityToken: regional bodies yield a town; ministries yield null', () => {

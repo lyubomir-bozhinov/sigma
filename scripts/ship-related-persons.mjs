@@ -12,8 +12,9 @@
 //   node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --emit out/rp   # SQL only
 //   node scripts/ship-related-persons.mjs --work-db … --remote --yes                          # apply to D1
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 // link_suppressions is loaded first so a re-import cannot briefly expose a contested link; the rest are
 // independent. Order is otherwise parents-before-children for readability (FKs are not enforced by D1).
@@ -51,6 +52,22 @@ export function sqlLiteral(v) {
   return `'${String(v).replaceAll('\x00', '').replaceAll("'", "''")}'`;
 }
 
+/**
+ * Refuse to ship when the published (surfaced) link count is below a floor. Empty/partial staging — a
+ * cold cache on a `full_crawl=false` run, or a broken extract — yields 0 published links; `audit.mjs`
+ * then passes trivially (0 links = 0 violations), and the per-table `DELETE FROM` below would WIPE the
+ * live public surface with zero re-inserts. This floor is the last gate before that. Override deliberately
+ * with `--min-links=<N>` when a genuinely smaller set is expected. Pure — unit-tested.
+ */
+export function assertShipFloor(publishedCount, minLinks) {
+  if (publishedCount < minLinks) {
+    throw new Error(
+      `refusing to ship: ${publishedCount} published links < floor ${minLinks}. Empty/partial staging ` +
+        `would wipe the live surface. If this smaller set is intentional, re-run with --min-links=${publishedCount}.`,
+    );
+  }
+}
+
 /** Batched multi-row INSERTs for one table, bounded by D1's statement size. Pure — unit-tested. */
 export function insertStatements(table, cols, rows) {
   if (!cols.length || !rows.length) return [];
@@ -81,6 +98,7 @@ function main() {
   const emit = arg('emit', '');
   const remote = Boolean(arg('remote', false));
   const d1Name = process.env.SIGMA_D1_NAME || 'sigma';
+  const minLinks = Number(arg('min-links', 50));
   if (remote && !arg('yes', false))
     throw new Error('--remote requires --yes (guards against an accidental prod write)');
 
@@ -91,30 +109,55 @@ function main() {
     }).trim();
     return out ? JSON.parse(out) : [];
   };
-  const apply = (sql) => {
-    const loc = remote ? '--remote' : '--local';
-    execFileSync('wrangler', ['d1', 'execute', d1Name, loc, '--yes', '--command', sql], {
-      cwd: resolve('apps/web'),
-      stdio: 'inherit',
-    });
+  // Floor gate BEFORE any destructive write (see assertShipFloor). Only when actually applying — `--emit`
+  // just writes SQL files and wipes nothing. Counts surfaced links only: status='published' is the public
+  // surface (load.mjs assigns non-surfaced classes 'internal', not 'published').
+  if (!emit) {
+    const published =
+      sqliteJson(`SELECT COUNT(*) AS n FROM interest_links WHERE status = 'published'`)[0]?.n ?? 0;
+    assertShipFloor(Number(published), minLinks);
+  }
+
+  // Apply each table as ONE wrangler call over a temp .sql file: its DELETE + INSERTs reach D1 in a single
+  // batched request (D1 batches are atomic), so an interrupted ship (timeout/kill) can no longer leave a
+  // table half-wiped with no rollback — the failure mode of N separate --command calls. Suppressions still
+  // ship first so a contested link is never briefly re-exposed. ponytail: a table exceeding D1's per-batch
+  // size ceiling would need chunking; not a concern at current scale (hundreds–thousands of rows).
+  const tmp = emit ? null : mkdtempSync(join(tmpdir(), 'sigma-ship-'));
+  const applyFile = (table, sql) => {
+    const f = join(tmp, `${table}.sql`);
+    writeFileSync(f, sql);
+    try {
+      execFileSync(
+        'wrangler',
+        ['d1', 'execute', d1Name, remote ? '--remote' : '--local', '--yes', '--file', f],
+        { cwd: resolve('apps/web'), stdio: 'inherit' },
+      );
+    } finally {
+      rmSync(f, { force: true });
+    }
   };
 
   if (emit) mkdirSync(emit, { recursive: true });
   const summary = {};
-  for (const table of TABLES) {
-    const cols = sqliteJson(`PRAGMA table_info(${sqlIdent(table)})`).map((r) => r.name);
-    if (!cols.length) {
-      summary[table] = 'absent (skipped)';
-      continue;
+  try {
+    for (const table of TABLES) {
+      const cols = sqliteJson(`PRAGMA table_info(${sqlIdent(table)})`).map((r) => r.name);
+      if (!cols.length) {
+        summary[table] = 'absent (skipped)';
+        continue;
+      }
+      const rows = sqliteJson(`SELECT * FROM ${sqlIdent(table)}`);
+      const sql = [
+        `DELETE FROM ${sqlIdent(table)};\n`,
+        ...insertStatements(table, cols, rows),
+      ].join('');
+      summary[table] = rows.length;
+      if (emit) writeFileSync(resolve(emit, `${table}.sql`), sql);
+      else applyFile(table, sql);
     }
-    const rows = sqliteJson(`SELECT * FROM ${sqlIdent(table)}`);
-    const stmts = [`DELETE FROM ${sqlIdent(table)};\n`, ...insertStatements(table, cols, rows)];
-    summary[table] = rows.length;
-    if (emit) {
-      writeFileSync(resolve(emit, `${table}.sql`), stmts.join(''));
-    } else {
-      for (const s of stmts) apply(s);
-    }
+  } finally {
+    if (tmp) rmSync(tmp, { recursive: true, force: true });
   }
   console.log(
     JSON.stringify(

@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { insertStatements, sqlLiteral, sqlIdent, TABLES } from './ship-related-persons.mjs';
+import {
+  assertShipFloor,
+  insertStatements,
+  sqlLiteral,
+  sqlIdent,
+  TABLES,
+} from './ship-related-persons.mjs';
 
 test('sqlLiteral escapes quotes, strips NUL, and NULLs non-finite/absent', () => {
   assert.equal(sqlLiteral(null), 'NULL');
@@ -57,6 +63,15 @@ test('TABLES ships suppressions first and covers the served related-persons sche
   ]) {
     assert.ok(TABLES.includes(t), `missing ${t}`);
   }
+});
+
+test('assertShipFloor refuses to wipe the live surface below the floor (empty/partial staging)', () => {
+  assert.throws(() => assertShipFloor(0, 50), /refusing to ship: 0 published links/); // the empty-wipe case
+  assert.throws(() => assertShipFloor(49, 50), /< floor 50/);
+  assert.doesNotThrow(() => assertShipFloor(50, 50)); // exactly at the floor is allowed
+  assert.doesNotThrow(() => assertShipFloor(256, 50)); // healthy count
+  assert.doesNotThrow(() => assertShipFloor(3, 3)); // an intentional small set via --min-links=3
+  assert.throws(() => assertShipFloor(2, 3)); // …but one below it still refuses
 });
 
 test('related_persons_internal (relative-name PII) is NOT shipped to the served D1', () => {

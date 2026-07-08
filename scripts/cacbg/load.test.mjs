@@ -305,7 +305,9 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
       .get(eik, person);
 
   const ivan = link('111111119', 'Иван Петров Тестов');
-  assert.equal(ivan.status, 'published');
+  // management_role never surfaces → status 'internal', NOT 'published' (a direct D1 reader must not see a
+  // non-surfaced official+company row labelled published; the served query also filters by interest_class).
+  assert.equal(ivan.status, 'internal');
   assert.equal(ivan.publish_tier, 'B_distinctive');
   assert.equal(ivan.relation, 'manages');
   assert.equal(ivan.interest_class, 'management_role'); // manages, sole declarant → ambiguous, not headline
@@ -346,6 +348,9 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(boris.interest_class, 'ex_officio_board');
   assert.equal(viktor.interest_class, 'ex_officio_board');
   assert.equal(boris.relation, 'manages');
+  // ex_officio_board never surfaces → stored 'internal', not 'published' (self-describing D1; fails safe)
+  assert.equal(boris.status, 'internal');
+  assert.equal(viktor.status, 'internal');
 
   const georgi = link('444444447', 'Георги Стоянов');
   assert.equal(georgi.publish_tier, 'C_hold'); // generic, no seat → held

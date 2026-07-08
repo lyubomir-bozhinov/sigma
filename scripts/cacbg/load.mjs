@@ -414,13 +414,21 @@ for (const rec of agg.values()) {
     recOwnMax != null &&
     scopeOwnMax != null &&
     scopeOwnMax > recOwnMax;
+  // status must be SELF-DESCRIBING in D1: 'published' means "on the public surface", not merely "passed
+  // the tier gate". Only material ownership (self/family) surfaces; ex_officio_board / management_role
+  // never do (the served query also filters by interest_class, but that's a query constant — a direct D1
+  // reader must not see a non-surfaced official+company row labelled 'published'). Non-surfaced classes
+  // that would otherwise publish get 'internal'; suppressed/withdrawn/held still take precedence.
+  const surfaces = iClass === 'private_ownership' || iClass === 'family_ownership';
   const status = suppressed.has(linkKey)
     ? 'suppressed'
     : divested
       ? 'withdrawn'
       : tier === 'C_hold'
         ? 'held'
-        : 'published';
+        : surfaces
+          ? 'published'
+          : 'internal';
   const yrs = [...years];
   insLink.run(
     `il:${linkKey}`,

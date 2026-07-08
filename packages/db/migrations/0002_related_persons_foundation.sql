@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS declarations (
   source_url    TEXT NOT NULL,              -- register.cacbg.bg/<folder>/<xml_file> — provenance
   UNIQUE (xml_file, control_hash)
 );
+-- Per-person lookup: audit.mjs scans a person's declarations, and LINK_SELECT's source_url subquery
+-- filters declarations by person_id — without this it's a full scan of the table.
+CREATE INDEX IF NOT EXISTS idx_declarations_person ON declarations(person_id);
 
 -- One row per company-bearing declared interest (the declarant's OWN interests only; ADR-0010/0013).
 CREATE TABLE IF NOT EXISTS declared_interests (
@@ -80,7 +83,7 @@ CREATE TABLE IF NOT EXISTS interest_links (
   contract_value_eur  REAL,                        -- SUM(contracts.amount_eur); NULL if none summable
   first_contract_year TEXT,
   last_contract_year  TEXT,
-  status            TEXT NOT NULL DEFAULT 'held', -- published | held | suppressed
+  status            TEXT NOT NULL DEFAULT 'held', -- published (public surface: private/family ownership) | internal (non-surfaced class) | held | withdrawn | suppressed
   verified_by       TEXT,
   verified_at       TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))

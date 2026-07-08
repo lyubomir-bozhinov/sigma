@@ -60,7 +60,17 @@ export function getPinned(url, { headers = {}, timeoutMs = 30000 } = {}) {
         const cert = socket.getPeerX509Certificate?.();
         if (!cert) return req.destroy(new Error('TLS pin: no peer certificate'));
         const got = spkiSha256(cert);
-        if (got !== CACBG_SPKI_PIN) req.destroy(new Error(`TLS pin mismatch: ${got}`));
+        // Rotation alarm: fail closed AND say what to do. A mismatch is either the expected leaf renewal
+        // (~2027-01 — verify this SPKI out-of-band, then set CACBG_SPKI_PIN to it) or, if unexpected, a
+        // possible MITM. Never auto-accept a new pin — that would defeat pinning.
+        if (got !== CACBG_SPKI_PIN)
+          req.destroy(
+            new Error(
+              `TLS pin mismatch for ${CACBG_HOST}: got SPKI ${got}, expected ${CACBG_SPKI_PIN}. ` +
+                `If CACBG renewed its leaf cert, verify this fingerprint out-of-band and update ` +
+                `CACBG_SPKI_PIN in scripts/cacbg/tls.mjs; if unexpected, treat as a possible MITM.`,
+            ),
+          );
       };
       // keep-alive reuses sockets: verify immediately if already handshaked, else once on connect.
       // Marking the socket stops listeners accumulating across reuse (no MaxListeners leak).
