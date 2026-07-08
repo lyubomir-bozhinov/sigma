@@ -51,11 +51,12 @@ when PAT fails — so the IPv6-less Firefox user is hard-blocked.
 
 ## Options
 
-1. **Visible "Managed" widget** (prototyped on branch `experiment/turnstile-visible-widget`). Matches
-   Cloudflare's working tester; the interactive fallback avoids the PAT dead-end. Trade-off: a visible
-   Turnstile widget/challenge appears — a change to H3's silent design; needs team agreement.
+1. **Visible "Managed" widget** — ✅ **CONFIRMED FIX** (msh, 2026-07-08, real Firefox on PR #67 /
+   `experiment/turnstile-visible-widget`). Matches Cloudflare's working tester; the interactive fallback
+   avoids the PAT dead-end and the chat succeeds. Trade-off: a visible Turnstile widget/challenge appears
+   — a change to H3's silent design; **needs team sign-off** (see "Decision needed").
 2. **Report to Cloudflare** and track their fix (make the PAT/challenge hosts dual-stack). Out of our
-   control; timeline unknown.
+   control; timeline unknown — not something to block on.
 3. **Graceful degradation** (product/security call): today the gate is fail-closed in prod (PR #64), so
    every IPv6-less Firefox user is fully blocked. Decide whether a token-mint failure should soft-degrade
    instead of hard-403 — weighed against the bot-protection the gate exists to provide.
@@ -65,3 +66,15 @@ when PAT fails — so the IPv6-less Firefox user is hard-blocked.
 Any legitimate visitor on an **IPv6-less network using a browser Turnstile serves PAT to** (Firefox
 observed) is fully blocked from the assistant once the gate is active. This is a launch-gate
 consideration, not a cosmetic bug.
+
+## Decision needed (team)
+
+The invisible→visible switch (option 1) is a confirmed, working fix but it changes H3's agreed **silent**
+design. Before polishing PR #67 into a mergeable change, the team should agree on:
+
+- **Adopt the visible Managed widget?** (yes → we make H3 a visible gate.)
+- **Placement/UX:** the prototype floats a widget bottom-left; the real version should live in/near the
+  assistant dock and appear only when the dock is in use. Where exactly, and shown always or on first
+  send?
+- **Fallback stance:** keep fail-closed (PR #64) — accepting that any future Turnstile-serves-PAT +
+  IPv6-less case is blocked — or add a soft-degrade path (option 3)?
