@@ -1,6 +1,6 @@
 # ADR-0007 — Report dedup (Lane F) само за изрично разрешени, приключени периоди
 
-- **Статус:** Прието
+- **Статус:** Прието — гейт-сигналът е уточнен от [ADR-0010](0010-dedup-gates-on-stable-bounds.md) (recency → стабилни граници).
 - **Дата:** 2026-07-05
 - **Обхват:** AI асистент, Lane F — L1 report-cache gate в `apps/web/workers/assistant/dedup-request.ts`; спец. [`docs/spec/ai-assistant-dedup.md`](../spec/ai-assistant-dedup.md), #97.
 

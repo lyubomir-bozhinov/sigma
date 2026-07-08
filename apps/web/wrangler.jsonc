@@ -88,7 +88,7 @@
     // widget). Empty until provisioned. The matching TURNSTILE_SECRET is a SECRET (wrangler secret put,
     // never here); while it is unset the edge gate (turnstile.ts) is a no-op — dev/preview/staging run
     // without it, and it only activates once the secret is set (launch gate, spec §7/§8).
-    "TURNSTILE_SITE_KEY": "",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAADxE9lLZ3pg9_e5p",
     // Per-query wall-time bound (ms) for the assistant's run_sql (§9.4, launch gate #83). Races the D1
     // await so one pathological query can't hold a turn open; clamped to [1000, 30000]. D1 can't cancel
     // the query itself (it still bills), so this bounds worker wait, not DB cost — that's the rows-read budget.

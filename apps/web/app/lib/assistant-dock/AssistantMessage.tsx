@@ -12,10 +12,16 @@ import { MarkdownBlock } from '~/components/MarkdownBlock';
 //    MIN_LEN characters (a stray fragment like "ума"), fall back to pre-tool preamble prose if it
 //    is substantial and does not start with '|' (i.e. is not a partial markdown table).
 //
-// 2. TOOL-RESPONSE ECHO — After emit_report the model sometimes echoes the raw JSON result wrapped
-//    in <tool_response>…</tool_response>. Those parts are detected and discarded.
-const isToolResponseEcho = (text: string): boolean =>
-  text.trimStart().startsWith('<tool_response>');
+// 2. LEAKED TOOL/REPORT MARKUP — the model sometimes writes structural pseudo-XML into a TEXT part
+//    instead of (or alongside) a real tool part: a <tool_response> echo of the JSON result, a malformed
+//    <tool_call>, or a <report>…</report> block narrating emit_report's output. MarkdownBlock renders
+//    unknown tags as inert literal text, so left in, it surfaces raw "<report>…" tags in the dock. Strip
+//    each known block (opener→closer) plus any dangling opener→end left by a mid-stream truncation. ONLY
+//    these three structural tags — user-facing angle-bracket prose like "<ЕИК>" is deliberately preserved.
+const stripLeakedMarkup = (text: string): string =>
+  text
+    .replace(/<(report|tool_call|tool_response)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(report|tool_call|tool_response)\b[\s\S]*$/i, '');
 
 // Also reused by condense.ts — the recap bullets share the same notion of "visible prose".
 export const messageText = (message: UIMessage): string => {
@@ -36,7 +42,7 @@ export const messageText = (message: UIMessage): string => {
           typeof (part as { text?: unknown }).text === 'string'
             ? (part as { text: string }).text
             : '';
-        return isToolResponseEcho(s) ? '' : s;
+        return stripLeakedMarkup(s);
       })
       .join('')
       .trim();

@@ -1,7 +1,13 @@
+// Cloudflare Turnstile (assistant bot gate, H3): the widget loads api.js, embeds an iframe, and calls
+// home — so its origin must be allowed for script/frame/connect. Harmless when the widget isn't mounted
+// (no TURNSTILE_SITE_KEY) — it only widens the allowlist, nothing loads from it.
+const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
+
 function csp(scriptSrc: string[]): string {
   return [
     "default-src 'self'",
-    `script-src 'self' ${scriptSrc.join(' ')}`.trim(),
+    `script-src 'self' ${TURNSTILE_ORIGIN} ${scriptSrc.join(' ')}`.trim(),
+    `frame-src ${TURNSTILE_ORIGIN}`,
     // `style-src` keeps 'unsafe-inline': the only remaining inline `style=` attributes carry
     // genuinely dynamic, per-row values that cannot be enumerated as classes — chart-bar widths
     // (StackedBar, RankedBars, ShareBar, SingleOfferPortion) and the procedure-mix segment colours
@@ -13,7 +19,7 @@ function csp(scriptSrc: string[]): string {
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self' ${TURNSTILE_ORIGIN}`,
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",

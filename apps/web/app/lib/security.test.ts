@@ -5,7 +5,10 @@ describe('securityHeaders CSP', () => {
   it('emits a strict nonce script-src and the documented style-src', () => {
     const csp = securityHeaders('test-nonce', true).get('Content-Security-Policy') ?? '';
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("script-src 'self' 'nonce-test-nonce'");
+    expect(csp).toContain("script-src 'self' https://challenges.cloudflare.com 'nonce-test-nonce'");
+    // Turnstile (H3 bot gate) needs its origin for the widget iframe + its call-home.
+    expect(csp).toContain('frame-src https://challenges.cloudflare.com');
+    expect(csp).toContain("connect-src 'self' https://challenges.cloudflare.com");
     // Regression guard for the deliberate 'unsafe-inline' on style-src: update this assertion only
     // when the remaining inline style attributes are removed and the directive is truly tightened.
     expect(csp).toContain("style-src 'self' 'unsafe-inline'");
@@ -16,7 +19,7 @@ describe('securityHeaders CSP', () => {
   it('uses script hashes (not a nonce) for the edge-cached variant', () => {
     const csp =
       nonceLessSecurityHeaders(["'sha256-abc123'"], true).get('Content-Security-Policy') ?? '';
-    expect(csp).toContain("script-src 'self' 'sha256-abc123'");
+    expect(csp).toContain("script-src 'self' https://challenges.cloudflare.com 'sha256-abc123'");
     expect(csp).not.toContain('nonce-');
   });
 

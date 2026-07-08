@@ -1,4 +1,4 @@
-# ADR-0008 — Voice lane маршрутизира през AI Gateway; provisioning-ът е git-деклариран
+# ADR-0011 — Voice lane маршрутизира през AI Gateway; provisioning-ът е git-деклариран
 
 - **Статус:** Прието
 - **Дата:** 2026-07-08
@@ -7,10 +7,14 @@
 ## Контекст
 
 PR #66 първоначално извикваше BgGPT Whisper **директно, без AI Gateway** — мотивът беше, че gateway-ът
-логва payload-и, а аудиото не бива да се персистира. Но директният път заобикаля и глобалния BgGPT rate
-cap, и cost/observability-то на gateway-а — точно account-wide denial-of-wallet breaker-а, който #66
-отложи като launch-gate. Voice остава извън единния бюджет: транскрипция може да изразходва платения
-BgGPT endpoint, без да се брои срещу общия cap.
+логва payload-и, а аудиото не бива да се персистира. Причините да минем все пак през gateway-а са две:
+единна cost/latency observability, и **декларативна fallback оркестрация** (primary → fallback) на ниво
+route, вместо в кода на приложението.
+
+Важно разграничение спрямо [0009](0009-global-bggpt-cap-is-a-durable-object.md): глобалният BgGPT лимит
+се налага от **Durable Object в request-пътя, не от AI Gateway**. Значи маршрутизирането на voice през
+gateway-а само по себе си **не** го поставя под wallet cap-а — това остава грижа на DO-то. Gateway-ът тук
+дава наблюдаемост и fallback, не rate limiting.
 
 `custom provider` + `dynamic route` бяха вдигнати ръчно в dashboard-а. Ръчното състояние дрейфва тихо и не
 е reviewable — при първото четене route-ът вече съдържаше грешки (текстов LLM като fallback вместо whisper,
@@ -30,11 +34,15 @@ BgGPT endpoint, без да се брои срещу общия cap.
 
 ## Последствия
 
-- Voice влиза в единния BgGPT rate cap / DoW breaker и cost observability-то на gateway-а.
+- Voice получава единна cost/latency observability и reviewable, декларативен fallback (без fallback-код в
+  приложението).
 - Route-конфигурацията е reviewable в git, не dashboard-only; дрейфът се коригира при всеки deploy.
 - Изгладени спрямо ръчния route: fallback модел (текстов LLM → whisper-turbo), primary timeout
   (3000ms → 20000ms, съвпада с 20s client fetch timeout), retries (3 → 1 на платения primary).
+- **DoW/rate защита НЕ идва оттук**: по [0009](0009-global-bggpt-cap-is-a-durable-object.md) глобалният
+  BgGPT cap е Durable Object в request-пътя. Wallet защитата на voice зависи от това DO-то да покрива и
+  `/assistant/transcribe` пътя — отделен follow-up, не част от тази промяна.
 - Компромис: gateway-ът е споделен — merge на промяна в `voice-route.json` засяга route-а, който prod
   обслужва (смекчено от PR review + идемпотентния converge към committed граф).
-- Follow-up: аудио-приватността вече зависи от per-request хедър (`cf-aig-collect-log: false`), не от
-  заобикаляне на gateway-а — нужен е тест, че хедърът винаги присъства в voice заявката.
+- Follow-up: аудио-приватността вече зависи от per-request хедър (`cf-aig-collect-log: false`, code-level,
+  lane на Niki) — нужен е тест, че хедърът винаги присъства във voice заявката.

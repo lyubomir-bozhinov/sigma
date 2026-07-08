@@ -50,7 +50,8 @@ export interface DedupRequestInput {
   /**
    * The resolved period is still SETTLING — its (exclusive) end is recent enough that its data is still
    * mutating (an open/current period like „2026" mid-year, or a just-closed one still in ingest lag).
-   * This is temporal.ts's `recencyCaveat`. When set we skip L1: the freshness token (a single global
+   * Set by the route as `stableBounds === false` (ADR-0010): true unless the period has explicit, absolute,
+   * un-clamped bounds. When set we skip L1: the freshness token (a single global
    * `home_totals.refreshed_at`) does NOT invalidate within a data epoch (route comment: "data changes
    * before refreshed_at updates → a stale serve"), so an L1 hit would serve a report that under-counts a
    * NAMED partial period. A fully-settled period (e.g. „2025" asked in 2026) is `false` → safe to dedup.

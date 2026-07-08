@@ -23,6 +23,19 @@
 > honestly (the read-only D1 is **not** how the ETL works today); and closing operational gaps
 > (fail-closed UX, deterministic-guard telemetry, mid-pipeline gateway 429, per-source freshness token,
 > publish-path caching off).
+>
+> **Implementation status (rev. 2026-07-06).** Two claims below are reconciled against the shipped code;
+> where this note and the prose disagree, this note (and the ADRs) win:
+> - **Global BgGPT cap = a Durable Object, not AI Gateway.** #135 shipped the account-wide cap as the
+>   `BgGptCircuitBreaker` DO (`idFromName('global')`, fail-closed in prod) — exactly base §7's "Durable
+>   Object" mechanism. AI Gateway does routing/observability + a defensive mid-stream 429 path, but does
+>   **not** enforce the cap. Lines below that say the cap "moved to AI Gateway / replaces the DO breaker"
+>   are superseded — see [`../adr/0009-global-bggpt-cap-is-a-durable-object.md`](../adr/0009-global-bggpt-cap-is-a-durable-object.md).
+> - **The role team + Orchestrator DO are forward-looking.** Phase 1 ships a single agent loop with the
+>   deterministic SQL guard (③) and the LLM Verifier (④); there is no Orchestrator DO and no separate
+>   Router/Analyst/Composer runtime yet. The role decomposition below is the design target, not the
+>   current runtime. RAG (schema grounding + `semantic_search`) is shipped and adopted — see
+>   [`../adr/0008-rag-adopted-not-a-deviation.md`](../adr/0008-rag-adopted-not-a-deviation.md).
 
 ## 0. Why a team, and the constraint that shapes it
 
@@ -75,8 +88,8 @@ lookups. Budget: 1–2 LLM calls/turn for most traffic, 3 for high-stakes report
 
 **Orchestration** lives in a **Durable Object** (one per in-flight generation): single-threaded
 coordination, concurrency cap, and resumability. The chat route streams SSE; the DO drives the role
-graph. (The base spec's rolling-minute **circuit-breaker** moves to AI Gateway's global rate limit —
-see §4 *Route model calls through Cloudflare AI Gateway*; the DO no longer needs to hold that counter.)
+graph. (The base spec's rolling-minute **circuit-breaker** ships as the `BgGptCircuitBreaker` DO — #135,
+ADR-0009 — **not** AI Gateway, which handles routing/observability. See §4.)
 
 ## 2. Prompt injection
 
@@ -208,7 +221,7 @@ schema dictionary, system prompts, code.
     report can mix stale D1 rows with live `eop_fetch` rows from different dates — so reports carry
     **freshness per source**, not one global timestamp (base §4 `callout`).
 11. **Loop / quota injection.** "Query forever" is bounded by `maxSteps`, the concurrency cap, and the
-    AI Gateway rate limit (§4), so injection can't turn the team into a quota bomb.
+    global DO breaker (`BgGptCircuitBreaker`, #135, §4), so injection can't turn the team into a quota bomb.
 
 **Net:** escalation is neutered by least privilege; disinformation is neutralized by typed hand-offs +
 grounding + provenance + deterministic publish. A "generated, unverified — sources linked" `callout`
@@ -528,12 +541,12 @@ Rides the existing СИГМА architecture (single `apps/web` Worker, D1 as `env
 
 - **Two cost lanes.** *Generation* (chat) is gated **pre-LLM at the edge** by Turnstile + the
   per-IP Rate-Limiting binding (same pattern as today's `CSV_RATE_LIMITER`/`AGG_RATE_LIMITER`) — these
-  stop abuse before the team runs. The **global** BgGPT cap lives in **AI Gateway** (not a DO counter)
-  and fires **at model-call time, mid-pipeline** — so the orchestrator must handle a **mid-generation
-  429** from the gateway (shed/queue with the "опитайте пак след малко" affordance). *Viewing* is
-  LLM-free, served from immutable R2 at the CDN edge — the viral path can't burn quota. *(This
-  supersedes the base §8 launch-gate line that named a separate circuit-breaker DO; there is one
-  definition, not two.)*
+  stop abuse before the team runs. The **global** BgGPT cap is the `BgGptCircuitBreaker` **DO** (#135,
+  ADR-0009), checked on the paid path and fail-closed in prod; AI Gateway may additionally surface a
+  **429 at model-call time**, which the loop still handles (shed/queue with the "опитайте пак след малко"
+  affordance). *Viewing* is LLM-free, served from immutable R2 at the CDN edge — the viral path can't
+  burn quota. *(This aligns with base §7's "Durable Object" mechanism; the earlier claim that the cap
+  replaced the DO is superseded — one definition, the DO.)*
 - **New infra, deploy-aligned.** New R2 bucket `sigma-reports` (binding `REPORTS`), added the same
   env-rendered way as `sigma-csv-cache` (`SIGMA_REPORTS_NAME` → `scripts/wrangler-render.mjs`), so
   staging/prod never share report storage (`../deploy.md` isolation). **Optionally** a read-only query
@@ -542,8 +555,8 @@ Rides the existing СИГМА architecture (single `apps/web` Worker, D1 as `env
   + canonical-AST) are the load-bearing SQL capability against the served `sigma`. New `[vars]`:
   `BGGPT_RATE_LIMIT_RPM=120`, `BGGPT_MAX_STEPS=6`, `CF_AI_GATEWAY_ID` (+ the gateway base URL),
   Turnstile site key. New secrets: `BGGPT_API_KEY` (per env, `wrangler secret`), Turnstile secret.
-  Orchestrator DO is a new binding on `apps/web` (per-generation coordination; the rate-limit breaker
-  now lives in AI Gateway — see *Route model calls through Cloudflare AI Gateway* below). Plus
+  Orchestrator DO is a **forward-looking** binding (per-generation coordination; not yet shipped). The
+  rate-limit breaker ships as the `BgGptCircuitBreaker` DO (#135, ADR-0009), not AI Gateway. Plus
   `AI` (Workers AI) + `VECTORIZE` (1024-dim cosine) for the RAG layer (see *RAG* below).
 - **Stateless server, client history** — transcript + report-chip refs live in the browser; each turn
   POSTs recent history (base §5). No session store to exhaust; composes cleanly because the DO is
@@ -633,7 +646,7 @@ still passing `BGGPT_API_KEY`. Streaming (SSE) passes through.
 
 ```
 ② Analyst / ④ Verifier / ⑤ Composer ─▶ AI Gateway ─▶ BgGPT
-                                          observability · cache · global rate limit · retries
+                                          observability · cache · routing · retries
 ```
 
 What it gives us, and how it changes the design:
@@ -646,11 +659,11 @@ What it gives us, and how it changes the design:
     layer fired on SQL-guard rejections, `EXPLAIN` allowlist blocks, no-number-in-prose rejections,
     sanitizer HTML strips, rollup-reconcile divergences, and `emit_report` retry exhaustion. Otherwise a
     silently-passing structural guard (a regression) would be invisible.
-- **Central rate limit replaces the DO breaker.** AI Gateway enforces the global BgGPT cap
-  (`BGGPT_RATE_LIMIT_RPM`) upstream, so the rolling-minute **Durable Object counter (base §7 / our §1)
-  is no longer needed**. The layering becomes: **edge** = Turnstile + per-IP Rate-Limit binding
-  (per-client abuse); **upstream** = AI Gateway global rate limit (shared-quota protection). A DO is
-  then only needed for per-generation orchestration, not for the breaker.
+- **Global cap = the DO breaker (not AI Gateway).** The account-wide `BGGPT_RATE_LIMIT_RPM` cap is
+  enforced by the `BgGptCircuitBreaker` **Durable Object** (#135, base §7 / our §1, ADR-0009), checked on
+  the paid path and fail-closed in prod. The layering is: **edge** = Turnstile + per-IP Rate-Limit
+  binding (per-client abuse); **account-wide** = the DO breaker (shared-quota protection). AI Gateway
+  contributes routing/observability and may surface a mid-stream 429, but is not the enforced cap.
 - **Caching — OFF on the publish path.** AI Gateway response caching is **disabled for
   report-generation/publishing calls**: a cached completion could reintroduce stale numbers or a cached
   steered output onto a citable artifact. All legitimate report reuse goes through the **deterministic
@@ -716,7 +729,7 @@ resources. The entity corpus needs an embed/index step in the ETL, re-run on the
 | **Phase 1** (chat with data) | ① Router (or merged) + ② Analyst + ③ deterministic SQL Guard (EXPLAIN allowlist + single-statement + canonical-AST; optional read-only `DB_RO`); pitfall-rich `describe_schema` (§9.2) + RAG schema grounding & `semantic_search` (Vectorize/Workers AI); AI Gateway from day one (§9.5). No publish path. |
 | **Phase 2** (reports) | ⑤ Composer + ⑥ Sanitizer/Persist + R2 + `/reports/:id`. Typed hand-offs + values-by-reference (§9.1); HMAC-signed transcript (§9.3); golden-reports CI harness (§9.9). |
 | **Phase 3** (voice + live sources) | `eop_fetch`/`source_link` become untrusted inputs → SSRF-hardened + spotlighting + per-source freshness (§9.7); transcribe proxy unchanged. |
-| **Launch gate** | ④ Verifier on for risk/ranking reports; Turnstile + per-IP Rate-Limit binding + AI Gateway global rate limit; AI-generated watermark (§9.12); WCAG 2.2 AA (§9.6). |
+| **Launch gate** | ④ Verifier on for risk/ranking reports; Turnstile + per-IP Rate-Limit binding + global DO breaker (#135); AI-generated watermark (§9.12); WCAG 2.2 AA (§9.6). |
 
 ## 6. Tradeoffs and open questions
 

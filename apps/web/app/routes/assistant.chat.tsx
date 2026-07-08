@@ -212,11 +212,16 @@ export async function action({ request, context }: Route.ActionArgs) {
       dedup = buildDedupRequest({
         clientRequestId,
         prompt: question,
-        // L1 dedup is restricted to an explicitly-resolved, SETTLED period. `period` absent (all-time / no
-        // date phrase) → skip L1. A still-settling period (recencyCaveat: „за 2026" mid-year) → skip L1, so
-        // a NAMED partial window is never served from a within-epoch-stale cache. „2025" in 2026 → dedups.
+        // L1 dedup is restricted to a period with STABLE, absolute bounds (ADR-0010). `period` absent
+        // (all-time / no date phrase) → skip L1. A clock-relative phrase („този месец", „последните 30 дни")
+        // or an explicit period still running (clamped to-date: „за 2026" mid-year) has `stableBounds:false`
+        // → skip L1, so a drifting window is never served from a prompt-keyed cache. A fully-settled explicit
+        // range/year („2025", or a fixed ISO range whose end the clock has already passed) is stable → dedups
+        // (it may still show a freshness caveat; the data-version token busts the cache on refresh). NB:
+        // `stableBounds:false` (not recencyCaveat) is the gate — a recent-but-fixed range is dedup-safe yet
+        // still carries a caveat.
         period: temporal?.primary,
-        periodSettling: temporal?.primary.recencyCaveat,
+        periodSettling: temporal?.primary.stableBounds === false,
         filterContext,
         freshness,
       });

@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { UIMessage } from 'ai';
-import { isToolTurnWithoutReport, projectChip, reportOutputFromMessage } from './report-projection';
-import { addToReportIndex } from './storage';
+import {
+  dedupHitFromMessage,
+  isToolTurnWithoutReport,
+  projectChip,
+  reportOutputFromMessage,
+} from './report-projection';
+import { addToReportIndex, loadReportIndex } from './storage';
 import { AssistantMessage, messageText } from './AssistantMessage';
 import { AssistantPhaseLine } from './AssistantPhaseLine';
 import { ReportChip } from './ReportChip';
@@ -10,6 +15,21 @@ import {
   REPORT_FAILED_MESSAGE,
   type AssistantPhase,
 } from '../assistant-contract/stream';
+import type { DedupData } from '../../../workers/assistant/dedup-stream';
+
+// A dedup hit carries only the report id + a reuse label. Enrich the chip with the real title / lead stat
+// from this browser's report index when it generated the report (the common case); otherwise fall back to
+// the reuse label. Either way „Отвори" resolves the same immutable report at /reports/:id.
+const reuseChipProps = (
+  dedup: DedupData,
+): { title: string; leadStat: string | null; href: string } => {
+  const indexed = loadReportIndex().find((entry) => entry.id === dedup.reportId);
+  return {
+    title: indexed?.title ?? dedup.label,
+    leadStat: indexed?.leadStat ?? null,
+    href: `/reports/${dedup.reportId}`,
+  };
+};
 
 interface AssistantTranscriptProps {
   messages: UIMessage[];
@@ -76,7 +96,9 @@ export const AssistantTranscript = ({
       const last = messages[messages.length - 1];
       if (!last || last.role !== 'assistant') return;
       const report = reportOutputFromMessage(last);
+      const dedup = report ? null : dedupHitFromMessage(last);
       if (report?.ok) text = `Готова е справка: ${report.report.title}`;
+      else if (dedup) text = `Готова е справка: ${reuseChipProps(dedup).title}`;
       else if (!report && messageText(last) !== '') text = 'Отговорът е готов';
     }
     if (!text) return;
@@ -135,6 +157,8 @@ export const AssistantTranscript = ({
           // {ok:false} mid-turn and flip to a chip on retry. Show chip/failure only once the turn settles.
           const streaming = busy && index === messages.length - 1;
           const report = streaming ? null : reportOutputFromMessage(message);
+          // A cache hit ran no emit_report tool; render the reuse affordance from its data-dedup part.
+          const dedup = streaming || report ? null : dedupHitFromMessage(message);
           // A settled last turn that made tool calls but produced neither a report nor prose — the
           // no-answer safety net (afc93d8). `!busy` already implies the report tool isn't mid-flight.
           const showNoAnswer =
@@ -160,6 +184,8 @@ export const AssistantTranscript = ({
                   href={report.storedId ? `/reports/${report.storedId}` : undefined}
                   onOpen={onOpenReport}
                 />
+              ) : dedup ? (
+                <ReportChip {...reuseChipProps(dedup)} onOpen={onOpenReport} />
               ) : null}
               {/* Suppress the failure line while the last turn is still in flight: a first emit that
                 returns ok:false is normally RETRIED (the loop re-forces emit_report) and then
