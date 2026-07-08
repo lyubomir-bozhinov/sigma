@@ -4,8 +4,11 @@
 //   1. the gateway            `sigma-assistant`        (shared with chat — ensure-exists only, never
 //                                                        mutate its settings here or we clobber chat)
 //   2. the custom provider    `bggpt-voice`            (BgGPT Whisper upstream, https://api.bggpt.ai)
-//   3. the dynamic route      `voice`                  (graph committed in ai-gateway/voice-route.json;
-//                                                        converge the ACTIVE version to it, then deploy)
+//   3. two dynamic routes      `voice` + `voice-fallback` (graphs committed under ai-gateway/*.json;
+//                                                        converge each route's ACTIVE version, then deploy)
+//
+// `voice` routes to the BgGPT custom provider (multipart); `voice-fallback` to the built-in `workers-ai`
+// provider (JSON base64, CF-native). Split because one route can't feed two audio formats — see ADR-0011.
 //
 // Why this exists — same GitOps rationale as scripts/ensure-kv-namespace.mjs: the route/provider were
 // first stood up by hand in the dashboard; hand state drifts silently and isn't reviewable. This makes
@@ -30,7 +33,18 @@ export const GATEWAY_ID = 'sigma-assistant';
 export const PROVIDER_SLUG = 'bggpt-voice';
 export const PROVIDER_NAME = 'BgGPT Voice';
 export const PROVIDER_BASE_URL = 'https://api.bggpt.ai';
+// Two single-provider routes (ADR-0011): a single route can't carry primary+fallback for audio because
+// the gateway forwards the body unchanged and the providers want incompatible formats. `voice` = the
+// BgGPT custom provider (multipart); `voice-fallback` = the built-in `workers-ai` provider (JSON base64,
+// CF-native → no US egress). App code tries `voice` then `voice-fallback`, each in its own format.
 export const ROUTE_NAME = 'voice';
+export const ROUTE_FALLBACK_NAME = 'voice-fallback';
+// Route name -> committed graph file. `voice-fallback` targets the built-in `workers-ai` provider, so it
+// needs no custom-provider provisioning — only ensureCustomProvider('bggpt-voice') below.
+export const ROUTES = [
+  { name: ROUTE_NAME, file: 'voice-route.json' },
+  { name: ROUTE_FALLBACK_NAME, file: 'voice-fallback-route.json' },
+];
 
 function summariseErrors(status, body) {
   const errs = Array.isArray(body?.errors) ? body.errors : [];
@@ -240,9 +254,9 @@ function dryRunFetch(real, log) {
   };
 }
 
-function loadGraph() {
+function loadGraph(file) {
   const here = dirname(fileURLToPath(import.meta.url));
-  return JSON.parse(readFileSync(resolve(here, 'ai-gateway', 'voice-route.json'), 'utf8'));
+  return JSON.parse(readFileSync(resolve(here, 'ai-gateway', file), 'utf8'));
 }
 
 async function main(argv) {
@@ -256,19 +270,22 @@ async function main(argv) {
 
   try {
     requireCreds({ accountId, token });
-    const graph = loadGraph();
     log(apply ? '==> Applying AI-Gateway desired state' : '==> Dry run (pass --apply to execute)');
 
     await ensureGateway({ accountId, token, fetchImpl });
     log(`  gateway    ${GATEWAY_ID} ok`);
 
+    // Only the BgGPT leg needs a custom provider; `voice-fallback` uses the built-in `workers-ai`.
     await ensureCustomProvider({ accountId, token, apiKey, fetchImpl, warn });
     log(`  provider   ${PROVIDER_SLUG} ok`);
 
-    const { changed } = await ensureRoute({ accountId, token, graph, fetchImpl });
-    log(
-      `  route      ${ROUTE_NAME} ${changed ? 'converged (new version deployed)' : 'already up to date'}`,
-    );
+    for (const { name, file } of ROUTES) {
+      const graph = loadGraph(file);
+      const { changed } = await ensureRoute({ accountId, token, name, graph, fetchImpl });
+      log(
+        `  route      ${name} ${changed ? 'converged (new version deployed)' : 'already up to date'}`,
+      );
+    }
   } catch (err) {
     warn(err.message);
     process.exit(1);

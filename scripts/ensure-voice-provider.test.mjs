@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   ensureGateway,
@@ -9,6 +12,8 @@ import {
   GATEWAY_ID,
   PROVIDER_SLUG,
   ROUTE_NAME,
+  ROUTE_FALLBACK_NAME,
+  ROUTES,
 } from './ensure-voice-provider.mjs';
 
 const CREDS = { accountId: 'acct', token: 'tok' };
@@ -168,6 +173,37 @@ describe('ensureRoute', () => {
         ensureRoute({ ...CREDS, graph: [], fetchImpl: () => assert.fail('must not call the API') }),
       /a non-empty route graph is required/,
     );
+  });
+});
+
+describe('committed route graphs', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const load = (f) => JSON.parse(readFileSync(resolve(here, 'ai-gateway', f), 'utf8'));
+
+  it('ROUTES covers voice + voice-fallback with files that parse to valid graphs', () => {
+    assert.deepEqual(
+      ROUTES.map((r) => r.name),
+      [ROUTE_NAME, ROUTE_FALLBACK_NAME],
+    );
+    for (const { file } of ROUTES) {
+      const g = load(file);
+      assert.ok(Array.isArray(g) && g.length >= 3, `${file} is a non-trivial array`);
+      assert.ok(
+        g.some((n) => n.type === 'start') && g.some((n) => n.type === 'end'),
+        `${file} has start + end`,
+      );
+      const models = g.filter((n) => n.type === 'model');
+      assert.ok(models.length >= 1, `${file} has a model node`);
+      for (const m of models) assert.ok(m.properties?.provider && m.properties?.model);
+    }
+  });
+
+  it('voice -> bggpt custom provider; voice-fallback -> CF-native workers-ai whisper', () => {
+    const voice = load('voice-route.json').find((n) => n.type === 'model');
+    assert.equal(voice.properties.provider, 'custom-bggpt-voice');
+    const fb = load('voice-fallback-route.json').find((n) => n.type === 'model');
+    assert.equal(fb.properties.provider, 'workers-ai');
+    assert.match(fb.properties.model, /whisper/);
   });
 });
 
