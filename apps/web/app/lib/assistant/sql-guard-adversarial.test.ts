@@ -117,6 +117,29 @@ describe('sql-guard adversarial / parser-differential', () => {
         /function not allowed/i,
       );
     });
+    // string_agg is a SQLite 3.44+ built-in ALIAS of group_concat (D1 runs recent SQLite) — same table-
+    // collapse DoW: it folds the whole table into one string before LIMIT/capRows apply. json_pretty
+    // (3.46) is the smaller JSON-expansion sibling. Both are the exact class this guard closes (review
+    // follow-up, ydimitrof/DiyanaDimitrova). Bare → L1 regex; double-quoted → L2 AST name-normalisation.
+    it('rejects bare string_agg at Layer 1 — group_concat alias (table-collapse bomb)', () => {
+      expectReject("SELECT string_agg(subject, ',') FROM contracts", 1, /function not allowed/i);
+    });
+    it('rejects double-quoted "string_agg" at Layer 2 — quoting slips L1', () => {
+      expectReject(
+        'SELECT "string_agg"(subject, \',\') FROM contracts',
+        2,
+        /function not allowed/i,
+      );
+    });
+    it('rejects bare json_pretty at Layer 1 — JSON expansion sibling', () => {
+      expectReject("SELECT json_pretty('{}') AS x", 1, /function not allowed/i);
+    });
+    // Fail-closed default: any function NOT on the positive allowlist is rejected at L2, so the NEXT new
+    // SQLite aggregate/builder (the one after string_agg) is denied with no code change — the inversion
+    // the reviewers asked for. A plausible-but-unlisted name stands in for that future function.
+    it('rejects an unknown/unlisted function at Layer 2 (allowlist fail-closed default)', () => {
+      expectReject('SELECT frobnicate_agg(name) FROM authorities', 2, /not in allowlist/i);
+    });
   });
 
   describe('C. system-catalog enumeration', () => {

@@ -125,6 +125,9 @@ describe('assertReadOnlySelect', () => {
       'SELECT json_quote(name) FROM authorities',
       "SELECT json_set('{}', '$.k', name) FROM authorities",
       "SELECT json_replace('{}', '$.k', name) FROM authorities",
+      // string_agg = SQLite 3.44+ alias of group_concat; json_pretty (3.46) — same table-collapse class
+      "SELECT string_agg(subject, ',') FROM contracts",
+      "SELECT json_pretty('{}') FROM contracts",
     ]) {
       const r = assertReadOnlySelect(sql);
       expect(r.ok, sql).toBe(false);

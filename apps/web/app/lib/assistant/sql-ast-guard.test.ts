@@ -305,6 +305,10 @@ describe('guardSelect', () => {
       "SELECT format('%1000000d', 1) AS x",
       'SELECT group_concat(name) AS x FROM authorities',
       'SELECT "group_concat"(name) AS x FROM authorities',
+      // string_agg = SQLite 3.44+ alias of group_concat; json_pretty (3.46) expands JSON — same class
+      "SELECT string_agg(name, ',') AS x FROM authorities",
+      'SELECT "string_agg"(name, \',\') AS x FROM authorities',
+      "SELECT json_pretty('{}') AS x",
       'SELECT quote(name) AS x FROM authorities',
       'SELECT hex(name) AS x FROM authorities',
       // json_* aggregate/builder functions: same memory-amplification vector as group_concat —
@@ -334,13 +338,24 @@ describe('guardSelect', () => {
     }
   });
 
-  it('still accepts safe scalar/aggregate functions', () => {
+  it('still accepts safe scalar/aggregate/date/window functions (positive allowlist)', () => {
     const allowed = [
       'SELECT upper(name) AS x FROM authorities',
+      'SELECT lower(name) AS x FROM authorities',
       'SELECT substr(name, 1, 3) AS x FROM authorities',
+      "SELECT instr(name, 'x') AS x FROM authorities",
+      'SELECT trim(name) AS x, length(name) AS n FROM authorities',
       'SELECT count(*) AS n FROM authorities',
+      'SELECT count(DISTINCT bidder_id) AS n FROM contracts',
       'SELECT sum(amount_eur) AS s FROM contracts WHERE amount_eur IS NOT NULL',
-      'SELECT coalesce(amount_eur, 0) AS a FROM contracts',
+      'SELECT avg(amount_eur) AS a, min(amount_eur) AS mn, max(amount_eur) AS mx FROM contracts',
+      'SELECT round(amount_eur, 2) AS r, abs(amount_eur) AS ab FROM contracts',
+      'SELECT coalesce(amount_eur, 0) AS a, ifnull(amount_eur, 0) AS b FROM contracts',
+      // date/time
+      "SELECT strftime('%Y', signed_at) AS y FROM contracts",
+      'SELECT date(signed_at) AS d, datetime(signed_at) AS dt FROM contracts',
+      // window function (ranking) — needs PARTITION for node-sql-parser to parse the OVER clause
+      'SELECT rank() OVER (PARTITION BY bidder_id ORDER BY amount_eur) AS r FROM contracts',
       // single-level replace() is legitimate (Cyrillic↔Latin transliteration); only nesting is a bomb
       "SELECT replace(name, 'а', 'a') AS n FROM authorities",
     ];

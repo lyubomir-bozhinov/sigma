@@ -33,25 +33,30 @@ export const ALLOWED_TABLES: ReadonlySet<string> = new Set(TABLES.map((t) => t.n
 
 const deny = (reason: string): GuardResult => ({ ok: false, reason });
 
-// Scalar/aggregate functions blocked at the AST level, by NORMALISED name, regardless of quoting.
-// The L1 text blocklist (sql-guard.ts) matches `\b(load_extension|randomblob|…)\s*\(` — a word-boundary
-// regex a DOUBLE-QUOTED identifier slips (`"randomblob"(…)`: the `"` breaks `\b`), yet SQLite resolves a
-// quoted identifier in call position as the function and runs it. node-sql-parser normalises both
-// `fn(…)` and `"fn"(…)` to the same name, so a name check here closes the quoting bypass AND the
-// long-known group_concat/quote/hex read-exfil gap. None appear in any canonical query. Classes:
-//   • Memory-amplification DoW — materialise an unbounded value in the isolate that neither LIMIT nor the
-//     rows-read budget nor RESULT_BYTE_CAP bounds before capRows can measure it. Two shapes:
-//       – per-row string-bombs (randomblob/zeroblob/printf/format): a single cell blows up (e.g.
-//         `printf('%1000000d', 1)`);
-//       – table-collapsing aggregates (group_concat/json_group_array/json_group_object): fold a whole
-//         table into one giant value (LIMIT caps ROWS, not the width of a single collapsed cell).
-//     (`replace` is NOT here — single-level replace is a legitimate read-only string function, e.g.
-//     Cyrillic↔Latin transliteration; only NESTED replace is a bomb — see denyNestedReplace below.)
-//   • Data exfil / encoding (quote/hex).
-//   • RCE where extensions can load (load_extension).
-// The per-row JSON builders/mutators (json_object/json_array/json_quote/json_set/json_insert/
-// json_replace/json_patch/json_remove) are 1:1 scalar transforms that LIMIT + the byte cap DO bound;
-// they are listed for symmetry so the whole json_* family is denied uniformly (no query needs them).
+// Function policy, enforced at the AST level by NORMALISED name (quoting-proof: node-sql-parser maps
+// both `fn(…)` and `"fn"(…)` to the same name, so a double-quoted identifier — `"randomblob"(…)`, which
+// slips the L1 word-boundary regex because the `"` breaks `\b` — is still caught here). TWO complementary
+// checks (denyForbiddenFunction), primary first:
+//
+//   1. ALLOWED_FUNCTIONS — a POSITIVE allowlist and the FAIL-CLOSED DEFAULT. Any function whose name is
+//      not listed is rejected, so a NEW SQLite aggregate/builder — the next `string_agg` (a 3.44 alias of
+//      group_concat) or `json_pretty` (3.46) — is denied the moment D1's SQLite gains it, with NO code
+//      change. This inverts the old denylist-only posture (review follow-up, ydimitrof/DiyanaDimitrova:
+//      "every new aggregate is one release away from re-opening this hole"). The set is the documented
+//      SQLite built-in scalar/aggregate/date/math/window functions that a read-only analytics query can
+//      legitimately use; extend it here when a new legitimate need appears.
+//   2. DANGEROUS_FUNCTIONS — a denylist retained as an EXPLICIT, tested record of the specifically-
+//      dangerous names (memory-amplification aggregates/string-bombs, exfil encoders, load_extension) and
+//      WHY, and as a backstop should one ever be mistakenly added to the allowlist. Redundant with (1) by
+//      design (belt + suspenders); checked first so its specific reason wins.
+//
+// Classes of the dangerous set: memory-amplification DoW (materialise an unbounded value before capRows /
+// RESULT_BYTE_CAP can measure it) — per-row string-bombs (randomblob/zeroblob/printf/format) and table-
+// collapsing aggregates (group_concat/string_agg/json_group_array/json_group_object/json_pretty, which
+// fold a whole table into one giant value that LIMIT caps by ROWS, not cell width); data exfil/encoding
+// (quote/hex); RCE where extensions can load (load_extension). The per-row json builders/mutators are
+// bounded but denied for family symmetry. `replace` is ALLOWED (single-level transliteration) — only
+// NESTED replace is a bomb, handled separately by denyNestedReplace.
 const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'load_extension',
   'randomblob',
@@ -59,6 +64,7 @@ const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'printf',
   'format',
   'group_concat',
+  'string_agg',
   'quote',
   'hex',
   'json_group_array',
@@ -66,11 +72,107 @@ const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'json_object',
   'json_array',
   'json_quote',
+  'json_pretty',
   'json_set',
   'json_insert',
   'json_replace',
   'json_patch',
   'json_remove',
+]);
+
+// Positive allowlist — the fail-closed default (see above). Documented SQLite built-ins a read-only
+// analytics query legitimately uses. Grouped for maintenance; a name absent here is rejected.
+const ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
+  // aggregates that reduce to ONE scalar (not a table-collapsing string) — safe
+  'count',
+  'sum',
+  'total',
+  'avg',
+  'min',
+  'max',
+  // core scalar
+  'abs',
+  'coalesce',
+  'ifnull',
+  'nullif',
+  'iif',
+  'length',
+  'octet_length',
+  'instr',
+  'substr',
+  'substring',
+  'upper',
+  'lower',
+  'trim',
+  'ltrim',
+  'rtrim',
+  'replace', // single-level only — nesting rejected by denyNestedReplace
+  'char',
+  'unicode',
+  'unhex',
+  'typeof',
+  'sign',
+  'round',
+  'like',
+  'glob',
+  'likelihood',
+  'likely',
+  'unlikely',
+  'concat',
+  'concat_ws',
+  'random',
+  'changes',
+  'total_changes',
+  // date / time
+  'date',
+  'time',
+  'datetime',
+  'julianday',
+  'unixepoch',
+  'strftime',
+  'timediff',
+  // math (SQLite math extension, 3.35+)
+  'acos',
+  'acosh',
+  'asin',
+  'asinh',
+  'atan',
+  'atan2',
+  'atanh',
+  'ceil',
+  'ceiling',
+  'cos',
+  'cosh',
+  'degrees',
+  'exp',
+  'floor',
+  'ln',
+  'log',
+  'log10',
+  'log2',
+  'mod',
+  'pi',
+  'pow',
+  'power',
+  'radians',
+  'sin',
+  'sinh',
+  'sqrt',
+  'tan',
+  'tanh',
+  'trunc',
+  // window functions (ranking / offset) — do not collapse tables; safe
+  'row_number',
+  'rank',
+  'dense_rank',
+  'ntile',
+  'lag',
+  'lead',
+  'first_value',
+  'last_value',
+  'nth_value',
+  'percent_rank',
+  'cume_dist',
 ]);
 
 // The normalised, lowercased name of a function-call node, or null if `obj` is not one. A scalar call is
@@ -89,12 +191,14 @@ function functionName(obj: Record<string, unknown>): string | null {
   return null;
 }
 
-// Walk the AST and reject the first call to a DANGEROUS_FUNCTIONS member anywhere — SELECT list, WHERE,
-// HAVING, a nested sub-query, a function argument. The AST is a finite tree, so the walk terminates.
-function denyDangerousFunction(node: unknown): string | null {
+// Walk the AST and reject the first call to a forbidden function anywhere — SELECT list, WHERE, HAVING,
+// a nested sub-query, a function argument. A name in DANGEROUS_FUNCTIONS is rejected with its specific
+// reason; any other name NOT in ALLOWED_FUNCTIONS is rejected as the fail-closed default. The AST is a
+// finite tree, so the walk terminates.
+function denyForbiddenFunction(node: unknown): string | null {
   if (Array.isArray(node)) {
     for (const item of node) {
-      const r = denyDangerousFunction(item);
+      const r = denyForbiddenFunction(item);
       if (r) return r;
     }
     return null;
@@ -102,9 +206,12 @@ function denyDangerousFunction(node: unknown): string | null {
   if (!node || typeof node !== 'object') return null;
   const obj = node as Record<string, unknown>;
   const fn = functionName(obj);
-  if (fn && DANGEROUS_FUNCTIONS.has(fn)) return `function not allowed: ${fn}`;
+  if (fn) {
+    if (DANGEROUS_FUNCTIONS.has(fn)) return `function not allowed: ${fn}`;
+    if (!ALLOWED_FUNCTIONS.has(fn)) return `function not allowed: ${fn} (not in allowlist)`;
+  }
   for (const key of Object.keys(obj)) {
-    const r = denyDangerousFunction(obj[key]);
+    const r = denyForbiddenFunction(obj[key]);
     if (r) return r;
   }
   return null;
@@ -423,9 +530,10 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   const dupCol = denyDuplicateColumns(ast);
   if (dupCol) return deny(dupCol);
 
-  // Block dangerous scalar/aggregate functions by AST name, so double-quoting (`"randomblob"(…)`) can't
-  // slip the L1 text blocklist (DoW / exfil / load_extension — see DANGEROUS_FUNCTIONS).
-  const badFn = denyDangerousFunction(ast);
+  // Enforce the function policy by AST name (quoting-proof): reject the dangerous denylist AND anything
+  // outside the positive allowlist (fail-closed default — the next new aggregate is denied without a code
+  // change). See ALLOWED_FUNCTIONS / DANGEROUS_FUNCTIONS.
+  const badFn = denyForbiddenFunction(ast);
   if (badFn) return deny(badFn);
 
   // Nested replace() is a memory-amplification string-bomb (single replace stays allowed — legitimate
