@@ -98,6 +98,25 @@ describe('sql-guard adversarial / parser-differential', () => {
         /function not allowed/i,
       );
     });
+    // NESTED replace() is a string-bomb: replace(replace('A','A','AAAAAAAAAA')…) grows a single cell ×10
+    // per level with NO FROM, so the table allowlist never engages and LIMIT / rows-read budget / byte cap
+    // can't bound it before it materialises. A SINGLE replace is legitimate (transliteration) and passes;
+    // only nesting is a bomb, and a text regex can't tell one replace from two — so it is an L2 AST check
+    // (denyNestedReplace), quoting-proof for the double-quoted form too.
+    it('rejects a bare NESTED replace() string-bomb at Layer 2 (single replace stays allowed at L1)', () => {
+      expectReject(
+        "SELECT replace(replace('A', 'A', 'AAAAAAAAAA'), 'A', 'BBBBBBBBBB') AS bomb",
+        2,
+        /function not allowed/i,
+      );
+    });
+    it('rejects double-quoted NESTED "replace" at Layer 2 — quoting-proof', () => {
+      expectReject(
+        "SELECT \"replace\"(\"replace\"('A', 'A', 'AAAAAAAAAA'), 'A', 'BBBBBBBBBB') AS bomb",
+        2,
+        /function not allowed/i,
+      );
+    });
   });
 
   describe('C. system-catalog enumeration', () => {

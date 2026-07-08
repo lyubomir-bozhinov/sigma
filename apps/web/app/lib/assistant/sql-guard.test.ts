@@ -123,6 +123,8 @@ describe('assertReadOnlySelect', () => {
       "SELECT json_object('k', name) FROM authorities",
       'SELECT json_array(name) FROM authorities',
       'SELECT json_quote(name) FROM authorities',
+      "SELECT json_set('{}', '$.k', name) FROM authorities",
+      "SELECT json_replace('{}', '$.k', name) FROM authorities",
     ]) {
       const r = assertReadOnlySelect(sql);
       expect(r.ok, sql).toBe(false);

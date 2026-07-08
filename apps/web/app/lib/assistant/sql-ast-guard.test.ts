@@ -316,6 +316,12 @@ describe('guardSelect', () => {
       "SELECT json_object('k', name) AS x FROM authorities",
       'SELECT json_array(name) AS x FROM authorities',
       'SELECT json_quote(name) AS x FROM authorities',
+      "SELECT json_set('{}', '$.k', name) AS x FROM authorities",
+      // NESTED replace() string-bomb — replace(replace('A','A','AAAAAAAAAA')…) ×10 per level with NO
+      // FROM (the table allowlist never engages). Quoting-proof: the double-quoted nested form is caught
+      // by name too. (A SINGLE replace stays allowed — see the "safe functions" test below.)
+      "SELECT replace(replace('A', 'A', 'AAAAAAAAAA'), 'A', 'BBBBBBBBBB') AS bomb",
+      "SELECT \"replace\"(\"replace\"('A', 'A', 'AAAAAAAAAA'), 'A', 'BBBBBBBBBB') AS bomb",
       // hidden in WHERE / nested, not just the SELECT list
       "SELECT id FROM authorities WHERE name = quote('x')",
       'SELECT id FROM authorities WHERE id IN (SELECT hex(name) FROM authorities)',
@@ -335,6 +341,8 @@ describe('guardSelect', () => {
       'SELECT count(*) AS n FROM authorities',
       'SELECT sum(amount_eur) AS s FROM contracts WHERE amount_eur IS NOT NULL',
       'SELECT coalesce(amount_eur, 0) AS a FROM contracts',
+      // single-level replace() is legitimate (Cyrillic↔Latin transliteration); only nesting is a bomb
+      "SELECT replace(name, 'а', 'a') AS n FROM authorities",
     ];
     for (const sql of allowed) {
       const r = guardSelect(sql);

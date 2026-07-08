@@ -38,11 +38,20 @@ const deny = (reason: string): GuardResult => ({ ok: false, reason });
 // regex a DOUBLE-QUOTED identifier slips (`"randomblob"(…)`: the `"` breaks `\b`), yet SQLite resolves a
 // quoted identifier in call position as the function and runs it. node-sql-parser normalises both
 // `fn(…)` and `"fn"(…)` to the same name, so a name check here closes the quoting bypass AND the
-// long-known group_concat/quote/hex read-exfil gap. Classes: memory-amplification DoW
-// (randomblob/zeroblob/printf/format/group_concat and the json_group_array/json_group_object/json_object/
-// json_array/json_quote builders — an aggregate/builder collapses a whole table into one giant JSON
-// string in the isolate, which no LIMIT bounds), data exfil/encoding (quote/hex), and RCE where
-// extensions can load (load_extension). None appear in any canonical query.
+// long-known group_concat/quote/hex read-exfil gap. None appear in any canonical query. Classes:
+//   • Memory-amplification DoW — materialise an unbounded value in the isolate that neither LIMIT nor the
+//     rows-read budget nor RESULT_BYTE_CAP bounds before capRows can measure it. Two shapes:
+//       – per-row string-bombs (randomblob/zeroblob/printf/format): a single cell blows up (e.g.
+//         `printf('%1000000d', 1)`);
+//       – table-collapsing aggregates (group_concat/json_group_array/json_group_object): fold a whole
+//         table into one giant value (LIMIT caps ROWS, not the width of a single collapsed cell).
+//     (`replace` is NOT here — single-level replace is a legitimate read-only string function, e.g.
+//     Cyrillic↔Latin transliteration; only NESTED replace is a bomb — see denyNestedReplace below.)
+//   • Data exfil / encoding (quote/hex).
+//   • RCE where extensions can load (load_extension).
+// The per-row JSON builders/mutators (json_object/json_array/json_quote/json_set/json_insert/
+// json_replace/json_patch/json_remove) are 1:1 scalar transforms that LIMIT + the byte cap DO bound;
+// they are listed for symmetry so the whole json_* family is denied uniformly (no query needs them).
 const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'load_extension',
   'randomblob',
@@ -57,6 +66,11 @@ const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'json_object',
   'json_array',
   'json_quote',
+  'json_set',
+  'json_insert',
+  'json_replace',
+  'json_patch',
+  'json_remove',
 ]);
 
 // The normalised, lowercased name of a function-call node, or null if `obj` is not one. A scalar call is
@@ -91,6 +105,33 @@ function denyDangerousFunction(node: unknown): string | null {
   if (fn && DANGEROUS_FUNCTIONS.has(fn)) return `function not allowed: ${fn}`;
   for (const key of Object.keys(obj)) {
     const r = denyDangerousFunction(obj[key]);
+    if (r) return r;
+  }
+  return null;
+}
+
+// A single-level `replace(x, a, b)` is a legitimate read-only string function (Cyrillic↔Latin
+// transliteration for entity matching), bounded by the row size × the byte-capped literals. But NESTING
+// it is a memory-amplification string-bomb: `replace(replace('A','A','AAAAAAAAAA')…)` grows a cell ×N per
+// level from a tiny literal seed — no FROM (so the table allowlist never engages), and the result
+// materialises in the isolate before capRows / RESULT_BYTE_CAP can measure it. Small SQL, exponential
+// output. So we allow one replace and reject a replace whose argument subtree contains another replace.
+// Detected by name (quoting-proof, via functionName), so `"replace"("replace"(…))` can't slip either.
+function denyNestedReplace(node: unknown, insideReplace = false): string | null {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = denyNestedReplace(item, insideReplace);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  const isReplace = functionName(obj) === 'replace';
+  if (isReplace && insideReplace) return 'function not allowed: nested replace (string bomb)';
+  const nowInside = insideReplace || isReplace;
+  for (const key of Object.keys(obj)) {
+    const r = denyNestedReplace(obj[key], nowInside);
     if (r) return r;
   }
   return null;
@@ -386,6 +427,11 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   // slip the L1 text blocklist (DoW / exfil / load_extension — see DANGEROUS_FUNCTIONS).
   const badFn = denyDangerousFunction(ast);
   if (badFn) return deny(badFn);
+
+  // Nested replace() is a memory-amplification string-bomb (single replace stays allowed — legitimate
+  // transliteration). AST-level + quoting-proof — see denyNestedReplace.
+  const nestedReplace = denyNestedReplace(ast);
+  if (nestedReplace) return deny(nestedReplace);
 
   // Every FROM source must be a plain table or a sub-query, at ANY nesting depth — fail closed on
   // anything else. This blocks table-valued functions (`pragma_table_info(…)`, `json_each(…)`,
