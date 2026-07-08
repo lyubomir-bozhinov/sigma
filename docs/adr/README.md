@@ -15,3 +15,4 @@
 | [0005](0005-blue-green-d1-rollback.md) | Blue/green D1 слотове за rollback на refresh | Прието |
 | [0006](0006-eop-wins-dedup.md) | Dedup на два източника: EOP печели по `contract_number` | Прието |
 | [0007](0007-report-dedup-settled-periods-only.md) | Report dedup (Lane F) само за изрично разрешени, приключени периоди | Прието |
+| [0008](0008-voice-via-ai-gateway.md) | Voice lane през AI Gateway + git-деклариран provisioning на route/provider | Прието |

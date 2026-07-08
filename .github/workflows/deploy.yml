@@ -162,6 +162,18 @@ jobs:
           echo "::add-mask::$id"
           echo "SIGMA_DEDUP_KV_ID=$id" >> "$GITHUB_ENV"
 
+      # GitOps: converge the account-global `sigma-assistant` AI-Gateway objects for the VOICE lane —
+      # gateway + `bggpt-voice` custom provider + `voice` dynamic route (graph in
+      # scripts/ai-gateway/voice-route.json). Idempotent: a no-op unless the committed graph changed.
+      # Unlike the per-env KV namespace above, the gateway is a single account-global object, so every
+      # environment converges it to the same reviewed graph. VOICE_ASSISTANT_API_KEY is needed only to
+      # first-create the provider; absent ⇒ the existing provider is reused as-is.
+      - name: Ensure voice AI-Gateway route
+        if: steps.guard.outputs.ok == 'true' && success()
+        env:
+          VOICE_ASSISTANT_API_KEY: ${{ secrets.VOICE_ASSISTANT_API_KEY }}
+        run: node scripts/ensure-voice-provider.mjs --apply
+
       - name: Typecheck
         if: steps.guard.outputs.ok == 'true' && success()
         run: pnpm typecheck
