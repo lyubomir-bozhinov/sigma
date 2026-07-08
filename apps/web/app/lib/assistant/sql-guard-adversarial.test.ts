@@ -140,6 +140,54 @@ describe('sql-guard adversarial / parser-differential', () => {
     it('rejects an unknown/unlisted function at Layer 2 (allowlist fail-closed default)', () => {
       expectReject('SELECT frobnicate_agg(name) FROM authorities', 2, /not in allowlist/i);
     });
+
+    // STRING-LENGTH AMPLIFICATION via a CTE CHAIN (review follow-up, lyubomir-bozhinov). The per-
+    // expression checks (denyForbiddenFunction / the old denyNestedReplace) miss a chain where each CTE
+    // level reads the PRIOR CTE's single cell and multiplies it ×10 — the injected LIMIT 500 bounds only
+    // the final row count, and capRows / RESULT_BYTE_CAP measure only AFTER the value materialises in-
+    // engine → Worker OOM. Bounded now by denyAmplifyingStringChain (whole-AST count of replace + `||`,
+    // reject on the second). All three amplifiers — concat (off the allowlist), replace, and the `||`
+    // operator (a binary_expr, invisible to the function allowlist) — are covered.
+    it('rejects a concat() CTE-chain string-bomb at Layer 2', () => {
+      expectReject(
+        `WITH l0 AS (SELECT 'X' AS v),
+         l1 AS (SELECT concat(v,v,v,v,v,v,v,v,v,v) AS v FROM l0),
+         l2 AS (SELECT concat(v,v,v,v,v,v,v,v,v,v) AS v FROM l1)
+         SELECT v FROM l2`,
+        2,
+        /function not allowed/i,
+      );
+    });
+    it('rejects a replace() CTE-chain string-bomb at Layer 2 (un-nested per level, chained via CTEs)', () => {
+      expectReject(
+        `WITH l0 AS (SELECT 'X' AS v),
+         l1 AS (SELECT replace(v,'X','XXXXXXXXXX') AS v FROM l0),
+         l2 AS (SELECT replace(v,'X','XXXXXXXXXX') AS v FROM l1)
+         SELECT v FROM l2`,
+        2,
+        /amplifying string chain/i,
+      );
+    });
+    it('rejects a `||` operator CTE-chain string-bomb at Layer 2 (operator, not a function)', () => {
+      expectReject(
+        `WITH l0 AS (SELECT 'X' AS v),
+         l1 AS (SELECT v||v||v||v||v||v||v||v||v||v AS v FROM l0),
+         l2 AS (SELECT v||v||v||v||v||v||v||v||v||v AS v FROM l1)
+         SELECT v FROM l2`,
+        2,
+        /amplifying string chain/i,
+      );
+    });
+    it('rejects bare concat() at Layer 2 — dropped from the allowlist (amplifier, no canonical use)', () => {
+      expectReject('SELECT concat(name, name) AS x FROM authorities', 2, /not in allowlist/i);
+    });
+    // A SINGLE amplifying op stays legitimate: one transliteration replace is bounded by the byte-capped
+    // seed and must still pass both layers (guards the fix against over-blocking real analytics SQL).
+    it('still accepts a single transliteration replace() (one amplifying op, bounded)', () => {
+      expect(run("SELECT replace(name, 'а', 'a') AS n FROM authorities WHERE id = 'x'").ok).toBe(
+        true,
+      );
+    });
   });
 
   describe('C. system-catalog enumeration', () => {

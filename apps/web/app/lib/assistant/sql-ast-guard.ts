@@ -55,8 +55,10 @@ const deny = (reason: string): GuardResult => ({ ok: false, reason });
 // collapsing aggregates (group_concat/string_agg/json_group_array/json_group_object/json_pretty, which
 // fold a whole table into one giant value that LIMIT caps by ROWS, not cell width); data exfil/encoding
 // (quote/hex); RCE where extensions can load (load_extension). The per-row json builders/mutators are
-// bounded but denied for family symmetry. `replace` is ALLOWED (single-level transliteration) — only
-// NESTED replace is a bomb, handled separately by denyNestedReplace.
+// bounded but denied for family symmetry. `replace` is ALLOWED (single transliteration) and `||` is a
+// legitimate single concatenation — but CHAINING either (inline or across a CTE graph) is a string-length
+// bomb, bounded to one amplifying op per query by denyAmplifyingStringChain. `concat`/`concat_ws` are
+// left OFF the allowlist for the same reason (they fail closed here).
 const DANGEROUS_FUNCTIONS: ReadonlySet<string> = new Set([
   'load_extension',
   'randomblob',
@@ -106,7 +108,7 @@ const ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
   'trim',
   'ltrim',
   'rtrim',
-  'replace', // single-level only — nesting rejected by denyNestedReplace
+  'replace', // single op only — chaining (inline or cross-CTE) rejected by denyAmplifyingStringChain
   'char',
   'unicode',
   'unhex',
@@ -118,8 +120,10 @@ const ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
   'likelihood',
   'likely',
   'unlikely',
-  'concat',
-  'concat_ws',
+  // NB: concat / concat_ws are deliberately NOT allowlisted — they are string-length AMPLIFIERS (a
+  // CTE chain of `concat(v,v,…,v)` multiplies ×N/level, unbounded by LIMIT). No canonical query uses
+  // them; a bare `||` is the only concatenation a read-only analytics query needs, and even that is
+  // chain-bounded by denyAmplifyingStringChain. Leaving them off the allowlist fails them closed.
   'random',
   'changes',
   'total_changes',
@@ -217,31 +221,42 @@ function denyForbiddenFunction(node: unknown): string | null {
   return null;
 }
 
-// A single-level `replace(x, a, b)` is a legitimate read-only string function (Cyrillic↔Latin
-// transliteration for entity matching), bounded by the row size × the byte-capped literals. But NESTING
-// it is a memory-amplification string-bomb: `replace(replace('A','A','AAAAAAAAAA')…)` grows a cell ×N per
-// level from a tiny literal seed — no FROM (so the table allowlist never engages), and the result
-// materialises in the isolate before capRows / RESULT_BYTE_CAP can measure it. Small SQL, exponential
-// output. So we allow one replace and reject a replace whose argument subtree contains another replace.
-// Detected by name (quoting-proof, via functionName), so `"replace"("replace"(…))` can't slip either.
-function denyNestedReplace(node: unknown, insideReplace = false): string | null {
+// String-length AMPLIFICATION guard — WHOLE-QUERY, cross-CTE. A single-level `replace(x, a, b)` and a
+// single `||` concatenation are legitimate read-only string ops (e.g. Cyrillic↔Latin transliteration),
+// bounded by the row size × the byte-capped literals. But they MULTIPLY a value's length, so CHAINING
+// them is a memory-amplification string-bomb. Two shapes chain past every prior bound:
+//   • inline nesting — `replace(replace('A','A','AAAAAAAAAA')…)` grows ×N per level in one expression;
+//   • a CTE chain — `WITH l1 AS (SELECT replace(v,'X','XXXXXXXXXX') FROM l0), l2 AS (… FROM l1) …`
+//     (or the same with `v||v||…||v`, or `concat(…)`), each level reading the prior CTE's single cell.
+// The injected `LIMIT 500` bounds only the FINAL row count; capRows / RESULT_BYTE_CAP measure only AFTER
+// the value materialises in-engine → Worker OOM via run_sql. `denyForbiddenFunction`'s per-expression
+// checks miss the CTE chain, and the `||` operator is a `binary_expr` invisible to the function allowlist
+// entirely. No canonical query uses more than a single transliteration `replace` (and none uses `||`),
+// so we bound the WHOLE query to at most ONE amplifying string op: count every `replace` call
+// (quoting-proof via functionName) plus every `||` operator across the entire AST — all CTEs, sub-
+// queries, arguments — and reject on the second. Subsumes the old denyNestedReplace (inline nesting is
+// two replaces in one expression → count 2). `concat`/`concat_ws` are handled upstream (off the
+// allowlist → already rejected by denyForbiddenFunction before this runs).
+function countAmplifyingStringOps(node: unknown): number {
   if (Array.isArray(node)) {
-    for (const item of node) {
-      const r = denyNestedReplace(item, insideReplace);
-      if (r) return r;
-    }
-    return null;
+    let total = 0;
+    for (const item of node) total += countAmplifyingStringOps(item);
+    return total;
   }
-  if (!node || typeof node !== 'object') return null;
+  if (!node || typeof node !== 'object') return 0;
   const obj = node as Record<string, unknown>;
-  const isReplace = functionName(obj) === 'replace';
-  if (isReplace && insideReplace) return 'function not allowed: nested replace (string bomb)';
-  const nowInside = insideReplace || isReplace;
-  for (const key of Object.keys(obj)) {
-    const r = denyNestedReplace(obj[key], nowInside);
-    if (r) return r;
-  }
-  return null;
+  let total = 0;
+  if (functionName(obj) === 'replace') total += 1;
+  if (obj.type === 'binary_expr' && obj.operator === '||') total += 1;
+  for (const key of Object.keys(obj)) total += countAmplifyingStringOps(obj[key]);
+  return total;
+}
+
+function denyAmplifyingStringChain(ast: unknown): string | null {
+  // >1 amplifying op anywhere in the query can chain (a single one is bounded by the byte-capped seed).
+  return countAmplifyingStringOps(ast) > 1
+    ? 'function not allowed: amplifying string chain (replace/concat/|| — bomb)'
+    : null;
 }
 
 // Loose view over the parsed statement — node-sql-parser's union types are awkward to narrow, and we
@@ -536,10 +551,11 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   const badFn = denyForbiddenFunction(ast);
   if (badFn) return deny(badFn);
 
-  // Nested replace() is a memory-amplification string-bomb (single replace stays allowed — legitimate
-  // transliteration). AST-level + quoting-proof — see denyNestedReplace.
-  const nestedReplace = denyNestedReplace(ast);
-  if (nestedReplace) return deny(nestedReplace);
+  // String-length amplification (replace / `||`) is a memory-amplification bomb when CHAINED — inline or
+  // across a CTE graph — even though a single op is legitimate. Whole-AST count, quoting-proof, `||`
+  // operator included — see denyAmplifyingStringChain (concat/concat_ws already fail the allowlist above).
+  const amplify = denyAmplifyingStringChain(ast);
+  if (amplify) return deny(amplify);
 
   // Every FROM source must be a plain table or a sub-query, at ANY nesting depth — fail closed on
   // anything else. This blocks table-valued functions (`pragma_table_info(…)`, `json_each(…)`,
