@@ -1267,10 +1267,10 @@ WHERE b.eik_normalized IN (SELECT eik FROM raw_ocds_parties WHERE eik IS NOT NUL
 -- reconcilable rollups below (which now exclude synthetic) would disagree with a live aggregate.
 -- Admin-derived c: rows keep their full-normalize value (this scopes to c:e:/c:o: only).
 UPDATE contracts
-SET is_synthetic = (
+SET is_synthetic = COALESCE((
   SELECT CASE WHEN t.procedure_type = 'неизвестна' THEN 1 ELSE 0 END
   FROM tenders t WHERE t.id = contracts.tender_id
-)
+), 0)  -- COALESCE: a (today-unreachable) dangling tender_id yields NULL → NOT NULL abort; degrade to 0
 WHERE id GLOB 'c:[eo]:*';
 
 -- 6) Refresh rollups + FTS. Only the D1-hot rollups are scoped to touched rows; cheaper rollups stay
