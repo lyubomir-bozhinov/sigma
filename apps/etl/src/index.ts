@@ -130,6 +130,27 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
         refreshDerivedContractCount(this.env.DB),
       );
 
+      // Keep the dock's starter chips in step with the freshly-derived slice. The weekly PROMPTS_CRON is a
+      // coarse fallback; regenerating here means the chip numbers track each 6-hourly refresh instead of
+      // lagging up to a week behind the data the assistant recomputes live. That skew is the S3 defect: a
+      // chip computed on partial data showed „140 договора за 21,6 млн €" while the live query returned
+      // 278 / 61,5 млн for the SAME window once late-arriving contracts backfilled. Best-effort — the slice
+      // is already committed, so a prompts failure is logged, not fatal to the refresh.
+      await step.do('refresh-suggested-prompts', async () => {
+        try {
+          await generateSuggestedPrompts(this.env.DB);
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_prompts_failed',
+              phase: 'refresh',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      });
+
       return { ...plan, days: results.length, staged, derived };
     } finally {
       await step.do('drop-transient-staging', async () => dropTransientStaging(this.env.DB));
