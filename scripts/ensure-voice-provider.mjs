@@ -1,19 +1,23 @@
 #!/usr/bin/env node
-// Idempotently ensure the assistant's AI-Gateway objects that the VOICE lane routes through:
+// Idempotently ensure the AI-Gateway objects the VOICE lane needs:
 //
-//   1. the gateway            `sigma-assistant`        (shared with chat — ensure-exists only, never
-//                                                        mutate its settings here or we clobber chat)
-//   2. the custom provider    `bggpt-voice`            (BgGPT Whisper upstream, https://api.bggpt.ai)
-//   3. two dynamic routes      `voice` + `voice-fallback` (graphs committed under ai-gateway/*.json;
-//                                                        converge each route's ACTIVE version, then deploy)
+//   1. the gateway          `sigma-assistant`   (shared with chat — ensure-exists only, never mutate its
+//                                                settings here or we clobber chat)
+//   2. the custom provider  `bggpt-voice`        (BgGPT Whisper upstream, https://api.bggpt.ai)
 //
-// `voice` routes to the BgGPT custom provider (multipart); `voice-fallback` to the built-in `workers-ai`
-// provider (JSON base64, CF-native). Split because one route can't feed two audio formats — see ADR-0011.
+// Provider-only — NO dynamic routes. We tried dynamic routing (routes `voice` / `voice-fallback`) and
+// verified empirically that it CANNOT carry audio: a dynamic route is only invokable via the compat
+// `chat/completions` endpoint (`model: dynamic/<route>`), and `compat/audio/transcriptions` is explicitly
+// unsupported (Cloudflare `2019`). See ADR-0011. The working path is to call the gateway's PROVIDER
+// endpoints directly, each in its native format (code-level, Niki's request path):
+//   • primary  POST .../sigma-assistant/custom-bggpt-voice/audio/transcriptions   (multipart, BgGPT key)
+//   • fallback POST .../sigma-assistant/workers-ai/@cf/openai/whisper-large-v3-turbo (JSON base64, CF token)
+// `workers-ai` is a built-in provider (needs no provisioning), so the only voice-specific object to ensure
+// here is the `bggpt-voice` custom provider.
 //
-// Why this exists — same GitOps rationale as scripts/ensure-kv-namespace.mjs: the route/provider were
-// first stood up by hand in the dashboard; hand state drifts silently and isn't reviewable. This makes
-// the desired state git-declared (the graph JSON) and CI-applied. `wrangler` cannot touch AI Gateway,
-// so this goes straight at the account-scoped REST API (verified endpoint shapes, see each function).
+// Why this exists — same GitOps rationale as scripts/ensure-kv-namespace.mjs: the provider was first stood
+// up by hand in the dashboard; hand state drifts silently and isn't reviewable. `wrangler` cannot touch
+// AI Gateway, so this goes straight at the account-scoped REST API.
 //
 // SAFETY: dry-run by default (prints the exact planned mutations); pass --apply to execute — mirrors
 // scripts/bootstrap.mjs. Reads never mutate; only --apply issues POSTs.
@@ -21,40 +25,24 @@
 // usage:  node scripts/ensure-voice-provider.mjs [--apply]
 //   env:  CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN  (token needs AI Gateway:Edit)
 //         VOICE_ASSISTANT_API_KEY                       (optional — see ensureCustomProvider)
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const API = 'https://api.cloudflare.com/client/v4';
 
-// The hand-provisioned names this script converges toward. Changing a name here creates a NEW object;
-// it does not rename the existing one — rename in the dashboard first if that is ever needed.
 export const GATEWAY_ID = 'sigma-assistant';
 export const PROVIDER_SLUG = 'bggpt-voice';
 export const PROVIDER_NAME = 'BgGPT Voice';
 export const PROVIDER_BASE_URL = 'https://api.bggpt.ai';
-// Two single-provider routes (ADR-0011): a single route can't carry primary+fallback for audio because
-// the gateway forwards the body unchanged and the providers want incompatible formats. `voice` = the
-// BgGPT custom provider (multipart); `voice-fallback` = the built-in `workers-ai` provider (JSON base64,
-// CF-native → no US egress). App code tries `voice` then `voice-fallback`, each in its own format.
-export const ROUTE_NAME = 'voice';
-export const ROUTE_FALLBACK_NAME = 'voice-fallback';
-// Route name -> committed graph file. `voice-fallback` targets the built-in `workers-ai` provider, so it
-// needs no custom-provider provisioning — only ensureCustomProvider('bggpt-voice') below.
-export const ROUTES = [
-  { name: ROUTE_NAME, file: 'voice-route.json' },
-  { name: ROUTE_FALLBACK_NAME, file: 'voice-fallback-route.json' },
-];
 
 function summariseErrors(status, body) {
   const errs = Array.isArray(body?.errors) ? body.errors : [];
-  // The routes/* endpoints return a flat `{success:false,error:"..."}`, not an errors[] — cover both.
+  // Some endpoints return a flat `{success:false,error:"..."}`, not an errors[] — cover both.
   const flat = typeof body?.error === 'string' ? body.error : '';
   return errs.map((e) => `${e.code} ${e.message}`).join('; ') || flat || `HTTP ${status}`;
 }
 
-// One request + uniform error surfacing. Returns the parsed body; callers read `.result` or `.data`
-// (the AI-Gateway API is inconsistent: gateways/providers use `result`, routes use `data`).
+// One request + uniform error surfacing. Returns the parsed body; callers read `.result`.
 async function req(fetchImpl, url, { method = 'GET', token, body } = {}) {
   const res = await fetchImpl(url, {
     method,
@@ -80,7 +68,8 @@ function requireCreds({ accountId, token }) {
 }
 
 // --- gateway ---------------------------------------------------------------------------------------
-// GET /accounts/{a}/ai-gateway/gateways -> { result: [{ id, ... }] }  (verified)
+// GET /accounts/{a}/ai-gateway/gateways -> { result: [{ id, ... }] }  (verified). Ensure the shared
+// gateway exists so the provider invocation path (.../sigma-assistant/...) is valid; chat owns its config.
 export async function ensureGateway({
   accountId,
   token,
@@ -97,7 +86,6 @@ export async function ensureGateway({
   );
   // ponytail: single page — the account holds ~1 gateway. Paginate if that ever grows past 50.
   if ((list.result ?? []).some((g) => g.id === gatewayId)) return gatewayId;
-  // INFERRED body shape: gateway create takes at least { id }. Verify on first --apply.
   await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/gateways`, {
     method: 'POST',
     token,
@@ -108,11 +96,11 @@ export async function ensureGateway({
 
 // --- custom provider -------------------------------------------------------------------------------
 // GET /accounts/{a}/ai-gateway/custom-providers -> { result: [{ id, slug, base_url, headers, ... }] }
-// (verified). Auth model: if VOICE_ASSISTANT_API_KEY is supplied we store it as the provider's
-// Authorization header (provisioning owns the key — the clean split from Niki's request-routing code).
-// If absent, the provider is created key-less (per-request-auth model, like the chat `bggpt` provider)
-// and we warn. Idempotent: when the provider already exists we do NOT re-PUT the secret every run
-// (GET masks it, so drift is undetectable) — existence + base_url are enough.
+// (verified — custom providers are ACCOUNT-scoped, not under a gateway). Auth model: if
+// VOICE_ASSISTANT_API_KEY is supplied we store it as the provider's Authorization header; if absent, the
+// provider is created key-less (per-request-auth model — the app passes the key, like the chat `bggpt`
+// provider) and we warn. Idempotent: when the provider already exists we do NOT re-PUT the secret every
+// run (GET masks it, so drift is undetectable) — existence + base_url are enough.
 export async function ensureCustomProvider({
   accountId,
   token,
@@ -127,9 +115,7 @@ export async function ensureCustomProvider({
   const list = await req(
     fetchImpl,
     `${API}/accounts/${accountId}/ai-gateway/custom-providers?per_page=50`,
-    {
-      token,
-    },
+    { token },
   );
   const existing = (list.result ?? []).find((p) => p.slug === slug);
   if (existing) {
@@ -143,7 +129,6 @@ export async function ensureCustomProvider({
       `VOICE_ASSISTANT_API_KEY not set — creating provider "${slug}" without stored auth (per-request-auth model)`,
     );
   }
-  // INFERRED body shape from the GET record ({ name, slug, base_url, headers }). Verify on first --apply.
   const created = await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/custom-providers`, {
     method: 'POST',
     token,
@@ -157,84 +142,6 @@ export async function ensureCustomProvider({
   return created.result?.id ?? slug;
 }
 
-// --- route -----------------------------------------------------------------------------------------
-// Order-insensitive graph compare: the nodes reference each other by elementId, so their array order
-// carries no meaning — sort by id before comparing, else a reordered read triggers a needless new
-// version every run (breaks idempotence).
-function normalizeGraph(nodes) {
-  const sortKeys = (v) =>
-    Array.isArray(v)
-      ? v.map(sortKeys)
-      : v && typeof v === 'object'
-        ? Object.keys(v)
-            .sort()
-            .reduce((o, k) => ((o[k] = sortKeys(v[k])), o), {})
-        : v;
-  return JSON.stringify(
-    sortKeys([...nodes].sort((a, b) => String(a.id).localeCompare(String(b.id)))),
-  );
-}
-
-export function graphEqual(a, b) {
-  return normalizeGraph(a) === normalizeGraph(b);
-}
-
-// GET  /gateways/{g}/routes                 -> { data: { routes: [{ id, name, ... }] } }   (verified)
-// GET  /gateways/{g}/routes/{id}            -> { result: { version: { version_id, data, active } } }  (verified)
-// POST /gateways/{g}/routes                 -> create route ({ name, elements })
-// POST /gateways/{g}/routes/{id}/versions   -> new version ({ elements } -> { result: { version_id } })
-// POST /gateways/{g}/routes/{id}/deployments-> deploy      ({ version_id }) — makes the version live
-// Asymmetry to watch: the WRITE key is `elements`, but reads return the same graph under `data` (sending
-// `data` yields Cloudflare's `7001 Required`). Verified against the AI Gateway dynamic-routing API docs.
-// Returns { routeId, changed }.
-export async function ensureRoute({
-  accountId,
-  token,
-  gatewayId = GATEWAY_ID,
-  name = ROUTE_NAME,
-  graph,
-  fetchImpl = fetch,
-}) {
-  requireCreds({ accountId, token });
-  if (!Array.isArray(graph) || graph.length === 0) {
-    throw new Error('ensure-voice-provider: a non-empty route graph is required.');
-  }
-  const base = `${API}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`;
-  const list = await req(fetchImpl, `${base}?per_page=50`, { token });
-  const existing = (list.data?.routes ?? []).find((r) => r.name === name);
-
-  if (!existing) {
-    // New route: create with the graph as its first version (the dashboard creates+deploys v1 in one
-    // step this way). If the API does not auto-deploy, the deploy below is a harmless second step.
-    const created = await req(fetchImpl, base, {
-      method: 'POST',
-      token,
-      body: { name, elements: graph },
-    });
-    const routeId = created.result?.id ?? created.data?.id;
-    return { routeId, changed: true };
-  }
-
-  const routeId = existing.id;
-  const detail = await req(fetchImpl, `${base}/${routeId}`, { token });
-  const active = detail.result?.version;
-  if (active?.active && graphEqual(active.data ?? [], graph)) {
-    return { routeId, changed: false }; // already converged — no-op
-  }
-  const version = await req(fetchImpl, `${base}/${routeId}/versions`, {
-    method: 'POST',
-    token,
-    body: { elements: graph },
-  });
-  const versionId = version.result?.version_id ?? version.result?.id ?? version.data?.version_id;
-  await req(fetchImpl, `${base}/${routeId}/deployments`, {
-    method: 'POST',
-    token,
-    body: { version_id: versionId },
-  });
-  return { routeId, changed: true };
-}
-
 // Dry-run decorator: GETs pass through (safe); every mutation is logged as WOULD … and answered with a
 // synthetic success so the full plan prints in one pass without touching the account.
 function dryRunFetch(real, log) {
@@ -245,18 +152,9 @@ function dryRunFetch(real, log) {
     return {
       ok: true,
       status: 200,
-      json: async () => ({
-        success: true,
-        result: { id: 'DRY-RUN', version_id: 'DRY-RUN', slug: 'DRY-RUN' },
-        data: { id: 'DRY-RUN' },
-      }),
+      json: async () => ({ success: true, result: { id: 'DRY-RUN', slug: 'DRY-RUN' } }),
     };
   };
-}
-
-function loadGraph(file) {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return JSON.parse(readFileSync(resolve(here, 'ai-gateway', file), 'utf8'));
 }
 
 async function main(argv) {
@@ -275,17 +173,8 @@ async function main(argv) {
     await ensureGateway({ accountId, token, fetchImpl });
     log(`  gateway    ${GATEWAY_ID} ok`);
 
-    // Only the BgGPT leg needs a custom provider; `voice-fallback` uses the built-in `workers-ai`.
     await ensureCustomProvider({ accountId, token, apiKey, fetchImpl, warn });
     log(`  provider   ${PROVIDER_SLUG} ok`);
-
-    for (const { name, file } of ROUTES) {
-      const graph = loadGraph(file);
-      const { changed } = await ensureRoute({ accountId, token, name, graph, fetchImpl });
-      log(
-        `  route      ${name} ${changed ? 'converged (new version deployed)' : 'already up to date'}`,
-      );
-    }
   } catch (err) {
     warn(err.message);
     process.exit(1);

@@ -1,19 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   ensureGateway,
   ensureCustomProvider,
-  ensureRoute,
-  graphEqual,
   GATEWAY_ID,
   PROVIDER_SLUG,
-  ROUTE_NAME,
-  ROUTE_FALLBACK_NAME,
-  ROUTES,
 } from './ensure-voice-provider.mjs';
 
 const CREDS = { accountId: 'acct', token: 'tok' };
@@ -22,34 +14,6 @@ const okResult = (result) => ({
   status: 200,
   json: async () => ({ success: true, result }),
 });
-const okData = (data) => ({ ok: true, status: 200, json: async () => ({ success: true, data }) });
-
-const GRAPH = [
-  { id: 'START', type: 'start', outputs: { next: { elementId: 'primary-model' } } },
-  {
-    id: 'primary-model',
-    type: 'model',
-    outputs: { success: { elementId: 'END' }, fallback: { elementId: 'fallback-model' } },
-    properties: {
-      provider: 'custom-bggpt-voice',
-      model: 'bggpt-whisper-large-v3',
-      timeout: 20000,
-      retries: 1,
-    },
-  },
-  {
-    id: 'fallback-model',
-    type: 'model',
-    outputs: { success: { elementId: 'END' }, fallback: { elementId: 'END' } },
-    properties: {
-      provider: 'workers-ai',
-      model: '@cf/openai/whisper-large-v3-turbo',
-      timeout: 30000,
-      retries: 0,
-    },
-  },
-  { id: 'END', type: 'end', outputs: {} },
-];
 
 // Records every call so tests can assert exactly which mutations fired.
 function recorder(handler) {
@@ -62,18 +26,6 @@ function recorder(handler) {
   return { fetchImpl, calls };
 }
 const posts = (calls) => calls.filter((c) => c.method === 'POST');
-
-describe('graphEqual', () => {
-  it('is order-insensitive on nodes (a reordered read is not a diff)', () => {
-    const reversed = [...GRAPH].reverse();
-    assert.ok(graphEqual(GRAPH, reversed));
-  });
-  it('detects a real property change', () => {
-    const drift = structuredClone(GRAPH);
-    drift[1].properties.timeout = 3000;
-    assert.ok(!graphEqual(GRAPH, drift));
-  });
-});
 
 describe('ensureGateway', () => {
   it('no-ops when the gateway already exists', async () => {
@@ -122,104 +74,8 @@ describe('ensureCustomProvider', () => {
   });
 });
 
-describe('ensureRoute', () => {
-  it('no-ops when the active version already matches the graph', async () => {
-    const { fetchImpl, calls } = recorder(({ url }) =>
-      url.endsWith('/routes?per_page=50')
-        ? okData({ routes: [{ id: 'r1', name: ROUTE_NAME }] })
-        : okResult({ version: { version_id: 'v1', active: true, data: GRAPH } }),
-    );
-    const { routeId, changed } = await ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl });
-    assert.equal(routeId, 'r1');
-    assert.equal(changed, false);
-    assert.equal(posts(calls).length, 0);
-  });
-
-  it('creates a new version and deploys it when the graph drifted', async () => {
-    const stale = structuredClone(GRAPH);
-    stale[1].properties.timeout = 3000; // the live defect
-    const { fetchImpl, calls } = recorder(({ url, method }) => {
-      if (method === 'GET' && url.endsWith('/routes?per_page=50'))
-        return okData({ routes: [{ id: 'r1', name: ROUTE_NAME }] });
-      if (method === 'GET')
-        return okResult({ version: { version_id: 'old', active: true, data: stale } });
-      if (url.endsWith('/versions')) return okResult({ version_id: 'v2' });
-      return okResult({ deployment_id: 'd2' }); // deployments
-    });
-    const { changed } = await ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl });
-    assert.equal(changed, true);
-    const p = posts(calls);
-    assert.equal(p.length, 2);
-    assert.ok(p[0].url.endsWith('/versions'));
-    assert.deepEqual(p[0].body.elements, GRAPH); // WRITE key is `elements`, not `data`
-    assert.equal(p[0].body.data, undefined);
-    assert.ok(p[1].url.endsWith('/deployments'));
-    assert.equal(p[1].body.version_id, 'v2');
-  });
-
-  it('creates the route with its first version when absent', async () => {
-    const { fetchImpl, calls } = recorder(({ method }) =>
-      method === 'GET' ? okData({ routes: [] }) : okResult({ id: 'r-new' }),
-    );
-    const { routeId, changed } = await ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl });
-    assert.equal(routeId, 'r-new');
-    assert.equal(changed, true);
-    assert.deepEqual(posts(calls)[0].body, { name: ROUTE_NAME, elements: GRAPH });
-  });
-
-  it('rejects an empty graph rather than deploying nothing', async () => {
-    await assert.rejects(
-      () =>
-        ensureRoute({ ...CREDS, graph: [], fetchImpl: () => assert.fail('must not call the API') }),
-      /a non-empty route graph is required/,
-    );
-  });
-});
-
-describe('committed route graphs', () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const load = (f) => JSON.parse(readFileSync(resolve(here, 'ai-gateway', f), 'utf8'));
-
-  it('ROUTES covers voice + voice-fallback with files that parse to valid graphs', () => {
-    assert.deepEqual(
-      ROUTES.map((r) => r.name),
-      [ROUTE_NAME, ROUTE_FALLBACK_NAME],
-    );
-    for (const { file } of ROUTES) {
-      const g = load(file);
-      assert.ok(Array.isArray(g) && g.length >= 3, `${file} is a non-trivial array`);
-      assert.ok(
-        g.some((n) => n.type === 'start') && g.some((n) => n.type === 'end'),
-        `${file} has start + end`,
-      );
-      const models = g.filter((n) => n.type === 'model');
-      assert.ok(models.length >= 1, `${file} has a model node`);
-      for (const m of models) assert.ok(m.properties?.provider && m.properties?.model);
-    }
-  });
-
-  it('voice -> bggpt custom provider; voice-fallback -> CF-native workers-ai whisper', () => {
-    const voice = load('voice-route.json').find((n) => n.type === 'model');
-    assert.equal(voice.properties.provider, 'custom-bggpt-voice');
-    const fb = load('voice-fallback-route.json').find((n) => n.type === 'model');
-    assert.equal(fb.properties.provider, 'workers-ai');
-    assert.match(fb.properties.model, /whisper/);
-  });
-});
-
 describe('error surfacing', () => {
-  it('propagates the routes/* flat {error} shape', async () => {
-    const fetchImpl = async () => ({
-      ok: false,
-      status: 404,
-      json: async () => ({ success: false, error: 'Route not found' }),
-    });
-    await assert.rejects(
-      () => ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl }),
-      /Route not found/,
-    );
-  });
-  it('propagates the errors[] shape and requires creds', async () => {
+  it('propagates a Cloudflare errors[] and requires creds', async () => {
     const fetchImpl = async () => ({
       ok: false,
       status: 403,
@@ -228,13 +84,18 @@ describe('error surfacing', () => {
         errors: [{ code: 10000, message: 'Authentication error' }],
       }),
     });
-    await assert.rejects(
-      () => ensureGateway({ ...CREDS, fetchImpl }),
-      /10000 Authentication error/,
-    );
+    await assert.rejects(() => ensureGateway({ ...CREDS, fetchImpl }), /10000 Authentication error/);
     await assert.rejects(
       () => ensureGateway({ token: 'tok', fetchImpl: () => assert.fail() }),
       /CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required/,
     );
+  });
+  it('propagates a flat {error} shape too', async () => {
+    const fetchImpl = async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ success: false, error: 'Invalid provider' }),
+    });
+    await assert.rejects(() => ensureCustomProvider({ ...CREDS, fetchImpl }), /Invalid provider/);
   });
 });
