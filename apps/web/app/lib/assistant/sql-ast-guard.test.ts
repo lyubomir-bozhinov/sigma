@@ -457,3 +457,54 @@ describe('guardSelect — personal-data column denylist (PRIV-1)', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('guardSelect — double-quoted identifier bypass (PRIV-1, quoting-proof)', () => {
+  // A double-quoted identifier parses as a `double_quote_string`, NOT a `column_ref`, so a check that
+  // inspected only column_ref nodes let `SELECT "contact_email" …` slip the personal-data denylist. Both
+  // layers are exercised through guardSelect: a double-quoted PII column surfaces the specific
+  // "(personal data)" reason (denyDeniedColumn, quote-aware), and any other double-quoted identifier the
+  // blanket double-quote rejection.
+
+  it('rejects a double-quoted PII column with the personal-data reason (Layer 2)', () => {
+    const r = guardSelect('SELECT "contact_email" FROM authorities');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: contact_email \(personal data\)/);
+  });
+
+  it('rejects double-quoted address/contact_phone on bidders', () => {
+    const r = guardSelect('SELECT "address", "contact_phone" FROM bidders');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/personal data/);
+  });
+
+  it('rejects a double-quoted PII column behind an alias', () => {
+    const r = guardSelect('SELECT "contact_email" AS e FROM parties');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/personal data/);
+  });
+
+  it('rejects a double-quoted PII column mixed with a public column and a quoted WHERE ref', () => {
+    const r = guardSelect(
+      'SELECT eik, "contact_email" FROM authorities WHERE "contact_phone" IS NOT NULL',
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/personal data/);
+  });
+
+  it('rejects a double-quoted NON-PII identifier too (blanket no-double-quotes policy, Layer 1)', () => {
+    const r = guardSelect('SELECT "name" FROM tenders');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/double-quoted identifiers are not allowed/);
+  });
+
+  it('rejects a double-quoted identifier in ORDER BY', () => {
+    const r = guardSelect('SELECT id FROM tenders ORDER BY "id" LIMIT 5');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/double-quoted identifiers are not allowed/);
+  });
+
+  it('still allows the equivalent bare-identifier query', () => {
+    const r = guardSelect('SELECT name FROM tenders');
+    expect(r.ok).toBe(true);
+  });
+});

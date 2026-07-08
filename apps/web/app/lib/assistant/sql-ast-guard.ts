@@ -615,9 +615,22 @@ function collectFromTables(node: unknown, acc: Set<string>): void {
   for (const k of Object.keys(obj)) collectFromTables(obj[k], acc);
 }
 
+// The lowercased identifier a node names, or null if it is not one. A bare/qualified reference is a
+// `column_ref` (`.column`); a DOUBLE-QUOTED identifier — `"contact_email"` — parses as a
+// `double_quote_string` (`.value`), NOT a column_ref (node-sql-parser). Both must be recognised so the
+// personal-data denylist is quoting-proof — mirroring functionName's fn/"fn" normalisation (a column
+// check that inspected only column_ref nodes let `SELECT "contact_email" …` slip the denylist — PRIV-1).
+function identifierName(obj: Record<string, unknown>): string | null {
+  if (obj.type === 'column_ref' && typeof obj.column === 'string') return obj.column.toLowerCase();
+  if (obj.type === 'double_quote_string' && typeof obj.value === 'string')
+    return obj.value.toLowerCase();
+  return null;
+}
+
 // Reject any reference to a personal-contact column (SELECT list, WHERE, ORDER BY, JOIN ON, sub-query —
-// column_refs appear everywhere and this walks the whole AST), and reject a `*` / `table.*` while a
-// personal-data table is in scope (a star would expand to a denied column). Fail-closed (PRIV-1).
+// identifiers appear everywhere and this walks the whole AST), and reject a `*` / `table.*` while a
+// personal-data table is in scope (a star would expand to a denied column). Recognises both bare and
+// double-quoted names via identifierName (Layer 2 of the quoting-proof column guard). Fail-closed (PRIV-1).
 function denyDeniedColumn(ast: unknown): string | null {
   const fromTables = new Set<string>();
   collectFromTables(ast, fromTables);
@@ -636,8 +649,8 @@ function denyDeniedColumn(ast: unknown): string | null {
       return;
     }
     const obj = node as Record<string, unknown>;
-    if (obj.type === 'column_ref' && typeof obj.column === 'string') {
-      const col = obj.column.toLowerCase();
+    const col = identifierName(obj); // bare/qualified column_ref OR a double-quoted identifier
+    if (col !== null) {
       if (DENIED_COLUMNS.has(col)) {
         offender = `column not allowed: ${col} (personal data)`;
         return;
@@ -652,6 +665,34 @@ function denyDeniedColumn(ast: unknown): string | null {
   };
   walk(ast);
   return offender;
+}
+
+// Reject every DOUBLE-QUOTED identifier anywhere in the statement (Layer 1 of the quoting-proof guard).
+// `"col"` is the SQL-standard identifier quote, so D1/SQLite resolves it to a real column regardless of
+// the DQS (double-quoted-string) setting — SQLite's DQS misfeature only widens this. That is exactly how a
+// double-quoted name evades a check that inspects only column_ref nodes. No canonical/curated analytics
+// query uses double-quoted identifiers (all use bare identifiers with single-quoted literals), so refuse
+// the whole class fail-closed — the same posture already applied to FUNCTIONS (functionName normalises
+// `fn`/`"fn"`). denyDeniedColumn runs FIRST, so a double-quoted PII column still surfaces its specific
+// "(personal data)" reason; any other double-quoted identifier is caught here. The AST is a finite tree.
+function denyQuotedIdentifier(node: unknown): string | null {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = denyQuotedIdentifier(item);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  if (obj.type === 'double_quote_string') {
+    return 'double-quoted identifiers are not allowed; use bare identifiers';
+  }
+  for (const key of Object.keys(obj)) {
+    const r = denyQuotedIdentifier(obj[key]);
+    if (r) return r;
+  }
+  return null;
 }
 
 /**
@@ -714,8 +755,16 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
 
   // Personal-contact columns are reachable because the allowlist is table-level; deny them (and a
   // `*` over a personal-data table) so run_sql cannot surface a natural person's email/phone/address.
+  // Recognises bare AND double-quoted names (Layer 2) so a double-quoted PII column gets its specific
+  // reason before the blanket double-quote rejection below.
   const badColumn = denyDeniedColumn(ast);
   if (badColumn) return deny(badColumn);
+
+  // Refuse any remaining double-quoted identifier (Layer 1). Double quotes are the SQL-standard identifier
+  // quote — `"contact_email"` resolves to the real column, which is how it slipped a column_ref-only check
+  // (PRIV-1). No legitimate query needs them; fail closed, matching the function guard's quoting-proof posture.
+  const quotedIdent = denyQuotedIdentifier(ast);
+  if (quotedIdent) return deny(quotedIdent);
 
   // Bound the OUTER result with an AST-authoritative LIMIT. The SQLite `LIMIT offset, count` COMMA form
   // fools the regex-based enforceLimit — it captures the offset (the first number), not the count, so a
