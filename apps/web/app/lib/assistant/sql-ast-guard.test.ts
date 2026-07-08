@@ -448,9 +448,7 @@ describe('guardSelect — personal-data column denylist (PRIV-1)', () => {
   });
 
   it('rejects a bare * when a personal-data table is joined into a contract list', () => {
-    const r = guardSelect(
-      'SELECT * FROM contracts c JOIN authorities a ON a.id = c.tender_id',
-    );
+    const r = guardSelect('SELECT * FROM contracts c JOIN authorities a ON a.id = c.tender_id');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
   });
