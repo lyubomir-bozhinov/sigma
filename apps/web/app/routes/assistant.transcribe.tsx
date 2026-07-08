@@ -13,6 +13,7 @@ import type { Route } from './+types/assistant.transcribe';
 import { firstPartyRejection } from '../lib/assistant/request-guard';
 import { turnstileRejection } from '../lib/assistant/turnstile';
 import { assistantEnabled } from '../lib/assistant/enabled';
+import { rateLimitBgGptGlobal } from '../../workers/bggpt-global-rate-limit';
 import {
   MAX_TRANSCRIBE_BODY_BYTES,
   TRANSCRIBE_LANGUAGE,
@@ -144,10 +145,22 @@ export async function action({ request, context }: Route.ActionArgs) {
     return Response.json({ error: UNCONFIGURED }, { status: 503 });
   }
 
+  // Account-wide BgGPT circuit-breaker (#135): the paid external STT leg honours the same global minute
+  // budget as chat — the per-IP limiter can't stop a distributed denial-of-wallet. Consulted only when
+  // BgGPT actually runs; when the breaker is open we degrade to the Workers AI fallback (on-platform,
+  // separate budget — not gated here) and surface the 429/503 only if nothing else can serve.
+  const isProd = import.meta.env.PROD;
+  let breakerDenied: Response | null = null;
+
   // One attempt per provider — each guards its own config, catches + logs its own failure (so a fallback
   // is visible in telemetry), and returns null so the caller can try the next.
   const tryBgGpt = async (): Promise<Attempt | null> => {
     if (!bgKey || !cfg.BGGPT_STT_BASE_URL) return null;
+    const denied = await rateLimitBgGptGlobal(request, env.BGGPT_CIRCUIT_BREAKER, isProd);
+    if (denied) {
+      breakerDenied = denied;
+      return null;
+    }
     try {
       const text = await transcribeViaBgGpt(
         cfg.BGGPT_STT_BASE_URL,
@@ -178,7 +191,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const [first, second] =
     cfg.TRANSCRIBE_PRIMARY === 'workers-ai' ? [tryWorkersAI, tryBgGpt] : [tryBgGpt, tryWorkersAI];
   const result = (await first()) ?? (await second());
-  if (!result) return Response.json({ error: TRANSCRIBE_FAILED }, { status: 503 });
+  // Breaker-open with no successful fallback ⇒ surface its 429/503; otherwise the generic failure.
+  if (!result) {
+    return breakerDenied ?? Response.json({ error: TRANSCRIBE_FAILED }, { status: 503 });
+  }
 
   // Metadata-only outcome log (no transcript, no audio) — recovers the fallback rate + provider mix that
   // the gateway would have shown. `bytes` is the base64 payload size, a cost/latency proxy.

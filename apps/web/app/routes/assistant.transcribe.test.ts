@@ -133,6 +133,38 @@ describe('assistant.transcribe action', () => {
     expect(await res.json()).toStrictEqual({ text: 'от Workers AI', source: 'workers-ai' });
   });
 
+  it('degrades to Workers AI when the BgGPT circuit-breaker is open (no BgGPT spend)', async () => {
+    const run = whisperRun('от Workers AI');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const openBreaker = {
+      idFromName: () => 'global',
+      get: () => ({ admit: async () => ({ allowed: false }) }),
+    };
+    const res = await action(
+      makeArgs(postJson(AUDIO), env({ AI: { run }, BGGPT_CIRCUIT_BREAKER: openBreaker })),
+    );
+
+    // Breaker consulted before the paid fetch ⇒ BgGPT skipped (no external call), Workers AI serves.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledOnce();
+    expect(await res.json()).toStrictEqual({ text: 'от Workers AI', source: 'workers-ai' });
+  });
+
+  it('429s when the BgGPT circuit-breaker is open and no fallback can serve', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const openBreaker = {
+      idFromName: () => 'global',
+      get: () => ({ admit: async () => ({ allowed: false }) }),
+    };
+    const res = await action(
+      makeArgs(postJson(AUDIO), env({ AI: undefined, BGGPT_CIRCUIT_BREAKER: openBreaker })),
+    );
+
+    // No Workers AI fallback ⇒ the breaker's 429 surfaces; the paid BgGPT fetch never runs.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(429);
+  });
+
   it('503s when both providers fail', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const run = vi.fn(async () => {
