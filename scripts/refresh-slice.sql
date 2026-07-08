@@ -1266,12 +1266,17 @@ WHERE b.eik_normalized IN (SELECT eik FROM raw_ocds_parties WHERE eik IS NOT NUL
 -- default (0) and leak past the default filter (c.is_synthetic != 1) into public answers — and the
 -- reconcilable rollups below (which now exclude synthetic) would disagree with a live aggregate.
 -- Admin-derived c: rows keep their full-normalize value (this scopes to c:e:/c:o: only).
+-- Scoped to refresh_touched_contracts (like the D1-hot rollups below) rather than a full-table write
+-- on every slice: the touch-tenders batch above already inserts every contract joined to a raw_tenders
+-- row loaded this slice, so any contract whose tender's procedure_type could have changed this slice is
+-- already in the touched set. Contracts under untouched tenders keep their correct prior-slice value.
 UPDATE contracts
 SET is_synthetic = COALESCE((
   SELECT CASE WHEN t.procedure_type = 'неизвестна' THEN 1 ELSE 0 END
   FROM tenders t WHERE t.id = contracts.tender_id
 ), 0)  -- COALESCE: a (today-unreachable) dangling tender_id yields NULL → NOT NULL abort; degrade to 0
-WHERE id GLOB 'c:[eo]:*';
+WHERE id GLOB 'c:[eo]:*'
+  AND id IN (SELECT id FROM refresh_touched_contracts);
 
 -- 6) Refresh rollups + FTS. Only the D1-hot rollups are scoped to touched rows; cheaper rollups stay
 -- full-recomputed in isolated batches so convergence stays simple.
