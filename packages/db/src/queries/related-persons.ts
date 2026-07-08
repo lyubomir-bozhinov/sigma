@@ -1,5 +1,6 @@
 import type {
   ConflictLink,
+  ConflictContract,
   ConflictRelation,
   CompanyConflicts,
   OfficialConflicts,
@@ -30,10 +31,27 @@ interface LinkRow {
   match_method: string;
   contract_count: number;
   contract_value_eur: number | null;
+  contemporaneous_contract_count: number;
+  contemporaneous_value_eur: number | null;
   first_contract_year: string | null;
   last_contract_year: string | null;
   source_url: string | null;
 }
+
+// The winner's contracts, joined exactly as the ETL aggregate does (contracts→tenders→authorities→bidders,
+// matched by eik_normalized) so any read-time subset is a true subset of the stored contract_count/value.
+// Alias-distinct (cc/tt/aa/bb) so it composes as a correlated subquery under the LINK_SELECT `il`/`b` scope.
+const CONTRACT_JOIN = `FROM contracts cc
+    JOIN tenders tt ON tt.id = cc.tender_id
+    JOIN authorities aa ON aa.id = tt.authority_id
+    JOIN bidders bb ON bb.id = cc.bidder_id`;
+// Contemporaneous = signing year within [first_declared_year, last_declared_year] — the same min/max span
+// classify.temporalStatus uses for the stored `contemporaneous` flag, so count>0 ⇔ contemporaneous. NULL
+// bounds (no declared year) ⇒ never in-window, matching the flag. `il` is the outer LINK_SELECT row.
+const IN_WINDOW = `il.first_declared_year IS NOT NULL AND il.last_declared_year IS NOT NULL
+      AND cc.signed_at IS NOT NULL
+      AND CAST(strftime('%Y', cc.signed_at) AS INTEGER)
+          BETWEEN CAST(il.first_declared_year AS INTEGER) AND CAST(il.last_declared_year AS INTEGER)`;
 
 // Shared projection: published material-ownership links (self + family) + names + a representative
 // declaration URL (provenance, never fabricated). Callers append a scope predicate + ORDER BY.
@@ -45,6 +63,14 @@ export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official
     il.relation, il.contemporaneous, il.own_institution,
     il.first_declared_year, il.last_declared_year, il.match_method,
     il.contract_count, il.contract_value_eur, il.first_contract_year, il.last_contract_year,
+    -- The conflict-window subset of contract_count / contract_value_eur, derived at read time (no stored
+    -- column, so a correction ships without an ETL re-run). ponytail: two correlated subqueries per row;
+    -- the leaderboard is ≤1000 rows and hourly-cached, so the extra scans are immaterial — revisit only if
+    -- the eligible set grows or the cache TTL shrinks.
+    (SELECT COUNT(*) ${CONTRACT_JOIN} WHERE bb.eik_normalized = il.eik AND ${IN_WINDOW})
+      AS contemporaneous_contract_count,
+    (SELECT SUM(cc.amount_eur) ${CONTRACT_JOIN} WHERE bb.eik_normalized = il.eik AND ${IN_WINDOW})
+      AS contemporaneous_value_eur,
     (SELECT d.source_url FROM declared_interests di JOIN declarations d ON d.id = di.declaration_id
      WHERE d.person_id = il.person_id AND di.entity_key = il.entity_key
      ORDER BY d.declared_year DESC LIMIT 1) AS source_url
@@ -81,6 +107,8 @@ function toLink(r: LinkRow): ConflictLink {
     matchMethod: r.match_method,
     contractCount: r.contract_count,
     contractValueEur: r.contract_value_eur,
+    contemporaneousContractCount: r.contemporaneous_contract_count,
+    contemporaneousValueEur: r.contemporaneous_value_eur,
     firstContractYear: r.first_contract_year,
     lastContractYear: r.last_contract_year,
     sourceUrl: r.source_url,
@@ -123,4 +151,51 @@ export async function getCompanyConflicts(
   const rows = (await db.prepare(COMPANY_SQL).bind(eik).all<LinkRow>()).results;
   if (rows.length === 0) return null;
   return { company: rows[0]!.company, eik, links: rows.map(toLink) };
+}
+
+interface ContractRow {
+  signed_at: string | null;
+  authority: string | null;
+  contract_kind: string | null;
+  contract_number: string | null;
+  amount_eur: number | null;
+  temporal: ConflictContract['temporal'];
+}
+
+// One published link's contracts, each marked against the declared-stake window. The WHERE gate on
+// status/interest_class means a non-surfaced link_key returns [] — never a way to enumerate held/internal
+// links. Marking mirrors classify.temporalStatus (min/max declared-year span) so the 'contemporaneous'
+// rows here are exactly the subset counted by contemporaneous_contract_count in LINK_SELECT.
+export const LINK_CONTRACTS_SQL = `SELECT cc.signed_at, aa.name AS authority, cc.contract_kind,
+    cc.contract_number, cc.amount_eur,
+    CASE
+      WHEN cc.signed_at IS NULL OR il.first_declared_year IS NULL OR il.last_declared_year IS NULL THEN 'unknown'
+      WHEN CAST(strftime('%Y', cc.signed_at) AS INTEGER) < CAST(il.first_declared_year AS INTEGER) THEN 'before'
+      WHEN CAST(strftime('%Y', cc.signed_at) AS INTEGER) > CAST(il.last_declared_year AS INTEGER) THEN 'after'
+      ELSE 'contemporaneous'
+    END AS temporal
+  FROM interest_links il
+    JOIN bidders bb ON bb.eik_normalized = il.eik
+    JOIN contracts cc ON cc.bidder_id = bb.id
+    JOIN tenders tt ON tt.id = cc.tender_id
+    JOIN authorities aa ON aa.id = tt.authority_id
+  WHERE il.link_key = ?
+    AND il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+  ORDER BY (temporal = 'contemporaneous') DESC, cc.signed_at DESC, cc.amount_eur DESC`;
+
+/** The contracts of one published link, contemporaneous-first, each flagged in/out the declared window.
+ *  Empty for an unknown or non-surfaced link_key (never leaks internal/held/withdrawn links). */
+export async function getLinkContracts(
+  db: D1Database,
+  linkKey: string,
+): Promise<ConflictContract[]> {
+  const rows = (await db.prepare(LINK_CONTRACTS_SQL).bind(linkKey).all<ContractRow>()).results;
+  return rows.map((r) => ({
+    signedAt: r.signed_at,
+    authority: r.authority ?? '',
+    contractKind: r.contract_kind,
+    contractNumber: r.contract_number,
+    amountEur: r.amount_eur,
+    temporal: r.temporal,
+  }));
 }

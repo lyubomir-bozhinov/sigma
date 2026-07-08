@@ -117,7 +117,7 @@ export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
                 {
                   term: 'Публични средства към техните дружества',
                   value: money(headline.totalEur),
-                  sub: 'сбор от договорите на свързаните изпълнители',
+                  sub: `сбор от всички договори на свързаните изпълнители; в т.ч. ${money(headline.contemporaneousEur)} по договори, сключени в момент на деклариран дял`,
                 },
               ]}
             />

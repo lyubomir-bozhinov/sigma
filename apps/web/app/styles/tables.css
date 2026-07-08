@@ -369,3 +369,72 @@ td.rank {
         no-repeat scroll;
   }
 }
+
+/* свързани-лица: contemporaneous-contract split + the on-demand contract list (expandable row) ----- */
+.row-toggle {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link, #0b57d0);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.row-toggle:hover {
+  text-decoration: none;
+}
+/* Conflict-window sum stacked over the total, right-aligned to sit under the „(€)" header. */
+.funds-split {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+.row-detail td.cell-detail {
+  padding: 10px 12px 14px;
+  text-align: left;
+  border-top: 1px solid var(--rule-soft);
+}
+.contract-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.contract-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.contract-list li {
+  margin: 2px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.contract-year,
+.contract-amt {
+  font-variant-numeric: tabular-nums;
+}
+.contract-year {
+  font-weight: 600;
+}
+.contract-outside {
+  margin-top: 4px;
+}
+.contract-outside summary {
+  cursor: pointer;
+}
+
+/* Card mode: the detail row is a full-width block, not a label/value flex pair. */
+@media (max-width: 560px) {
+  .tbl-cards td.cell-detail {
+    display: block;
+    text-align: left;
+    padding: 10px 0 4px;
+    margin-top: 6px;
+  }
+  .tbl-cards td.cell-detail::before {
+    content: none;
+  }
+}

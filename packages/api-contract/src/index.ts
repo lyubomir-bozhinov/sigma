@@ -610,9 +610,33 @@ export interface ConflictLink {
   matchMethod: string;
   contractCount: number;
   contractValueEur: number | null;
+  // Contemporaneous split: the subset of the winner's contracts SIGNED while the declared stake was held
+  // (signing year within [firstDeclaredYear, lastDeclaredYear]). This is the actual conflict window — the
+  // full contractValueEur is the company's total procurement, NOT only the conflict period. Count/value are
+  // an exact decomposition of the `contemporaneous` flag (count>0 ⇔ contemporaneous), computed read-time.
+  contemporaneousContractCount: number;
+  contemporaneousValueEur: number | null; // SUM(amount_eur) of the in-window contracts; null if none summable
   firstContractYear: string | null;
   lastContractYear: string | null;
   sourceUrl: string | null; // a representative declaration URL — provenance, never a fabricated value
+}
+
+/** One contract of a linked winner, marked by whether it was signed during the declared-stake window.
+ *  Only `temporal === 'contemporaneous'` is claimed as "в конфликт"; before/after/unknown are shown but
+ *  never asserted as a conflict (libel-safe: a contract outside the declared window is not the conflict). */
+export interface ConflictContract {
+  signedAt: string | null; // ISO date as recorded; null when the source has no signing date
+  authority: string; // awarding public body (public record)
+  contractKind: string | null; // Доставки / Услуги / Строителство
+  contractNumber: string | null;
+  amountEur: number | null; // canonical SAFE-to-sum EUR; null when no trustworthy figure
+  temporal: 'contemporaneous' | 'before' | 'after' | 'unknown';
+}
+
+/** The on-demand per-link contract list (the expandable row on /conflicts). */
+export interface LinkContracts {
+  linkKey: string;
+  contracts: ConflictContract[];
 }
 
 /** One office-holder's declared ownership links. */

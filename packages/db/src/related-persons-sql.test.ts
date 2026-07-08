@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COMPANY_SQL, LEADERBOARD_SQL, OFFICIAL_SQL } from './queries/related-persons';
+import {
+  COMPANY_SQL,
+  LEADERBOARD_SQL,
+  LINK_CONTRACTS_SQL,
+  OFFICIAL_SQL,
+} from './queries/related-persons';
 
 // Integration test for the свързани-лица SQL. The query layer's unit tests (queries/related-persons.test)
 // use a fake D1 and never run the aggregation; this runs the EXACT exported SQL against a real SQLite
@@ -73,6 +78,19 @@ INSERT INTO interest_links
   ('il:held','person:ivan|999','person:ivan','eik:111','999','НЯКОЙ ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,'2022','2022',3,1000,'2022','2022','held'),
   -- a WITHDRAWN (divested — later filing omits the company) link must never surface either (§8/E11)
   ('il:gone','person:viktor|111','person:viktor','eik:111','111','ТРЕЙС ГРУП ХОЛД АД','exact_name_key','v1','B_distinctive','owns','private_ownership',0,'none',1,'2015','2015',5,2000000,'2016','2016','withdrawn');
+-- Contracts for Иван's winner (eik 111), against his declared span 2019–2023: c:1 (2020) and c:2 (2023)
+-- fall IN the window, c:3 (2024) AFTER it, c:4 (undated) UNKNOWN. This makes the read-time split
+-- deterministic: contemporaneous = 2 contracts / €30M; the total contract_value_eur column is unrelated
+-- (stored €88M) — the point is the read-time window subset, not the stored aggregate.
+INSERT INTO authorities (id, name) VALUES ('a:1','ОБЩИНА ТЕСТ');
+INSERT INTO tenders (id, source_id, title, authority_id, procedure_type) VALUES
+  ('t:1','unp1','Т1','a:1','открита'),('t:2','unp2','Т2','a:1','открита'),
+  ('t:3','unp3','Т3','a:1','открита'),('t:4','unp4','Т4','a:1','открита');
+INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, amount_eur) VALUES
+  ('c:1','t:1','eik:111',10000000,'EUR','2020-05-01','Д-1',10000000),
+  ('c:2','t:2','eik:111',20000000,'EUR','2023-07-01','Д-2',20000000),
+  ('c:3','t:3','eik:111',5000000,'EUR','2024-02-01','Д-3',5000000),
+  ('c:4','t:4','eik:111',1000000,'EUR',NULL,'Д-4',1000000);
 `;
 
 describe('свързани-лица SQL (real SQLite)', () => {
@@ -160,6 +178,54 @@ describe('свързани-лица SQL (real SQLite)', () => {
       expect(official[0]!.relation).toBe('owns');
       const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
       expect(board.filter((r) => r.official === 'Двоен Тестов')).toHaveLength(1);
+    });
+  });
+
+  it('splits contracts into the contemporaneous (in-declared-window) subset — read-time, no stored column', () => {
+    withDb((dbPath) => {
+      const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      const ivan = board.find((r) => r.official === 'Иван Минев')!;
+      // Иван declared 2019–2023: c:1 (2020) + c:2 (2023) are in-window; c:3 (2024) after, c:4 undated.
+      expect(ivan.contemporaneous_contract_count).toBe(2);
+      expect(ivan.contemporaneous_value_eur).toBe(30_000_000);
+      // the split is a SUBSET of the stored total, never exceeds it
+      expect(Number(ivan.contemporaneous_value_eur)).toBeLessThanOrEqual(
+        Number(ivan.contract_value_eur),
+      );
+      // a link with no contracts in the window reports 0 / NULL, not a fabricated figure
+      const golyam = board.find((r) => r.official === 'Голям Официал')!;
+      expect(golyam.contemporaneous_contract_count).toBe(0);
+      expect(golyam.contemporaneous_value_eur).toBeNull();
+    });
+  });
+
+  it('per-contract list marks each contract in/out the window, contemporaneous-first', () => {
+    withDb((dbPath) => {
+      const list = rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:ivan|111'));
+      expect(list).toHaveLength(4);
+      // contemporaneous first (by signed_at DESC), then the rest
+      expect(list.map((r) => [r.contract_number, r.temporal])).toEqual([
+        ['Д-2', 'contemporaneous'], // 2023
+        ['Д-1', 'contemporaneous'], // 2020
+        ['Д-3', 'after'], // 2024
+        ['Д-4', 'unknown'], // undated
+      ]);
+      // INVARIANT: the in-window amounts here sum to EXACTLY the leaderboard's contemporaneous_value_eur —
+      // the list and the split cannot disagree (same join, same window bounds). This is the libel proof.
+      const inWindowSum = list
+        .filter((r) => r.temporal === 'contemporaneous')
+        .reduce((s, r) => s + Number(r.amount_eur), 0);
+      const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      const ivan = board.find((r) => r.official === 'Иван Минев')!;
+      expect(inWindowSum).toBe(Number(ivan.contemporaneous_value_eur));
+    });
+  });
+
+  it('the contract list never leaks a non-surfaced link (held / withdrawn / unknown key → empty)', () => {
+    withDb((dbPath) => {
+      expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:ivan|999'))).toHaveLength(0); // held
+      expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:viktor|111'))).toHaveLength(0); // withdrawn
+      expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:nobody|000'))).toHaveLength(0); // unknown
     });
   });
 });

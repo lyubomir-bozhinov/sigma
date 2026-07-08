@@ -26,6 +26,8 @@ function row(over: Record<string, unknown> = {}) {
     match_method: 'exact_name_key',
     contract_count: 35,
     contract_value_eur: 88_000_000,
+    contemporaneous_contract_count: 20,
+    contemporaneous_value_eur: 40_000_000,
     first_contract_year: '2021',
     last_contract_year: '2024',
     source_url: 'https://register.cacbg.bg/2024/i.xml',
@@ -63,6 +65,9 @@ describe('related-persons queries', () => {
     expect(links[0]!.ownInstitution).toBe(true);
     expect(links[0]!.contemporaneous).toBe(true);
     expect(links[0]!.contractValueEur).toBe(88_000_000);
+    // the conflict-window split carries through as its own count + value
+    expect(links[0]!.contemporaneousContractCount).toBe(20);
+    expect(links[0]!.contemporaneousValueEur).toBe(40_000_000);
     // declared span carries through; the surface dates every link
     expect(links[0]!.firstDeclaredYear).toBe('2019');
     expect(links[0]!.lastDeclaredYear).toBe('2023');
