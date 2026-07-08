@@ -349,6 +349,7 @@ function denyAmplifyingStringChain(ast: unknown): string | null {
 type LimitNode = { seperator?: string; value?: unknown[] } | null | undefined;
 type FromEntry = {
   table?: string | null; // a plain table reference
+  as?: string | null; // its alias, if any (`contracts c` → as: 'c')
   join?: unknown; // join kind for entries after the first ('INNER JOIN', …)
   on?: unknown; // join condition; null for an (explicit) cross-join
   using?: unknown; // USING(...) join condition — the other bounded form
@@ -615,6 +616,29 @@ function collectFromTables(node: unknown, acc: Set<string>): void {
   for (const k of Object.keys(obj)) collectFromTables(obj[k], acc);
 }
 
+// Map every FROM/JOIN alias (or bare table name when unaliased) to its base table, at any depth — used to
+// resolve which table a `alias.*` star actually expands, so the star rule can reject only a star over a
+// personal-data table (`a.*` on authorities) while letting a safe one through (`c.*` on contracts, even
+// when a name table is joined for the label columns).
+function collectAliasMap(node: unknown, acc: Map<string, string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const x of node) collectAliasMap(x, acc);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.from)) {
+    for (const f of obj.from as FromEntry[]) {
+      if (f && typeof f.table === 'string' && f.table.length > 0) {
+        const base = f.table.toLowerCase();
+        const alias = typeof f.as === 'string' && f.as.length > 0 ? f.as.toLowerCase() : base;
+        acc.set(alias, base);
+      }
+    }
+  }
+  for (const k of Object.keys(obj)) collectAliasMap(obj[k], acc);
+}
+
 // The lowercased identifier a node names, or null if it is not one. A bare/qualified reference is a
 // `column_ref` (`.column`); a DOUBLE-QUOTED identifier — `"contact_email"` — parses as a
 // `double_quote_string` (`.value`), NOT a column_ref (node-sql-parser). Both must be recognised so the
@@ -634,6 +658,8 @@ function identifierName(obj: Record<string, unknown>): string | null {
 function denyDeniedColumn(ast: unknown): string | null {
   const fromTables = new Set<string>();
   collectFromTables(ast, fromTables);
+  const aliasMap = new Map<string, string>();
+  collectAliasMap(ast, aliasMap);
   let piiInScope = false;
   for (const t of fromTables) {
     if (PII_TABLES.has(t)) {
@@ -655,10 +681,26 @@ function denyDeniedColumn(ast: unknown): string | null {
         offender = `column not allowed: ${col} (personal data)`;
         return;
       }
-      if (col === '*' && piiInScope) {
-        offender =
-          'SELECT * is not allowed while a table with personal-data columns is in scope; list explicit columns';
-        return;
+      if (col === '*') {
+        // Resolve which table the star expands. A QUALIFIED star (`c.*`) is rejected only when its base
+        // table is a personal-data table — so `c.*` on contracts passes even when authorities/bidders are
+        // joined for label columns. A BARE `*` can pull in any joined table's columns, so it is rejected
+        // whenever a personal-data table is in scope. (Fixes the contract-list over-block; PRIV-1.)
+        const qualifier =
+          obj.type === 'column_ref' && typeof obj.table === 'string' && obj.table.length > 0
+            ? obj.table.toLowerCase()
+            : null;
+        if (qualifier) {
+          const base = aliasMap.get(qualifier) ?? qualifier;
+          if (PII_TABLES.has(base)) {
+            offender = `${qualifier}.* is not allowed — it expands a table with personal-data columns; list explicit columns`;
+            return;
+          }
+        } else if (piiInScope) {
+          offender =
+            'SELECT * is not allowed while a table with personal-data columns is in scope; list explicit columns';
+          return;
+        }
       }
     }
     for (const k of Object.keys(obj)) walk(obj[k]);

@@ -431,8 +431,26 @@ describe('guardSelect — personal-data column denylist (PRIV-1)', () => {
     if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
   });
 
-  it('rejects a qualified authorities.* star', () => {
+  it('rejects a qualified authorities.* star (expands personal-data columns)', () => {
     const r = guardSelect('SELECT a.* FROM authorities a');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/a\.\* is not allowed/);
+  });
+
+  it('allows a qualified c.* on contracts even when name tables are joined (contract-list path)', () => {
+    const r = guardSelect(
+      'SELECT c.*, a.name AS authority, b.name AS bidder FROM contracts c ' +
+        'JOIN tenders t ON t.id = c.tender_id ' +
+        'JOIN authorities a ON a.id = t.authority_id ' +
+        'JOIN bidders b ON b.id = c.bidder_id',
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects a bare * when a personal-data table is joined into a contract list', () => {
+    const r = guardSelect(
+      'SELECT * FROM contracts c JOIN authorities a ON a.id = c.tender_id',
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
   });

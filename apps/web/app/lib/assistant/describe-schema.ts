@@ -216,6 +216,13 @@ export const CANONICAL_QUERIES: { intent: string; sql: string }[] = [
     sql: "SELECT c.id, c.contract_number, c.amount_eur, c.signed_at, b.name AS bidder_name\nFROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN bidders b ON b.id = c.bidder_id\nWHERE t.source_id = '00123-2024-0001' AND c.amount_eur IS NOT NULL AND c.is_synthetic != 1;",
   },
   {
+    intent:
+      'Договори за период — списък с подписани договори между две дати с Възложител · Изпълнител ' +
+      '(изброявай ИЗРИЧНИ колони с псевдоними `a.name AS authority` / `b.name AS bidder`, НЕ `SELECT *`/`c.*`; ' +
+      'задължителните филтри изключват редове без EUR стойност и синтетични преписки)',
+    sql: "SELECT c.signed_at, c.contract_number, c.amount_eur, a.name AS authority, b.name AS bidder\nFROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id JOIN bidders b ON b.id = c.bidder_id\nWHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1\n  AND c.signed_at >= '2026-06-26' AND c.signed_at <= '2026-07-03'\nORDER BY c.signed_at DESC LIMIT 100;",
+  },
+  {
     intent: 'Анекси към преписка — история на стойностните промени (join по unp=tenders.source_id)',
     sql: "SELECT a.contract_number, a.value_before, a.value_after, a.value_delta, a.currency, a.published_at, a.description\nFROM amendments a\nWHERE a.unp = '00123-2024-0001'\nORDER BY a.published_at;",
   },
