@@ -6,43 +6,47 @@
 
 ## Контекст
 
-PR #66 първоначално извикваше BgGPT Whisper **директно, без AI Gateway** — мотивът беше, че gateway-ът
-логва payload-и, а аудиото не бива да се персистира. Причините да минем все пак през gateway-а са две:
-единна cost/latency observability, и **декларативна fallback оркестрация** (primary → fallback) на ниво
-route, вместо в кода на приложението.
+PR #66 извикваше BgGPT Whisper **директно, без AI Gateway**, защото gateway-ът логва payload-и, а аудиото
+не бива да се персистира. Минаваме все пак през gateway-а заради единна cost/latency/rate observability —
+но при **твърдо условие**: аудиото остава transient. Моделите са само транскрибери: `audio → text`, а
+текстът отива към главния chat модел; **нищо (D1/R2/KV/disk/gateway logs/cache) не персистира аудио**.
 
-Важно разграничение спрямо [0009](0009-global-bggpt-cap-is-a-durable-object.md): глобалният BgGPT лимит
-се налага от **Durable Object в request-пътя, не от AI Gateway**. Значи маршрутизирането на voice през
-gateway-а само по себе си **не** го поставя под wallet cap-а — това остава грижа на DO-то. Gateway-ът тук
-дава наблюдаемост и fallback, не rate limiting.
+Емпирично установено (2026-07-08): **един dynamic route с primary+fallback не работи за аудио.** Gateway-ът
+препраща тялото непроменено, а провайдърите искат несъвместими формати: BgGPT = multipart
+`/audio/transcriptions`; Workers AI whisper = JSON `{ audio: base64 }` (multipart → HTTP 400); Deepgram
+Nova-3 = raw bytes. Няма CF-native STT модел с multipart, а gateway-ът не транскодира аудио (OpenAI-compat
+слоят е само за chat). Значи един body не може да храни два провайдъра.
 
-`custom provider` + `dynamic route` бяха вдигнати ръчно в dashboard-а. Ръчното състояние дрейфва тихо и не
-е reviewable — при първото четене route-ът вече съдържаше грешки (текстов LLM като fallback вместо whisper,
-3s timeout за 60s аудио).
+Разграничение спрямо [0009](0009-global-bggpt-cap-is-a-durable-object.md): глобалният BgGPT лимит е Durable
+Object в request-пътя, **не** gateway-ът — маршрутизирането през gateway-а не дава wallet cap.
 
 ## Решение
 
-- Voice lane-ът маршрутизира транскрипцията през dynamic route `voice` на gateway-а `sigma-assistant`:
-  primary custom provider `bggpt-voice` (`bggpt-whisper-large-v3`) → fallback `workers-ai`
-  (`@cf/openai/whisper-large-v3-turbo`). Графът живее в `scripts/ai-gateway/voice-route.json`.
-- Аудио-логването се потиска **per-request** (`cf-aig-collect-log: false`, code-level в request-пътя), а не
-  чрез заобикаляне на gateway-а — гаранцията на #66 „аудио не се пише в gateway-а" се запазва.
-- Provisioning-ът е **git-деклариран и идемпотентен**: `scripts/ensure-voice-provider.mjs` налага gateway
-  + provider + route (dry-run по подразбиране; `--apply` в CI), по модела на `ensure-kv-namespace.mjs`.
-  Тече в preview/dev/staging/prod. Gateway-ът е account-global (един за всички env-и), но route-дефиницията
-  е env-agnostic, затова всеки env конвергира към същия reviewed граф.
+- Route `voice` носи **само** primary-а `custom-bggpt-voice` (`bggpt-whisper-large-v3`), без in-route
+  fallback (`fallback → END`). Граф в `scripts/ai-gateway/voice-route.json`.
+- Fallback-ът е **отделен dynamic route `voice-fallback` с отделен провайдър** — CF-native Workers AI
+  whisper (JSON base64), за да остане аудиото на CF/INSAIT infra (без US egress). Provisioning по същия
+  gitops модел (follow-up).
+- Оркестрацията е **code-level** (lane на Niki): app-ът вика `voice`, при неуспех `voice-fallback`, всеки
+  route със собствения си формат. Разделянето маха несъвместимостта на форматите.
+- **Аудиото не се персистира.** Всяка STT заявка през gateway-а носи `cf-aig-collect-log: false` (спира
+  body-логването); `cache_ttl=0` (без кеш на аудио). Това е **load-bearing** — решението „voice през
+  gateway" зависи от него; ако log-suppression не пази аудиото, връщаме се на директни извиквания за аудио.
+- Provisioning-ът е git-деклариран и идемпотентен (`scripts/ensure-voice-provider.mjs`, `--apply` в CI).
+  Gateway-ът е account-global; route-дефиницията е env-agnostic → всеки env конвергира към същия граф.
 
 ## Последствия
 
-- Voice получава единна cost/latency observability и reviewable, декларативен fallback (без fallback-код в
-  приложението).
-- Route-конфигурацията е reviewable в git, не dashboard-only; дрейфът се коригира при всеки deploy.
-- Изгладени спрямо ръчния route: fallback модел (текстов LLM → whisper-turbo), primary timeout
-  (3000ms → 20000ms, съвпада с 20s client fetch timeout), retries (3 → 1 на платения primary).
-- **DoW/rate защита НЕ идва оттук**: по [0009](0009-global-bggpt-cap-is-a-durable-object.md) глобалният
-  BgGPT cap е Durable Object в request-пътя. Wallet защитата на voice зависи от това DO-то да покрива и
-  `/assistant/transcribe` пътя — отделен follow-up, не част от тази промяна.
-- Компромис: gateway-ът е споделен — merge на промяна в `voice-route.json` засяга route-а, който prod
-  обслужва (смекчено от PR review + идемпотентния converge към committed граф).
-- Follow-up: аудио-приватността вече зависи от per-request хедър (`cf-aig-collect-log: false`, code-level,
-  lane на Niki) — нужен е тест, че хедърът винаги присъства във voice заявката.
+- И двата STT крака минават през gateway-а → observability на primary **и** fallback (директният
+  `env.AI.run` bypass не даваше това), при запазена transient-аудио гаранция.
+- Sovereignty: fallback остава CF-native (Workers AI) — без audio egress към US (Groq/OpenAI отхвърлени).
+- Изгладено спрямо ръчния route: махнат невалидният `workers-ai` fallback node (грешен формат, емпирично
+  HTTP 400); primary timeout (3000ms → 20000ms), retries (3 → 1 на платения primary).
+- Цена: повече code-level routing (два route-а, два формата, app-side fallback решение) — lane на Niki.
+- **DoW/rate защита не идва оттук** ([0009](0009-global-bggpt-cap-is-a-durable-object.md) — DO); wallet
+  защитата на voice зависи DO-то да покрива `/assistant/transcribe` — отделен follow-up.
+- Компромис: gateway-ът е споделен — промяна в графа засяга route-а, който prod обслужва (смекчено от PR
+  review + идемпотентния converge).
+- **MUST-verify (follow-up, преди да разчитаме на пътя):** (1) `cf-aig-collect-log: false` реално спира
+  съхранението на аудио (провери през Logs API); (2) Workers AI whisper резолвва през dynamic route с JSON
+  base64; (3) хедърът за log-suppression винаги присъства във voice заявките (тест).
