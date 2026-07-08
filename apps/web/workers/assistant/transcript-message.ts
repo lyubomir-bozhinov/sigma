@@ -18,6 +18,11 @@ export interface SignedMeta {
 
 const EMIT_REPORT_PART = 'tool-emit_report';
 const DEDUP_PART = 'data-dedup';
+// The future persist-lane chip (assistant-contract/stream.ts → REPORT_READY_PART): `{reportId, title}`
+// linking to /reports/:id. It is already allowlisted through the phase filter (stream-phase.ts), so it
+// reaches the client as a rendered report chip — bind it here too, or it would be an unsigned, editable
+// laundering vector the moment a producer emits it. Local const (this file stays dock-dependency-free).
+const REPORT_READY_PART = 'data-report-ready';
 
 type TextPart = { type: 'text'; text: string };
 const isTextPart = (p: { type: string }): p is TextPart =>
@@ -54,6 +59,9 @@ export function messageReportRefs(msg: UIMessage): ReportRef[] {
     } else if (part.type === DEDUP_PART) {
       const data = (part as { data?: unknown }).data;
       if (isDedupData(data)) refs.push({ id: data.reportId, title: data.label });
+    } else if (part.type === REPORT_READY_PART) {
+      const data = (part as { data?: unknown }).data;
+      if (isReportReadyData(data)) refs.push({ id: data.reportId, title: data.title });
     }
   }
   return refs;
@@ -82,6 +90,12 @@ function isDedupData(value: unknown): value is { reportId: string; label: string
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return typeof v.reportId === 'string' && typeof v.label === 'string';
+}
+
+function isReportReadyData(value: unknown): value is { reportId: string; title: string } {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.reportId === 'string' && typeof v.title === 'string';
 }
 
 /**

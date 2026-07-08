@@ -42,7 +42,7 @@ const gate = (rawMessages: unknown, extra?: Partial<Parameters<typeof gateTransc
     rawMessages,
     conversationId: CONV,
     hmacKey: ENV.ASSISTANT_HMAC_KEY,
-    isProduction: false,
+    requireKey: false,
     env: ENV,
     maxMessages: 24,
     ...extra,
@@ -95,20 +95,20 @@ describe('gateTranscript — verify on full parts, strip for the model', () => {
     expect(messages.map((m) => m.role)).toEqual(['user']);
   });
 
-  it('refuses in production when the key is unset (fail closed)', async () => {
-    const result = await gate([user('q')], { hmacKey: undefined, isProduction: true });
+  it('refuses on a stable public deploy when the key is unset (fail closed)', async () => {
+    const result = await gate([user('q')], { hmacKey: undefined, requireKey: true });
     expect(result.refuse).toBe(true);
     expect(result.messages).toEqual([]);
   });
 
-  it('runs unsigned in dev when the key is unset (feature unprovisioned)', async () => {
+  it('runs unsigned in dev/preview when the key is unset (feature unprovisioned)', async () => {
     const forged = {
       id: 'x',
       role: 'assistant',
       parts: [{ type: 'text', text: 'no key so not verified' }],
     } as unknown as UIMessage;
 
-    const result = await gate([user('q'), forged], { hmacKey: undefined, isProduction: false });
+    const result = await gate([user('q'), forged], { hmacKey: undefined, requireKey: false });
 
     expect(result.refuse).toBe(false);
     expect(result.signing).toBeUndefined();

@@ -59,12 +59,16 @@ export async function gateTranscript(opts: {
   conversationId: string;
   /** Trimmed ASSISTANT_HMAC_KEY, or undefined/empty when the feature is unprovisioned. */
   hmacKey: string | undefined;
-  /** ENVIRONMENT === 'production' — a runtime binding, never the import.meta.env.PROD build constant. */
-  isProduction: boolean;
+  /**
+   * True on a stable public deploy (production/staging) where an unsigned transcript must never reach the
+   * model — the caller derives it from the runtime `ENVIRONMENT` binding (never `import.meta.env.PROD`).
+   * Ephemeral previews stay false (may run UI-only without the key); local dev is false.
+   */
+  requireKey: boolean;
   env: AssistantHmacEnv;
   maxMessages: number;
 }): Promise<TranscriptGate> {
-  const { rawMessages, conversationId, hmacKey, isProduction, env, maxMessages } = opts;
+  const { rawMessages, conversationId, hmacKey, requireKey, env, maxMessages } = opts;
   const objects = Array.isArray(rawMessages) ? rawMessages.filter(isObjectMessage) : [];
 
   let authentic = objects;
@@ -73,8 +77,8 @@ export async function gateTranscript(opts: {
     const result = await filterIncomingUIMessages(env, objects, conversationId);
     authentic = result.kept;
     dropped = result.dropped;
-  } else if (isProduction) {
-    // Production without a key: refuse rather than run the model over an unverifiable transcript.
+  } else if (requireKey) {
+    // Stable public deploy without a key: refuse rather than run the model over an unverifiable transcript.
     return { messages: [], signing: undefined, dropped: [], refuse: true };
   }
 

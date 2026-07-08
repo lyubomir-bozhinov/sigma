@@ -36,9 +36,12 @@
 **runtime** env binding, **не** от `import.meta.env.PROD`. `import.meta.env.PROD` се inline-ва като `true` за
 **всеки** production build (Vite), а deploy-ът билдва staging със същия `react-router build` → staging би се
 представил за prod. (Точно този анти-патерн е маркиран в ревюто на #64 и вече присъства на ред
-`assistant.chat.tsx` за `isProd`; не го разпространяваме за HMAC гейта.) **Prod:** ключът е задължителен —
-липсва ли, асистентът отказва (fail-closed, като Turnstile). **Preview/dev:** провизионира се dev ключ, за да
-се упражнява пътят.
+`assistant.chat.tsx` за `isProd`; не го разпространяваме за HMAC гейта.) **Стабилните публични среди
+(`production` + `staging`, и двете live/неавтентикирани):** ключът е задължителен — липсва ли, асистентът
+отказва (fail-closed, като Turnstile). **Ephemeral preview + dev:** fail-open (може да вървят само-UI без
+ключа); провизионира се dev ключ само за да се упражнява пътят. Гейтът приема булев `requireKey`
+(`ENVIRONMENT ∈ {production, staging}`), а не самото `isProduction` — за да не се третира публичен staging
+като dev.
 
 **6. Ключ и ротация.** `ASSISTANT_HMAC_KEY` е **wrangler secret** (≥256-bit random, генериран извън repo-то,
 `wrangler secret put` за всяка среда — документирано в `docs/deploy.md`). Транскриптите живеят в клиента през
@@ -61,6 +64,12 @@
   (отрязване на подправеното) държи и без E2. **Wiring на E2 `transcript-trim`** (summary-based retention
   върху филтрираните съобщения) е обособен follow-up: библиотеката е готова и тествана, включването ѝ е
   context-management, не security-critical.
+- **SDK-assembler симетрия (pin + tripwire):** подписът работи само ако `MessageAssembler` възпроизвежда
+  точно chunk→`parts` сглобяването на клиентския SDK. Затова `ai` и `@ai-sdk/react` са **pin-нати точно**
+  (без `^`), а `transcript-sdk-symmetry.test.ts` пуска реалния `ai` `readUIMessageStream` и verify-ва подписа
+  срещу сглобеното от SDK съобщение — така минорен bump, който чупи симетрията, пада в CI, вместо тихо да
+  дропне цялата история в prod (единственият сигнал иначе е `console.warn`). `data-report-ready` е сега
+  bound в подписа (беше allowlist-нат през phase filter-а, но не и в тупъла).
 - **Follow-up:** `import.meta.env.PROD` → runtime `ENVIRONMENT` да се уеднакви и за съществуващия `isProd` път
   (breaker/Turnstile) в отделен PR; `ENVIRONMENT` binding се stamp-ва per-target от `wrangler-render.mjs`.
 - Индексиране: този ADR и [ADR-0011](0011-transcript-hmac-signing.md) в `docs/adr/README.md`; провизионирането

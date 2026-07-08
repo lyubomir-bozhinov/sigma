@@ -160,11 +160,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   // misclassification flagged in review #64). Production without a key fails closed; dev/preview without a
   // key runs with the filter off (feature unprovisioned), mirroring Turnstile.
   const hmacKey = (env as { ASSISTANT_HMAC_KEY?: string }).ASSISTANT_HMAC_KEY?.trim();
+  // Stable public deploys (production + staging, both live/unauthenticated) MUST have a key — an
+  // unsigned transcript there would let the model read forgeable history. Ephemeral previews stay
+  // fail-open (they can run UI-only without the key); local dev has no ENVIRONMENT and stays open.
+  const deployEnv = (env as { ENVIRONMENT?: string }).ENVIRONMENT;
   const gate = await gateTranscript({
     rawMessages: parsed.messages,
     conversationId,
     hmacKey,
-    isProduction: (env as { ENVIRONMENT?: string }).ENVIRONMENT === 'production',
+    requireKey: deployEnv === 'production' || deployEnv === 'staging',
     env: env as AssistantHmacEnv,
     maxMessages: MAX_MESSAGES,
   });

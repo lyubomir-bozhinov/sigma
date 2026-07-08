@@ -60,6 +60,20 @@ describe('messageReportRefs', () => {
     expect(messageReportRefs(m)).toEqual([{ id: 'r_z', title: 'Преизползван' }]);
   });
 
+  it('extracts a data-report-ready chip (reportId + title)', () => {
+    const m = msg('assistant', [
+      { type: 'data-report-ready', data: { reportId: 'r_ready', title: 'Готов отчет' } },
+    ]);
+    expect(messageReportRefs(m)).toEqual([{ id: 'r_ready', title: 'Готов отчет' }]);
+  });
+
+  it('omits a data-report-ready chip missing reportId or title', () => {
+    const noId = msg('assistant', [{ type: 'data-report-ready', data: { title: 'Готов' } }]);
+    const noTitle = msg('assistant', [{ type: 'data-report-ready', data: { reportId: 'r_x' } }]);
+    expect(messageReportRefs(noId)).toEqual([]);
+    expect(messageReportRefs(noTitle)).toEqual([]);
+  });
+
   it('omits an emit_report that did not persist (no storedId) or failed', () => {
     const noId = msg('assistant', [
       { type: 'tool-emit_report', output: { ok: true, report: { title: 'X' } } },

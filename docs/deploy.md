@@ -144,12 +144,15 @@ Custom token-ът се нуждае само от тези **Account**-ниво 
 - `ASSISTANT_HMAC_KEY` — ключ за подписване на транскрипта (§9.3, [ADR-0011](adr/0011-transcript-hmac-signing.md)
   / [ADR-0012](adr/0012-transcript-hmac-enforcement.md)). ≥256-битов случаен низ, различен per-среда.
   Сървърът подписва всяко свое съобщение и отхвърля всяко неавтентично при следващия ход. **Fail-closed
-  в production:** ако `ENVIRONMENT=production` и този ключ липсва, ендпойнтът връща 503 (отказва да
-  работи с непроверим транскрипт). В dev/preview без ключ асистентът работи без подписи (feature
-  unprovisioned) — като Turnstile. Пример:
+  на стабилните публични среди (`production` + `staging`):** ако `ENVIRONMENT` е `production` или `staging`
+  и този ключ липсва, ендпойнтът връща 503 (отказва да работи с непроверим транскрипт — и двете са
+  live/публични). **Ephemeral preview-ите остават fail-open** (може да вървят само-UI без ключа), както и
+  локалният dev. Затова: **задай `ASSISTANT_HMAC_KEY` на всяка публична среда, на която асистентът е
+  включен.** Пример:
   ```sh
   # 256-битов ключ
   openssl rand -hex 32 | pnpm exec wrangler secret put ASSISTANT_HMAC_KEY --env production
+  openssl rand -hex 32 | pnpm exec wrangler secret put ASSISTANT_HMAC_KEY --env staging   # различен ключ
   ```
 - `ASSISTANT_HMAC_KEY_PREVIOUS` — задава се **само по време на ротация**. Verify приема и стария, и
   новия ключ; подписва се само с текущия. Извежда се (unset) щом всички стари подписани съобщения са
@@ -157,8 +160,10 @@ Custom token-ът се нуждае само от тези **Account**-ниво 
 
 > **`ENVIRONMENT` binding.** Fail-closed gate-ът се управлява от runtime променливата `ENVIRONMENT`
 > (не от build-константата `import.meta.env.PROD`, която е `true` и за staging). Deploy слоят
-> (`scripts/wrangler-render.mjs`) я stamp-ва per-target на `production` / `staging` / `development`;
-> unset ⇒ третира се като non-production (без fail-closed).
+> (`scripts/wrangler-render.mjs`) я stamp-ва per-target: `production` / `staging` → fail-closed;
+> `preview` / `development` / unset → fail-open (feature unprovisioned). Т.е. deploy-ът на публичен
+> production/staging трябва да stamp-не `ENVIRONMENT` **и** да провизира `ASSISTANT_HMAC_KEY`, иначе
+> асистентът връща 503.
 
 ## 1. Provisioning на D1 (за всяка среда, локално)
 
