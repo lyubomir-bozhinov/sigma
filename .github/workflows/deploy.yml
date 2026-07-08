@@ -169,6 +169,17 @@ jobs:
           echo "::add-mask::$id"
           echo "SIGMA_DEDUP_KV_ID=$id" >> "$GITHUB_ENV"
 
+      # GitOps: ensure the account-scoped `bggpt-voice` custom provider (+ the shared `sigma-assistant`
+      # gateway) the VOICE lane calls directly. Provider-only — the assistant hits the gateway's provider
+      # endpoints for transcription, NOT a dynamic route (dynamic routing can't carry audio; see ADR-0011).
+      # Idempotent: a no-op when the provider already exists. VOICE_ASSISTANT_API_KEY is used only to
+      # first-create the provider; absent ⇒ the existing provider is reused as-is.
+      - name: Ensure voice AI-Gateway provider
+        if: steps.guard.outputs.ok == 'true' && success()
+        env:
+          VOICE_ASSISTANT_API_KEY: ${{ secrets.VOICE_ASSISTANT_API_KEY }}
+        run: node scripts/ensure-voice-provider.mjs --apply
+
       - name: Typecheck
         if: steps.guard.outputs.ok == 'true' && success()
         run: pnpm typecheck
