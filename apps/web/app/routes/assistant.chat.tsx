@@ -117,8 +117,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (rejection) return Response.json({ error: rejection.error }, { status: rejection.status });
 
   // Turnstile edge gate (spec §7): verify the client's bot-check token BEFORE buffering the body or
-  // doing any paid model/D1 work. No-op until TURNSTILE_SECRET is provisioned (dev/preview/staging).
-  const turnstile = await turnstileRejection(request, context.cloudflare.env);
+  // doing any paid model/D1 work. No-op until TURNSTILE_SECRET is provisioned outside prod
+  // (dev/preview/staging); in production a missing secret fails closed (503) — see turnstile.ts.
+  const turnstile = await turnstileRejection(request, context.cloudflare.env, import.meta.env.PROD);
   if (turnstile) return Response.json({ error: turnstile.error }, { status: turnstile.status });
 
   // Reject an over-cap body by its DECLARED Content-Length before buffering it into Worker memory; the

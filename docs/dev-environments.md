@@ -138,7 +138,7 @@ gh workflow run deploy.yml --ref <branch> -f environment=dev
 Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, и `SIGMA_D1_ID` **= id-то на dev базата**
 (`sigma-dev`) — така preview-тата споделят dev данните.
 
-Опционално: `ASSISTANT_API_KEY` — ключът на доставчика на AI асистента (OpenRouter). Тъй като secret-ите
+Опционално: `ASSISTANT_API_KEY` — ключът на доставчика на AI асистента (BgGPT/mamay). Тъй като secret-ите
 са **per-worker-script**, ефемерният `sigma-pr-<номер>` НЕ наследява ключа от dev worker-а; затова
 `preview.yml` го `wrangler secret put`-ва на preview worker-а след deploy. Ако не е зададен тук, deploy-ът
 минава, но `/assistant/chat` връща контролирано **503** (preview само с UI). Моделът се достига през

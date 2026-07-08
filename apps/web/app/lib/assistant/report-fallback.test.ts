@@ -54,11 +54,30 @@ describe('buildFallbackReport — server-side last-resort finalizer', () => {
     }
   });
 
-  it('renders a single text-only row as a table (no numeric totals to show)', () => {
+  it('refuses a single text-only row — no measure, nothing quantitative to report', () => {
+    // A lone label row (a bare entity name with no figure) carries nothing to summarise. Before the quality
+    // bar this published as a 1-cell table; now the turn shows the rephrase affordance instead of a hollow
+    // „Справка". Structurally identical to the „division: 45" probe defect below.
     const results: QueryResult[] = [
       { handle: 'R1', columns: ['name'], rows: [['СТОЛИЧНА ОБЩИНА']] },
     ];
-    const out = buildFallbackReport(results, 'q');
+    expect(buildFallbackReport(results, 'q').ok).toBe(false);
+  });
+
+  it('refuses a single-row dimensional probe (the „Division / 45" meaningless-report defect)', () => {
+    // Regression: on a greeting the weak model ran a stray `SELECT division …` returning one CPV code.
+    // results.length > 0, so the finalizer used to publish it as an authoritative 1-cell „Справка". A lone
+    // dimension code answers nothing → refuse; agent.ts then writes the rephrase affordance.
+    const results: QueryResult[] = [{ handle: 'R1', columns: ['division'], rows: [['45']] }];
+    expect(buildFallbackReport(results, 'Здравей').ok).toBe(false);
+  });
+
+  it('still renders a MULTI-row text-only result as a table (a list is substantive, not over-rejected)', () => {
+    // The measure bar is single-row-only: a genuine list of entities (even without figures) is a real answer.
+    const results: QueryResult[] = [
+      { handle: 'R1', columns: ['authority'], rows: [['СТОЛИЧНА ОБЩИНА'], ['ОБЩИНА ПЛОВДИВ']] },
+    ];
+    const out = buildFallbackReport(results, 'изброй възложителите');
     expect(out.ok).toBe(true);
     if (out.ok) expect(out.report.blocks[0]!.type).toBe('table');
   });
