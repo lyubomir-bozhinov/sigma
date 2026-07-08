@@ -168,6 +168,11 @@ class AssistantBoundary extends Component<{ children: ReactNode }, { failed: boo
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch(error: unknown, info: { componentStack?: string }) {
+    // The dock is an AI-SDK + streaming + Turnstile surface; a silent disappearance would hide real
+    // regressions. Log so a crash is at least visible in the browser console / error reporting.
+    console.error('[assistant] dock crashed and was suppressed', error, info?.componentStack);
+  }
   render() {
     return this.state.failed ? null : this.props.children;
   }
