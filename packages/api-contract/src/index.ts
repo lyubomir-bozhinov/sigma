@@ -625,6 +625,7 @@ export interface ConflictLink {
  *  Only `temporal === 'contemporaneous'` is claimed as "в конфликт"; before/after/unknown are shown but
  *  never asserted as a conflict (libel-safe: a contract outside the declared window is not the conflict). */
 export interface ConflictContract {
+  contractSlug: string; // URL segment for /contracts/:id (the contract detail page)
   signedAt: string | null; // ISO date as recorded; null when the source has no signing date
   authority: string; // awarding public body (public record)
   contractKind: string | null; // Доставки / Услуги / Строителство

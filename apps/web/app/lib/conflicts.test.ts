@@ -4,6 +4,7 @@ import type { ConflictContract, ConflictLink } from '@sigma/api-contract';
 import {
   companyConflictsHref,
   companyProfileHref,
+  contractHref,
   contractYear,
   contractYearsLabel,
   contractsCountLabel,
@@ -44,6 +45,7 @@ function link(over: Partial<ConflictLink> = {}): ConflictLink {
 
 function contract(over: Partial<ConflictContract> = {}): ConflictContract {
   return {
+    contractSlug: 'e:abc123',
     signedAt: '2021-05-01',
     authority: 'Община Пловдив',
     contractKind: 'Услуги',
@@ -206,5 +208,8 @@ describe('contract list helpers', () => {
   it('contractYear takes the signing year, or „—" when undated', () => {
     expect(contractYear(contract({ signedAt: '2021-05-01' }))).toBe('2021');
     expect(contractYear(contract({ signedAt: null }))).toBe('—');
+  });
+  it('contractHref points at the contract detail page', () => {
+    expect(contractHref(contract({ contractSlug: 'e:abc123' }))).toBe('/contracts/e:abc123');
   });
 });

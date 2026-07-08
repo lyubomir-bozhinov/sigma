@@ -210,6 +210,8 @@ describe('свързани-лица SQL (real SQLite)', () => {
         ['Д-3', 'after'], // 2024
         ['Д-4', 'unknown'], // undated
       ]);
+      // the contract id rides along in the same order → the UI links each row to /contracts/:id
+      expect(list.map((r) => r.id)).toEqual(['c:2', 'c:1', 'c:3', 'c:4']);
       // INVARIANT: the in-window amounts here sum to EXACTLY the leaderboard's contemporaneous_value_eur —
       // the list and the split cannot disagree (same join, same window bounds). This is the libel proof.
       const inWindowSum = list

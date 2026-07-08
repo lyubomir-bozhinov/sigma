@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getCompanyConflicts,
   getConflictLeaderboard,
+  getLinkContracts,
   getOfficialConflicts,
 } from './related-persons';
 import { personSlug } from './identity';
@@ -101,5 +102,28 @@ describe('related-persons queries', () => {
     expect(res?.company).toBe('ТРЕЙС ГРУП ХОЛД АД');
     expect(res?.links).toHaveLength(2);
     expect(await getCompanyConflicts(fakeDb({}), '999')).toBeNull();
+  });
+
+  it('link contracts map the raw id to a URL slug and pass the temporal mark through', async () => {
+    const db = fakeDb({
+      'person:ivan|111': [
+        {
+          id: 'c:e:abc',
+          signed_at: '2021-05-01',
+          authority: 'Община Пловдив',
+          contract_kind: 'Услуги',
+          contract_number: 'Д-1',
+          amount_eur: 1_000_000,
+          temporal: 'contemporaneous',
+        },
+      ],
+    });
+    const contracts = await getLinkContracts(db, 'person:ivan|111');
+    expect(contracts).toHaveLength(1);
+    expect(contracts[0]!.contractSlug).toBe('e:abc'); // 'c:' prefix stripped → /contracts/:id segment
+    expect(contracts[0]!.temporal).toBe('contemporaneous');
+    expect(contracts[0]!.authority).toBe('Община Пловдив');
+    // an unknown/non-surfaced link_key yields no contracts (the SQL WHERE gate returns nothing)
+    expect(await getLinkContracts(fakeDb({}), 'person:nobody|000')).toEqual([]);
   });
 });

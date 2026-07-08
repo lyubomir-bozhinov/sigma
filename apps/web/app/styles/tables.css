@@ -370,29 +370,77 @@ td.rank {
   }
 }
 
-/* свързани-лица: contemporaneous-contract split + the on-demand contract list (expandable row) ----- */
+/* свързани-лица: contemporaneous-contract split + the on-demand contract list (expandable row) -----
+   `.cell-count` gives the count value and its expander their own flex row (gap, not a jammed inline
+   link) on desktop; the card-mode override below drops the button to a full-width line so it never
+   collides with the "X от Y" figure at 360px. */
+td.cell-count {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  white-space: nowrap;
+}
+.count-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Row-level disclosure control — a real bordered button (not an inline text link jammed against a
+   number), with a chevron that flips on aria-expanded so the affordance is legible at a glance. */
 .row-toggle {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--link, #0b57d0);
-  font: inherit;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 3px var(--s-2);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink-mid);
+  font: 500 11px/1.4 var(--font-mono);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
   cursor: pointer;
-  text-decoration: underline;
 }
 .row-toggle:hover {
-  text-decoration: none;
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--paper-warm);
 }
-/* Conflict-window sum stacked over the total, right-aligned to sit under the „(€)" header. */
+/* :focus-visible outline for buttons is already handled globally in base.css
+   (:where(button, ...):focus-visible); no need to repeat it here. */
+.row-toggle[aria-expanded='true'] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--paper-warm);
+}
+.row-toggle-icon {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s ease;
+}
+.row-toggle[aria-expanded='true'] .row-toggle-icon {
+  transform: rotate(180deg);
+}
+/* Reduced-motion is already neutralised globally in base.css. */
+
+/* Conflict-window sum over the total, right-aligned to sit under the „(€)" header. Bolded primary
+   figure + the existing .small.muted convention for the "от … общо" context line, with breathing
+   room between the two so the pair no longer reads as one cramped line. */
 .funds-split {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-end;
-  line-height: 1.25;
+  gap: 2px;
+  line-height: 1.3;
 }
+.funds-primary {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .row-detail td.cell-detail {
   padding: 10px 12px 14px;
   text-align: left;
@@ -401,16 +449,38 @@ td.rank {
 .contract-detail {
   display: flex;
   flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Contract list: each contract is a flex-wrap row of small facts. A "·" is injected via ::before on
+   every item but the first, so the separator travels with the following fact and never dangles at a
+   wrapped line's start (unlike a literal " · " text node, which does). */
+.contract-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
-.contract-list {
-  margin: 4px 0 0;
-  padding-left: 18px;
-}
-.contract-list li {
-  margin: 2px 0;
+.contract-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid var(--rule);
   font-size: 13px;
   line-height: 1.4;
+}
+.contract-item-conflict {
+  border-left-color: var(--accent);
+}
+.contract-item > * + *::before {
+  content: '·';
+  display: inline-block;
+  margin: 0 6px;
+  color: var(--ink-soft);
 }
 .contract-year,
 .contract-amt {
@@ -426,7 +496,9 @@ td.rank {
   cursor: pointer;
 }
 
-/* Card mode: the detail row is a full-width block, not a label/value flex pair. */
+/* Card mode: the detail row is a full-width block, not a label/value flex pair; it visually attaches
+   to the row above (no gap, no repeated top border) so it reads as an expansion of that card, not a
+   separate floating one. The count cell's button drops to its own full-width line below the figure. */
 @media (max-width: 560px) {
   .tbl-cards td.cell-detail {
     display: block;
@@ -436,5 +508,29 @@ td.rank {
   }
   .tbl-cards td.cell-detail::before {
     content: none;
+  }
+  .tbl-cards tr.row-detail {
+    margin-top: -10px;
+    border-top: 0;
+    border-left-color: var(--rule);
+    background: var(--paper-warm);
+  }
+
+  .tbl-cards td.cell-count {
+    flex-wrap: wrap;
+    /* Restore the card label↔value pairing (the desktop `td.cell-count` flex-end would otherwise leak
+       in and push the „ДОГОВОРИ" label off the left edge, unlike every sibling card cell). */
+    justify-content: space-between;
+  }
+  .tbl-cards td.cell-count .row-toggle {
+    flex: 1 0 100%;
+    justify-content: center;
+    margin-top: var(--s-2);
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .contract-item {
+    font-size: 13px;
   }
 }

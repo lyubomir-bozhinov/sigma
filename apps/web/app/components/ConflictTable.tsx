@@ -5,6 +5,7 @@ import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-c
 import { Chip, ExternalEikLink } from './ui';
 import {
   companyProfileHref,
+  contractHref,
   contractYear,
   contractYearsLabel,
   contractsCountLabel,
@@ -135,8 +136,8 @@ function ConflictRow({
             </>
           )}
         </td>
-        <td className="num" data-label="Договори">
-          {contractsCountLabel(l)}
+        <td className="num cell-count" data-label="Договори">
+          <span className="count-value">{contractsCountLabel(l)}</span>
           {l.contractCount > 0 && (
             <button
               type="button"
@@ -145,6 +146,7 @@ function ConflictRow({
               aria-controls={panelId}
               onClick={toggle}
             >
+              <span className="row-toggle-icon" aria-hidden="true" />
               {open ? 'скрий договорите' : 'виж договорите'}
             </button>
           )}
@@ -152,7 +154,9 @@ function ConflictRow({
         <td className="money" data-label="Публични средства (€)">
           {funds.total ? (
             <span className="funds-split">
-              <span title="по договори в момент на деклариран дял">{funds.primary}</span>
+              <span className="funds-primary" title="по договори в момент на деклариран дял">
+                {funds.primary}
+              </span>
               <span className="small muted">от {funds.total} общо</span>
             </span>
           ) : (
@@ -222,14 +226,14 @@ function ContractList({ contracts }: { contracts: ConflictContract[] }) {
 
 function ContractItem({ c, conflict = false }: { c: ConflictContract; conflict?: boolean }) {
   return (
-    <li>
+    <li className={conflict ? 'contract-item contract-item-conflict' : 'contract-item'}>
       <span className="contract-year">{contractYear(c)}</span>
-      {' · '}
-      <span>{c.authority || '—'}</span>
-      {c.contractKind && <> · {c.contractKind}</>}
-      {c.contractNumber && <> · № {c.contractNumber}</>}
-      {' · '}
-      <span className="contract-amt">{money(c.amountEur)}</span>{' '}
+      <span className="contract-authority">{c.authority || '—'}</span>
+      {c.contractKind && <span className="contract-kind">{c.contractKind}</span>}
+      <Link to={contractHref(c)} className="contract-link">
+        {c.contractNumber ? `№ ${c.contractNumber}` : 'договор'}
+      </Link>
+      <span className="contract-amt">{money(c.amountEur)}</span>
       {conflict ? (
         <Chip>в момент на дял</Chip>
       ) : (

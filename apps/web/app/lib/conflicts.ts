@@ -110,6 +110,11 @@ export function contractYear(c: ConflictContract): string {
   return c.signedAt ? c.signedAt.slice(0, 4) : '—';
 }
 
+/** /contracts/:id — the contract detail page for a listed contract. */
+export function contractHref(c: ConflictContract): string {
+  return `/contracts/${c.contractSlug}`;
+}
+
 /** Leaderboard headline: total public money to linked winners, counts, and the family (свързано лице)
  *  subset. A null contract value counts as 0 (never NaN) — the money figure must never read as fabricated. */
 export function privateOwnershipHeadline(links: ConflictLink[]): {

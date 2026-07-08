@@ -5,7 +5,7 @@ import type {
   CompanyConflicts,
   OfficialConflicts,
 } from '@sigma/api-contract';
-import { personSlug } from './identity';
+import { contractSlug, personSlug } from './identity';
 
 // Read-only query layer for свързани лица. The PUBLIC surface shows declared material OWNERSHIP only:
 //   • private_ownership — the official declared their OWN stake (relation owns/owns+manages).
@@ -154,6 +154,7 @@ export async function getCompanyConflicts(
 }
 
 interface ContractRow {
+  id: string;
   signed_at: string | null;
   authority: string | null;
   contract_kind: string | null;
@@ -166,7 +167,7 @@ interface ContractRow {
 // status/interest_class means a non-surfaced link_key returns [] — never a way to enumerate held/internal
 // links. Marking mirrors classify.temporalStatus (min/max declared-year span) so the 'contemporaneous'
 // rows here are exactly the subset counted by contemporaneous_contract_count in LINK_SELECT.
-export const LINK_CONTRACTS_SQL = `SELECT cc.signed_at, aa.name AS authority, cc.contract_kind,
+export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS authority, cc.contract_kind,
     cc.contract_number, cc.amount_eur,
     CASE
       WHEN cc.signed_at IS NULL OR il.first_declared_year IS NULL OR il.last_declared_year IS NULL THEN 'unknown'
@@ -191,6 +192,7 @@ export async function getLinkContracts(
 ): Promise<ConflictContract[]> {
   const rows = (await db.prepare(LINK_CONTRACTS_SQL).bind(linkKey).all<ContractRow>()).results;
   return rows.map((r) => ({
+    contractSlug: contractSlug(r.id),
     signedAt: r.signed_at,
     authority: r.authority ?? '',
     contractKind: r.contract_kind,
