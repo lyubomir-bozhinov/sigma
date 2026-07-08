@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 // Ship the свързани-лица domain (persons + declarations + declared_interests + interest_links +
-// interest_link_authorities + related_persons_internal + link_suppressions) from a sqlite work DB to the
-// served D1. Kept SEPARATE from ship-domain.mjs so the EOP deploy path is untouched; reuses the same
-// literal-escaping + batching. Migration 0002 must already be applied (the deploy runs `d1 migrations
-// apply`). No precompute — the query layer reads interest_links directly.
+// interest_link_authorities + link_suppressions) from a sqlite work DB to the served D1. Kept SEPARATE
+// from ship-domain.mjs so the EOP deploy path is untouched; reuses the same literal-escaping + batching.
+// Migration 0002 must already be applied (the deploy runs `d1 migrations apply`). No precompute — the
+// query layer reads interest_links directly.
+//
+// related_persons_internal (relative names — PII) is DELIBERATELY NOT shipped: no served query reads it,
+// so pushing it to the public D1 is PII we never surface. It stays in the build/work DB only (load.mjs
+// uses it for a census COUNT). The relative is anonymized as „свързано лице" via interest_links.relation.
 //
 //   node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --emit out/rp   # SQL only
 //   node scripts/ship-related-persons.mjs --work-db … --remote --yes                          # apply to D1
@@ -18,7 +22,6 @@ export const TABLES = [
   'persons',
   'declarations',
   'declared_interests',
-  'related_persons_internal',
   'interest_links',
   'interest_link_authorities',
 ];

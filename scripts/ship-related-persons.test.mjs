@@ -46,7 +46,7 @@ test('insertStatements yields nothing for empty columns or rows', () => {
   assert.deepEqual(insertStatements('persons', ['id'], []), []);
 });
 
-test('TABLES ships suppressions first and covers the full related-persons schema', () => {
+test('TABLES ships suppressions first and covers the served related-persons schema', () => {
   assert.equal(TABLES[0], 'link_suppressions'); // contested links never briefly re-exposed
   for (const t of [
     'persons',
@@ -54,8 +54,13 @@ test('TABLES ships suppressions first and covers the full related-persons schema
     'declared_interests',
     'interest_links',
     'interest_link_authorities',
-    'related_persons_internal',
   ]) {
     assert.ok(TABLES.includes(t), `missing ${t}`);
   }
+});
+
+test('related_persons_internal (relative-name PII) is NOT shipped to the served D1', () => {
+  // No served query reads it; shipping PII we never surface is a latent exposure. It stays in the
+  // build/work DB only. If a real read path is ever added, ship it deliberately and revisit anonymization.
+  assert.ok(!TABLES.includes('related_persons_internal'));
 });
