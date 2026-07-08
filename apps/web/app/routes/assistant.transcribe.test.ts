@@ -23,6 +23,7 @@ const jsonResponse = (obj: unknown) =>
 const env = (over: Record<string, unknown> = {}) => ({
   ASSISTANT_ENABLED: 'true',
   ASSISTANT_API_KEY: 'k',
+  AI_GATEWAY_ID: 'sigma-assistant',
   AI: { run: whisperRun('unused') },
   ...over,
 });
@@ -41,6 +42,13 @@ describe('assistant.transcribe action', () => {
     const res = await action(makeArgs(postJson(AUDIO), env({ AI: { run } })));
 
     expect(fetchSpy).toHaveBeenCalledOnce();
+    // cf-aig-collect-log:false keeps the audio out of the gateway logs (load-bearing, ADR-0011).
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/audio/transcriptions'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'cf-aig-collect-log': 'false' }),
+      }),
+    );
     expect(run).not.toHaveBeenCalled();
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ text: 'Купи хляб', source: 'bggpt' });
@@ -64,14 +72,18 @@ describe('assistant.transcribe action', () => {
     });
   });
 
-  it('falls back to Workers AI (no gateway arg) when BgGPT fails', async () => {
+  it('falls back to Workers AI through the gateway (collectLog off) when BgGPT fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const run = whisperRun('от Workers AI');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('down', { status: 502 }));
     const res = await action(makeArgs(postJson(AUDIO), env({ AI: { run } })));
 
-    // toHaveBeenCalledWith asserts the EXACT arg list — a third (gateway) arg would fail this.
-    expect(run).toHaveBeenCalledWith(WHISPER_MODEL, { audio: 'YWJj', language: 'bg' });
+    // The fallback binding is routed through the gateway with collectLog:false — metadata logged, audio not.
+    expect(run).toHaveBeenCalledWith(
+      WHISPER_MODEL,
+      { audio: 'YWJj', language: 'bg' },
+      { gateway: { id: 'sigma-assistant', collectLog: false } },
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ text: 'от Workers AI', source: 'workers-ai' });
   });

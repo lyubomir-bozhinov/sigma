@@ -75,6 +75,10 @@
   "vars": {
     "AI_GATEWAY_BASE_URL": "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/custom-bggpt/v1",
     "AI_GATEWAY_ID": "sigma-assistant",
+    // Voice STT (ADR-0011): the BgGPT primary routes through the sigma-assistant gateway's custom-bggpt-voice
+    // provider (the route appends `/audio/transcriptions`). Every request carries cf-aig-collect-log:false so
+    // the gateway records metadata but NEVER the audio. VOICE_ASSISTANT_API_KEY is a SECRET (not here).
+    "BGGPT_STT_BASE_URL": "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/custom-bggpt-voice",
     "ASSISTANT_MODEL": "bggpt-gemma4-31b-it-bg-gptq-w4a16",
     "MAX_STEPS": "6",
     // Account-wide BgGPT RPM cap enforced by the BGGPT_CIRCUIT_BREAKER DO (#135): read via

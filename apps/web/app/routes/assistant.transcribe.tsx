@@ -1,13 +1,13 @@
 // Resource route: the voice-transcription endpoint. The dock POSTs a short base64 audio clip; we
 // transcribe it to Bulgarian text and hand it back EDITABLE (never auto-sent). Two server-side Whisper
-// providers are tried in order for availability:
-//   1. BgGPT/INSAIT Whisper (primary) — free via the BgGPT key; audio goes to BgGPT (internal, accepted).
-//   2. Cloudflare Workers AI Whisper (fallback) — no key, on-platform, called DIRECTLY with no gateway so
-//      the fallback audio is never written to gateway logs.
-// Which is primary is config-driven via TRANSCRIBE_PRIMARY (`bggpt` default, or `workers-ai`), so ops can
-// flip the order without a deploy. Audio is transient: never persisted. If neither provider succeeds we
-// surface the failure and the dock degrades to the text box (never a dead mic). There is deliberately NO
-// browser (Web Speech) tier — it is inconsistent across browsers and sends audio to Google.
+// providers are tried in order for availability, BOTH routed through the sigma-assistant AI Gateway for
+// unified cost/latency observability (ADR-0011):
+//   1. BgGPT/INSAIT Whisper (primary) — the custom-bggpt-voice provider (multipart, VOICE key per-request).
+//   2. Cloudflare Workers AI Whisper (fallback) — the AI binding, routed through the same gateway.
+// Every request carries cf-aig-collect-log:false / collectLog:false so the gateway logs METADATA but NEVER
+// the audio — the transient-audio guarantee holds. Which is primary is config-driven via TRANSCRIBE_PRIMARY
+// (`bggpt` default, or `workers-ai`). If neither succeeds the dock degrades to the text box (never a dead
+// mic). There is deliberately NO browser (Web Speech) tier — inconsistent, and it sends audio to Google.
 
 import type { Route } from './+types/assistant.transcribe';
 import { firstPartyRejection } from '../lib/assistant/request-guard';
@@ -22,10 +22,15 @@ import {
   sanitizeTranscript,
 } from '../lib/assistant/transcribe';
 
-// Structural type for the Workers AI binding's whisper run — testable with a fake `{ run }`, independent
-// of the generated `Ai` type. Called with NO third (gateway) arg on purpose, so fallback audio isn't logged.
+// Structural type for the Workers AI binding's whisper run — testable with a fake `{ run }`, independent of
+// the generated `Ai` type. The gateway option routes the call through the AI Gateway with collectLog:false,
+// so metadata is recorded but the audio is never logged.
 interface WhisperRunner {
-  run(model: string, inputs: { audio: string; language: string }): Promise<{ text?: unknown }>;
+  run(
+    model: string,
+    inputs: { audio: string; language: string },
+    options?: { gateway?: { id: string; collectLog?: boolean } },
+  ): Promise<{ text?: unknown }>;
 }
 
 const BGGPT_STT_BASE_URL = 'https://api.bggpt.ai/v1';
@@ -37,8 +42,9 @@ type Provider = 'bggpt' | 'workers-ai';
 type Attempt = { text: string; source: Provider };
 
 /**
- * BgGPT/INSAIT Whisper (primary) — OpenAI-compatible `POST <base>/audio/transcriptions`, multipart. The
- * key stays server-side (never sent to the client). Throws on a non-2xx so the route can fall back.
+ * BgGPT/INSAIT Whisper (primary) — OpenAI-compatible `POST <base>/audio/transcriptions`, multipart, routed
+ * through the AI Gateway (base URL points at the custom-bggpt-voice provider). `cf-aig-collect-log: false`
+ * keeps the audio out of the gateway logs. Key stays server-side. Throws on a non-2xx so the route can fall back.
  */
 async function transcribeViaBgGpt(
   baseUrl: string,
@@ -55,7 +61,7 @@ async function transcribeViaBgGpt(
   form.append('response_format', 'json');
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/audio/transcriptions`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${key}` },
+    headers: { Authorization: `Bearer ${key}`, 'cf-aig-collect-log': 'false' },
     body: form,
   });
   if (!res.ok) throw new Error(`bggpt stt failed: ${res.status}`);
@@ -68,9 +74,17 @@ async function transcribeViaBgGpt(
     : '';
 }
 
-/** Workers AI Whisper (fallback) — called DIRECTLY (no gateway arg) so the audio is never logged. */
-async function transcribeViaWorkersAI(ai: WhisperRunner, audio: string): Promise<string> {
-  const result = await ai.run(WHISPER_MODEL, { audio, language: TRANSCRIBE_LANGUAGE });
+/**
+ * Workers AI Whisper (fallback) — the AI binding routed through the gateway with collectLog:false, so the
+ * gateway records metadata but never the audio. Falls back to a direct binding call if no gateway id is set.
+ */
+async function transcribeViaWorkersAI(
+  ai: WhisperRunner,
+  audio: string,
+  gatewayId: string | undefined,
+): Promise<string> {
+  const options = gatewayId ? { gateway: { id: gatewayId, collectLog: false } } : undefined;
+  const result = await ai.run(WHISPER_MODEL, { audio, language: TRANSCRIBE_LANGUAGE }, options);
   return typeof result.text === 'string' ? result.text : '';
 }
 
@@ -108,16 +122,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   const body = parseTranscribeBody(raw);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
 
-  // Providers: BgGPT (via ASSISTANT_API_KEY) primary, Workers AI (on-platform binding) fallback. At least one must
-  // be provisioned. The BgGPT key + STT endpoint/model are read off the env (defaults below).
+  // Providers, both routed through the AI Gateway: BgGPT (via VOICE_ASSISTANT_API_KEY) primary, Workers AI
+  // (AI binding) fallback. At least one must be provisioned. The BgGPT key + gateway base URL/model + the
+  // gateway id are read off the env (defaults below); VOICE_ASSISTANT_API_KEY falls back to ASSISTANT_API_KEY.
   const cfg = env as unknown as {
     ASSISTANT_API_KEY?: string;
+    VOICE_ASSISTANT_API_KEY?: string;
     BGGPT_STT_BASE_URL?: string;
     BGGPT_STT_MODEL?: string;
     TRANSCRIBE_PRIMARY?: string;
+    AI_GATEWAY_ID?: string;
   };
   const ai = env.AI as unknown as WhisperRunner | undefined;
-  const bgKey = cfg.ASSISTANT_API_KEY;
+  const bgKey = cfg.VOICE_ASSISTANT_API_KEY ?? cfg.ASSISTANT_API_KEY;
   if (!bgKey && !ai) {
     console.error('[transcribe] no STT provider — BgGPT key and AI binding both absent');
     return Response.json({ error: UNCONFIGURED }, { status: 503 });
@@ -144,7 +161,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const tryWorkersAI = async (): Promise<Attempt | null> => {
     if (!ai) return null;
     try {
-      const text = await transcribeViaWorkersAI(ai, body.audio);
+      const text = await transcribeViaWorkersAI(ai, body.audio, cfg.AI_GATEWAY_ID);
       return text.trim() ? { text, source: 'workers-ai' } : null;
     } catch (err) {
       console.error('[transcribe] workers-ai failed', err);
