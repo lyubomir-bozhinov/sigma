@@ -39,8 +39,11 @@ via `?1`** (never interpolated). Labels name the **period with explicit dates**,
 ```sql
 SELECT a.name authority, c.amount_eur, substr(t.cpv_code,1,2) div
 FROM contracts c JOIN tenders t ON t.id=c.tender_id JOIN authorities a ON a.id=t.authority_id
-WHERE c.amount_eur IS NOT NULL AND c.value_flag <> 'annex_suspect'
+WHERE c.amount_eur IS NOT NULL AND (c.value_flag IS NULL OR c.value_flag <> 'annex_suspect')
   AND c.signed_at > date(?1,'-7 day') AND c.signed_at <= ?1
+  -- NULL-safe: `value_flag <> 'annex_suspect'` alone drops NULL rows (NULL <> x is NULL, not TRUE),
+  -- which would exclude most normal contracts. The implemented SLOT1_SQL keys on `value_flag = 'ok'`,
+  -- which sidesteps the same NULL trap; keep this predicate NULL-safe if the spec form is ever used.
 ORDER BY c.amount_eur DESC LIMIT 5;   -- top-5 so the job can sanity-check the distribution
 ```
 - **Outlier guard:** suppress the **name** if `top.amount_eur ≥ K × second-or-p95(window)` (K≈10,
@@ -72,10 +75,11 @@ WHERE c.amount_eur IS NOT NULL
 ### Slot 4 · single-offer share (known-offer denominator + exclude synthetic + sample floor)
 ```sql
 SELECT SUM(CASE WHEN c.bids_received=1 THEN 1 ELSE 0 END) single, COUNT(*) total
-FROM contracts c JOIN tenders t ON t.id=c.tender_id
+FROM contracts c
 WHERE c.amount_eur IS NOT NULL
   AND c.bids_received IS NOT NULL AND c.bids_received >= 1
-  AND t.procedure_type <> 'неизвестна'
+  AND c.is_synthetic = 0   -- denormalized from procedure_type='неизвестна' (migration 0002); drops the
+                           -- tenders JOIN and the NULL-comparison risk on procedure_type
   AND c.signed_at > date(?1,'-7 day') AND c.signed_at <= ?1;
 -- emit ONLY if total >= 20; else widen, else DROP slot 4
 ```
@@ -113,7 +117,8 @@ CREATE TABLE assistant_prompts (
 );  -- etl-owned: ONE writer (sigma-etl weekly cron), ONE reader (apps/web loader)
 ```
 The etl job **UPSERTs only** (`ON CONFLICT(slot) DO UPDATE …`); **no lazy `CREATE TABLE`** at cron
-time. Dev/preview seed runbooks (`docs/dev-environments*.md`) must apply `0001` after `0000_init`.
+time. Dev/preview seed runbooks (`docs/dev-environments*.md`) must apply `0002`/`0003` after `0000_init`
+(the assistant-prompts migration was renumbered from a duplicate `0001` ordinal to `0003`).
 
 ## Job (`apps/etl`)
 
