@@ -127,8 +127,9 @@ describe('guardSelect', () => {
   it('rejects an explicit JOIN / CROSS JOIN with no ON/USING (Cartesian product, review #80)', () => {
     expect(guardSelect('SELECT * FROM contracts JOIN bidders').ok).toBe(false);
     expect(guardSelect('SELECT * FROM contracts CROSS JOIN bidders').ok).toBe(false);
-    // a JOIN that DOES carry a condition is accepted
-    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON b.id = c.bidder_id').ok).toBe(
+    // a JOIN that DOES carry a condition is accepted (explicit column — `*` over bidders is denied by
+    // the PRIV-1 personal-data star rule, unrelated to the cross-join check under test here)
+    expect(guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON b.id = c.bidder_id').ok).toBe(
       true,
     );
   });
@@ -240,8 +241,9 @@ describe('guardSelect', () => {
     expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON c.id = c.tender_id').ok).toBe(
       false,
     );
-    // a real connecting condition passes
-    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok).toBe(
+    // a real connecting condition passes (explicit column — `*` over bidders is denied by the PRIV-1
+    // personal-data star rule, which is unrelated to the cross-join check under test here)
+    expect(guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok).toBe(
       true,
     );
   });
@@ -395,5 +397,63 @@ describe('guardSelect', () => {
       expect(r.ok, sql).toBe(false);
       if (!r.ok) expect(r.reason, sql).toMatch(reason);
     }
+  });
+});
+
+describe('guardSelect — personal-data column denylist (PRIV-1)', () => {
+  it('rejects contact_email in the SELECT list', () => {
+    const r = guardSelect('SELECT contact_email FROM authorities');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: contact_email \(personal data\)/);
+  });
+
+  it('rejects contact_phone referenced only in WHERE', () => {
+    const r = guardSelect('SELECT a.name FROM authorities a WHERE a.contact_phone IS NOT NULL');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: contact_phone \(personal data\)/);
+  });
+
+  it('rejects address on bidders', () => {
+    const r = guardSelect('SELECT address FROM bidders');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: address \(personal data\)/);
+  });
+
+  it('rejects street_address on the parties projection', () => {
+    const r = guardSelect('SELECT street_address FROM parties');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: street_address \(personal data\)/);
+  });
+
+  it('rejects SELECT * when a personal-data table is in scope', () => {
+    const r = guardSelect('SELECT * FROM authorities');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
+  });
+
+  it('rejects a qualified authorities.* star', () => {
+    const r = guardSelect('SELECT a.* FROM authorities a');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
+  });
+
+  it('allows public identifiers (name, bulstat) on authorities', () => {
+    const r = guardSelect('SELECT name, bulstat FROM authorities');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows eik_normalized on bidders', () => {
+    const r = guardSelect('SELECT eik_normalized FROM bidders WHERE eik_valid = 1');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows COUNT(*) over a personal-data table (aggregate star is not a column expansion)', () => {
+    const r = guardSelect('SELECT COUNT(*) FROM authorities');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows SELECT * on a non-personal table (tenders)', () => {
+    const r = guardSelect('SELECT * FROM tenders');
+    expect(r.ok).toBe(true);
   });
 });

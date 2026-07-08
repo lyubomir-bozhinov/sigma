@@ -31,6 +31,21 @@ const parser = new Parser();
 /** Tables run_sql may read — the documented data dictionary (describe-schema.ts). */
 export const ALLOWED_TABLES: ReadonlySet<string> = new Set(TABLES.map((t) => t.name.toLowerCase()));
 
+// Personal-contact columns (GDPR). The table allowlist is table-level, so these are reachable via
+// run_sql even though describe-schema.ts never advertises them — a natural-person-data exposure the
+// public site itself suppresses (company.tsx). Deny any reference; keep public identifiers
+// (bulstat / eik) queryable. Contact-fields-only policy (PRIV-1).
+export const DENIED_COLUMNS: ReadonlySet<string> = new Set([
+  'address',
+  'street_address',
+  'contact_email',
+  'contact_phone',
+]);
+
+// Tables that carry a DENIED_COLUMNS field. A `*` / `table.*` over any of these expands to a denied
+// column, so a star is rejected while one is in scope — forcing explicit, non-personal columns.
+const PII_TABLES: ReadonlySet<string> = new Set(['authorities', 'bidders', 'parties']);
+
 const deny = (reason: string): GuardResult => ({ ok: false, reason });
 
 // Function policy, enforced at the AST level by NORMALISED name (quoting-proof: node-sql-parser maps
@@ -583,6 +598,62 @@ function limitCount(v: unknown): number {
   return NaN;
 }
 
+// Collect every FROM/JOIN table name at any nesting depth (used to decide whether a personal-data table
+// is in scope for the `*`-star rule below).
+function collectFromTables(node: unknown, acc: Set<string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const x of node) collectFromTables(x, acc);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.from)) {
+    for (const f of obj.from as FromEntry[]) {
+      if (f && typeof f.table === 'string') acc.add(f.table.toLowerCase());
+    }
+  }
+  for (const k of Object.keys(obj)) collectFromTables(obj[k], acc);
+}
+
+// Reject any reference to a personal-contact column (SELECT list, WHERE, ORDER BY, JOIN ON, sub-query —
+// column_refs appear everywhere and this walks the whole AST), and reject a `*` / `table.*` while a
+// personal-data table is in scope (a star would expand to a denied column). Fail-closed (PRIV-1).
+function denyDeniedColumn(ast: unknown): string | null {
+  const fromTables = new Set<string>();
+  collectFromTables(ast, fromTables);
+  let piiInScope = false;
+  for (const t of fromTables) {
+    if (PII_TABLES.has(t)) {
+      piiInScope = true;
+      break;
+    }
+  }
+  let offender: string | null = null;
+  const walk = (node: unknown): void => {
+    if (offender || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const x of node) walk(x);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (obj.type === 'column_ref' && typeof obj.column === 'string') {
+      const col = obj.column.toLowerCase();
+      if (DENIED_COLUMNS.has(col)) {
+        offender = `column not allowed: ${col} (personal data)`;
+        return;
+      }
+      if (col === '*' && piiInScope) {
+        offender =
+          'SELECT * is not allowed while a table with personal-data columns is in scope; list explicit columns';
+        return;
+      }
+    }
+    for (const k of Object.keys(obj)) walk(obj[k]);
+  };
+  walk(ast);
+  return offender;
+}
+
 /**
  * Parse-verify and scope `sql`: assert a single read-only SELECT over allowlisted tables (plain tables
  * / sub-queries only — no table-valued functions), no comma or ON-less cross-join, no recursion, and a
@@ -640,6 +711,11 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   // table cannot be smuggled past the check by an out-of-scope CTE of the same name (review #80).
   const badTable = denyDisallowedTable(ast, new Set<string>());
   if (badTable) return deny(badTable);
+
+  // Personal-contact columns are reachable because the allowlist is table-level; deny them (and a
+  // `*` over a personal-data table) so run_sql cannot surface a natural person's email/phone/address.
+  const badColumn = denyDeniedColumn(ast);
+  if (badColumn) return deny(badColumn);
 
   // Bound the OUTER result with an AST-authoritative LIMIT. The SQLite `LIMIT offset, count` COMMA form
   // fools the regex-based enforceLimit — it captures the offset (the first number), not the count, so a
