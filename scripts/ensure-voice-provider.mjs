@@ -59,17 +59,28 @@ async function req(fetchImpl, url, { method = 'GET', token, body } = {}) {
 
 function requireCreds({ accountId, token }) {
   if (!accountId || !token) {
-    throw new Error('ensure-voice-provider: CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required.');
+    throw new Error(
+      'ensure-voice-provider: CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required.',
+    );
   }
 }
 
 // --- gateway ---------------------------------------------------------------------------------------
 // GET /accounts/{a}/ai-gateway/gateways -> { result: [{ id, ... }] }  (verified)
-export async function ensureGateway({ accountId, token, gatewayId = GATEWAY_ID, fetchImpl = fetch }) {
+export async function ensureGateway({
+  accountId,
+  token,
+  gatewayId = GATEWAY_ID,
+  fetchImpl = fetch,
+}) {
   requireCreds({ accountId, token });
-  const list = await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/gateways?per_page=50`, {
-    token,
-  });
+  const list = await req(
+    fetchImpl,
+    `${API}/accounts/${accountId}/ai-gateway/gateways?per_page=50`,
+    {
+      token,
+    },
+  );
   // ponytail: single page — the account holds ~1 gateway. Paginate if that ever grows past 50.
   if ((list.result ?? []).some((g) => g.id === gatewayId)) return gatewayId;
   // INFERRED body shape: gateway create takes at least { id }. Verify on first --apply.
@@ -99,9 +110,13 @@ export async function ensureCustomProvider({
   warn = () => {},
 }) {
   requireCreds({ accountId, token });
-  const list = await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/custom-providers?per_page=50`, {
-    token,
-  });
+  const list = await req(
+    fetchImpl,
+    `${API}/accounts/${accountId}/ai-gateway/custom-providers?per_page=50`,
+    {
+      token,
+    },
+  );
   const existing = (list.result ?? []).find((p) => p.slug === slug);
   if (existing) {
     if (existing.base_url && existing.base_url !== baseUrl) {
@@ -110,7 +125,9 @@ export async function ensureCustomProvider({
     return existing.id ?? slug;
   }
   if (!apiKey) {
-    warn(`VOICE_ASSISTANT_API_KEY not set — creating provider "${slug}" without stored auth (per-request-auth model)`);
+    warn(
+      `VOICE_ASSISTANT_API_KEY not set — creating provider "${slug}" without stored auth (per-request-auth model)`,
+    );
   }
   // INFERRED body shape from the GET record ({ name, slug, base_url, headers }). Verify on first --apply.
   const created = await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/custom-providers`, {
@@ -135,9 +152,13 @@ function normalizeGraph(nodes) {
     Array.isArray(v)
       ? v.map(sortKeys)
       : v && typeof v === 'object'
-        ? Object.keys(v).sort().reduce((o, k) => ((o[k] = sortKeys(v[k])), o), {})
+        ? Object.keys(v)
+            .sort()
+            .reduce((o, k) => ((o[k] = sortKeys(v[k])), o), {})
         : v;
-  return JSON.stringify(sortKeys([...nodes].sort((a, b) => String(a.id).localeCompare(String(b.id)))));
+  return JSON.stringify(
+    sortKeys([...nodes].sort((a, b) => String(a.id).localeCompare(String(b.id)))),
+  );
 }
 
 export function graphEqual(a, b) {
@@ -171,7 +192,11 @@ export async function ensureRoute({
   if (!existing) {
     // New route: create with the graph as its first version (the dashboard creates+deploys v1 in one
     // step this way). If the API does not auto-deploy, the deploy below is a harmless second step.
-    const created = await req(fetchImpl, base, { method: 'POST', token, body: { name, elements: graph } });
+    const created = await req(fetchImpl, base, {
+      method: 'POST',
+      token,
+      body: { name, elements: graph },
+    });
     const routeId = created.result?.id ?? created.data?.id;
     return { routeId, changed: true };
   }
@@ -241,7 +266,9 @@ async function main(argv) {
     log(`  provider   ${PROVIDER_SLUG} ok`);
 
     const { changed } = await ensureRoute({ accountId, token, graph, fetchImpl });
-    log(`  route      ${ROUTE_NAME} ${changed ? 'converged (new version deployed)' : 'already up to date'}`);
+    log(
+      `  route      ${ROUTE_NAME} ${changed ? 'converged (new version deployed)' : 'already up to date'}`,
+    );
   } catch (err) {
     warn(err.message);
     process.exit(1);

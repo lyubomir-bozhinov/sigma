@@ -12,7 +12,11 @@ import {
 } from './ensure-voice-provider.mjs';
 
 const CREDS = { accountId: 'acct', token: 'tok' };
-const okResult = (result) => ({ ok: true, status: 200, json: async () => ({ success: true, result }) });
+const okResult = (result) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ success: true, result }),
+});
 const okData = (data) => ({ ok: true, status: 200, json: async () => ({ success: true, data }) });
 
 const GRAPH = [
@@ -21,13 +25,23 @@ const GRAPH = [
     id: 'primary-model',
     type: 'model',
     outputs: { success: { elementId: 'END' }, fallback: { elementId: 'fallback-model' } },
-    properties: { provider: 'custom-bggpt-voice', model: 'bggpt-whisper-large-v3', timeout: 20000, retries: 1 },
+    properties: {
+      provider: 'custom-bggpt-voice',
+      model: 'bggpt-whisper-large-v3',
+      timeout: 20000,
+      retries: 1,
+    },
   },
   {
     id: 'fallback-model',
     type: 'model',
     outputs: { success: { elementId: 'END' }, fallback: { elementId: 'END' } },
-    properties: { provider: 'workers-ai', model: '@cf/openai/whisper-large-v3-turbo', timeout: 30000, retries: 0 },
+    properties: {
+      provider: 'workers-ai',
+      model: '@cf/openai/whisper-large-v3-turbo',
+      timeout: 30000,
+      retries: 0,
+    },
   },
   { id: 'END', type: 'end', outputs: {} },
 ];
@@ -122,7 +136,8 @@ describe('ensureRoute', () => {
     const { fetchImpl, calls } = recorder(({ url, method }) => {
       if (method === 'GET' && url.endsWith('/routes?per_page=50'))
         return okData({ routes: [{ id: 'r1', name: ROUTE_NAME }] });
-      if (method === 'GET') return okResult({ version: { version_id: 'old', active: true, data: stale } });
+      if (method === 'GET')
+        return okResult({ version: { version_id: 'old', active: true, data: stale } });
       if (url.endsWith('/versions')) return okResult({ version_id: 'v2' });
       return okResult({ deployment_id: 'd2' }); // deployments
     });
@@ -149,7 +164,8 @@ describe('ensureRoute', () => {
 
   it('rejects an empty graph rather than deploying nothing', async () => {
     await assert.rejects(
-      () => ensureRoute({ ...CREDS, graph: [], fetchImpl: () => assert.fail('must not call the API') }),
+      () =>
+        ensureRoute({ ...CREDS, graph: [], fetchImpl: () => assert.fail('must not call the API') }),
       /a non-empty route graph is required/,
     );
   });
@@ -157,16 +173,29 @@ describe('ensureRoute', () => {
 
 describe('error surfacing', () => {
   it('propagates the routes/* flat {error} shape', async () => {
-    const fetchImpl = async () => ({ ok: false, status: 404, json: async () => ({ success: false, error: 'Route not found' }) });
-    await assert.rejects(() => ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl }), /Route not found/);
+    const fetchImpl = async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ success: false, error: 'Route not found' }),
+    });
+    await assert.rejects(
+      () => ensureRoute({ ...CREDS, graph: GRAPH, fetchImpl }),
+      /Route not found/,
+    );
   });
   it('propagates the errors[] shape and requires creds', async () => {
     const fetchImpl = async () => ({
       ok: false,
       status: 403,
-      json: async () => ({ success: false, errors: [{ code: 10000, message: 'Authentication error' }] }),
+      json: async () => ({
+        success: false,
+        errors: [{ code: 10000, message: 'Authentication error' }],
+      }),
     });
-    await assert.rejects(() => ensureGateway({ ...CREDS, fetchImpl }), /10000 Authentication error/);
+    await assert.rejects(
+      () => ensureGateway({ ...CREDS, fetchImpl }),
+      /10000 Authentication error/,
+    );
     await assert.rejects(
       () => ensureGateway({ token: 'tok', fetchImpl: () => assert.fail() }),
       /CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required/,
