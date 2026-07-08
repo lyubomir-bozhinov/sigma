@@ -129,9 +129,9 @@ describe('guardSelect', () => {
     expect(guardSelect('SELECT * FROM contracts CROSS JOIN bidders').ok).toBe(false);
     // a JOIN that DOES carry a condition is accepted (explicit column — `*` over bidders is denied by
     // the PRIV-1 personal-data star rule, unrelated to the cross-join check under test here)
-    expect(guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON b.id = c.bidder_id').ok).toBe(
-      true,
-    );
+    expect(
+      guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON b.id = c.bidder_id').ok,
+    ).toBe(true);
   });
 
   it('rejects a table-valued function nested in a sub-query or WHERE-IN (review #80, ydimitrof H1)', () => {
@@ -243,9 +243,9 @@ describe('guardSelect', () => {
     );
     // a real connecting condition passes (explicit column — `*` over bidders is denied by the PRIV-1
     // personal-data star rule, which is unrelated to the cross-join check under test here)
-    expect(guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok).toBe(
-      true,
-    );
+    expect(
+      guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok,
+    ).toBe(true);
   });
 
   it('rejects a JOIN whose ON connects only via a sub-query qualifier (Cartesian bypass — review #80, ultra)', () => {

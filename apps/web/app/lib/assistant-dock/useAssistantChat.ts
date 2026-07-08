@@ -42,9 +42,7 @@ export const classifyingFetch = async (
 ): Promise<Response> => {
   // Attach a fresh Turnstile token when the gate is active; a no-op (unchanged init) otherwise.
   const token = await nextTurnstileToken();
-  const baseInit = token
-    ? { ...init, headers: withTurnstileHeader(init?.headers, token) }
-    : init;
+  const baseInit = token ? { ...init, headers: withTurnstileHeader(init?.headers, token) } : init;
   // Bound the request so a wedged/half-open socket can't leave the dock stuck on a spinner forever.
   // A timeout aborts with a TimeoutError (not AbortError), so it falls through to the network-error
   // path below and surfaces the retry, while a user stop() stays a silent AbortError.
