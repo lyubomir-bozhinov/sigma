@@ -5,10 +5,12 @@ import {
   companyConflictsHref,
   companyProfileHref,
   contractHref,
+  contractTimeline,
   contractYear,
   contractYearsLabel,
   contractsCountLabel,
   fundsCellLabel,
+  fundsMagnitude,
   hasContemporaneousContracts,
   isFamilyLink,
   linkContractsHref,
@@ -173,6 +175,113 @@ describe('contemporaneous split', () => {
       }),
     );
     expect(noValue.total).toBeNull();
+  });
+});
+
+describe('fundsMagnitude', () => {
+  it('is the conflict-window share of the total (subset ≤ total)', () => {
+    expect(
+      fundsMagnitude(
+        link({
+          contemporaneousContractCount: 2,
+          contemporaneousValueEur: 132_000,
+          contractValueEur: 11_900_000,
+        }),
+      ),
+    ).toBeCloseTo(132_000 / 11_900_000, 6);
+  });
+  it('is null when there is nothing to plot', () => {
+    // no in-window contract
+    expect(fundsMagnitude(link({ contemporaneousContractCount: 0 }))).toBeNull();
+    // no summable window value
+    expect(
+      fundsMagnitude(link({ contemporaneousContractCount: 2, contemporaneousValueEur: null })),
+    ).toBeNull();
+    // no/zero total to divide by
+    expect(
+      fundsMagnitude(
+        link({
+          contemporaneousContractCount: 2,
+          contemporaneousValueEur: 100,
+          contractValueEur: 0,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      fundsMagnitude(
+        link({
+          contemporaneousContractCount: 2,
+          contemporaneousValueEur: 100,
+          contractValueEur: null,
+        }),
+      ),
+    ).toBeNull();
+  });
+  it('clamps to 1 rather than exceeding the bar', () => {
+    expect(
+      fundsMagnitude(
+        link({
+          contemporaneousContractCount: 2,
+          contemporaneousValueEur: 120,
+          contractValueEur: 100,
+        }),
+      ),
+    ).toBe(1);
+  });
+});
+
+describe('contractTimeline', () => {
+  it('places dated contracts on a shared axis and shades the declared window', () => {
+    const tl = contractTimeline({ firstDeclaredYear: '2024', lastDeclaredYear: '2024' }, [
+      contract({ signedAt: '2019-03-01', temporal: 'before' }),
+      contract({ signedAt: '2024-06-01', temporal: 'contemporaneous' }),
+      contract({ signedAt: '2024-09-01', temporal: 'contemporaneous' }),
+      contract({ signedAt: '2026-01-01', temporal: 'after' }),
+    ]);
+    expect(tl).not.toBeNull();
+    expect(tl!.minYear).toBe(2019);
+    expect(tl!.maxYear).toBe(2026);
+    // 2019 at 0%, 2026 at 100%, 2024 at (5/7)*100
+    expect(tl!.marks[0]).toMatchObject({ year: 2019, leftPct: 0, inWindow: false, stackIndex: 0 });
+    expect(tl!.marks[3]).toMatchObject({ year: 2026, leftPct: 100, inWindow: false });
+    expect(tl!.windowStartPct).toBeCloseTo((5 / 7) * 100, 6);
+    expect(tl!.windowEndPct).toBeCloseTo((5 / 7) * 100, 6);
+    // the two 2024 contracts are flagged in-window and fanned by stackIndex
+    const inWin = tl!.marks.filter((m) => m.inWindow);
+    expect(inWin.map((m) => m.stackIndex)).toEqual([0, 1]);
+  });
+  it('returns null when no contract carries a date (nothing to plot)', () => {
+    expect(
+      contractTimeline({ firstDeclaredYear: '2024', lastDeclaredYear: '2024' }, [
+        contract({ signedAt: null, temporal: 'unknown' }),
+      ]),
+    ).toBeNull();
+  });
+  it('centres everything when all activity is in one year (zero span, no divide-by-zero)', () => {
+    const tl = contractTimeline({ firstDeclaredYear: '2024', lastDeclaredYear: '2024' }, [
+      contract({ signedAt: '2024-01-01', temporal: 'contemporaneous' }),
+    ]);
+    expect(tl!.marks[0].leftPct).toBe(50);
+    expect(tl!.windowStartPct).toBe(50);
+    expect(tl!.windowEndPct).toBe(50);
+  });
+  it('plots marks with no band when the link declares no years', () => {
+    const tl = contractTimeline({ firstDeclaredYear: null, lastDeclaredYear: null }, [
+      contract({ signedAt: '2021-01-01', temporal: 'before' }),
+      contract({ signedAt: '2023-01-01', temporal: 'after' }),
+    ]);
+    expect(tl!.windowStartPct).toBeNull();
+    expect(tl!.windowEndPct).toBeNull();
+    expect(tl!.marks).toHaveLength(2);
+  });
+  it('ignores a bogus/empty declared year rather than plotting year 0', () => {
+    const tl = contractTimeline({ firstDeclaredYear: '', lastDeclaredYear: '2024' }, [
+      contract({ signedAt: '2024-01-01', temporal: 'contemporaneous' }),
+    ]);
+    // only the valid edge remains; band collapses to that single point, min/max stay 2024
+    expect(tl!.minYear).toBe(2024);
+    expect(tl!.windowStartPct).toBe(50);
+    expect(tl!.windowEndPct).toBe(50);
   });
 });
 

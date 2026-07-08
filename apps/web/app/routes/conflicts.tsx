@@ -5,7 +5,7 @@ import type { Route } from './+types/conflicts';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
 import { FactsList } from '../components/FactsList';
-import { Section, Callout } from '../components/ui';
+import { Section, Callout, ShareBar } from '../components/ui';
 import { ConflictTable } from '../components/ConflictTable';
 import { Pagination } from '../components/Pagination';
 import { publicCache } from '../lib/cache';
@@ -121,6 +121,17 @@ export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
                 },
               ]}
             />
+
+            {headline.totalEur > 0 && headline.contemporaneousEur > 0 && (
+              <div className="case-mag conflict-headline-mag">
+                <span className="case-mag-label">В момент на деклариран дял</span>
+                <ShareBar ratio={headline.contemporaneousEur / headline.totalEur} warn />
+                <span className="case-mag-figures">
+                  <strong>{money(headline.contemporaneousEur)}</strong> от{' '}
+                  {money(headline.totalEur)} общо
+                </span>
+              </div>
+            )}
 
             <Section
               id="list"

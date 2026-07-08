@@ -5,8 +5,10 @@ import { pct } from '@sigma/shared';
 // Small editorial primitives shared across pages. Class definitions live in app.css (ported verbatim
 // from the mock); these just emit the markup.
 
-export function Chip({ children }: { children: ReactNode }) {
-  return <span className="chip">{children}</span>;
+// `tone` weights a chip by signal strength: 'strong' for the strongest conflict signal (own-institution),
+// 'window' for the declared-stake overlap. Omit for a neutral chip (the default everywhere else).
+export function Chip({ children, tone }: { children: ReactNode; tone?: 'strong' | 'window' }) {
+  return <span className={`chip${tone ? ` chip-${tone}` : ''}`}>{children}</span>;
 }
 
 const REGISTRY_URL = 'https://portal.registryagency.bg/CR/bg/Reports/ActiveConditionTabResult';

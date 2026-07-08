@@ -2,14 +2,17 @@ import { useId, useState } from 'react';
 import { Link, useFetcher } from 'react-router';
 import { count, money } from '@sigma/shared';
 import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-contract';
-import { Chip, ExternalEikLink } from './ui';
+import { Chip, ExternalEikLink, ShareBar } from './ui';
 import {
   companyProfileHref,
   contractHref,
+  contractTimeline,
   contractYear,
   contractYearsLabel,
   contractsCountLabel,
   fundsCellLabel,
+  fundsMagnitude,
+  hasContemporaneousContracts,
   linkContractsHref,
   officialHref,
   partitionContracts,
@@ -96,9 +99,11 @@ function ConflictRow({
     if (next && fetcher.state === 'idle' && !fetcher.data) fetcher.load(linkContractsHref(l));
   }
 
+  const conflict = hasContemporaneousContracts(l);
+
   return (
     <>
-      <tr>
+      <tr className={conflict ? 'has-conflict' : undefined}>
         <td className="rank cell-rank" data-label="#">
           {rank}
         </td>
@@ -118,13 +123,13 @@ function ConflictRow({
           {l.ownInstitution && (
             <>
               {' '}
-              <Chip>от собствената институция</Chip>
+              <Chip tone="strong">от собствената институция</Chip>
             </>
           )}
           {l.contemporaneous && (
             <>
               {' '}
-              <Chip>към момента на договор</Chip>
+              <Chip tone="window">към момента на договор</Chip>
             </>
           )}
           {(l.firstDeclaredYear || l.lastDeclaredYear) && (
@@ -182,12 +187,90 @@ function ConflictRow({
             {fetcher.state === 'loading' && !fetcher.data ? (
               <p className="muted small m-0">Зареждане на договорите…</p>
             ) : (
-              <ContractList contracts={fetcher.data?.contracts ?? []} />
+              <CaseDetail link={l} contracts={fetcher.data?.contracts ?? []} />
             )}
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+// The expanded case: a magnitude bar (how much of the money moved while the stake was declared) and a
+// timeline that places each contract against the declared-stake window, above the in-window/outside list.
+function CaseDetail({ link: l, contracts }: { link: ConflictLink; contracts: ConflictContract[] }) {
+  const mag = fundsMagnitude(l);
+  const funds = fundsCellLabel(l);
+  return (
+    <div className="case-detail">
+      {mag != null && funds.total && (
+        <div className="case-mag">
+          <span className="case-mag-label">В момент на деклариран дял</span>
+          <ShareBar ratio={mag} warn />
+          <span className="case-mag-figures">
+            <strong>{funds.primary}</strong> от {funds.total} общо
+          </span>
+        </div>
+      )}
+      <Timeline link={l} contracts={contracts} />
+      <ContractList contracts={contracts} />
+    </div>
+  );
+}
+
+// Contracts as dots on a year axis, the declared-stake window as a shaded band. Renders only when at least
+// one contract is dated (contractTimeline returns null otherwise) — the list below still covers undated ones.
+function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: ConflictContract[] }) {
+  const tl = contractTimeline(l, contracts);
+  if (!tl) return null;
+  const inCount = tl.marks.filter((m) => m.inWindow).length;
+  // Narrow both edges inline: TS loses the narrowing if it's hidden behind an intermediate boolean.
+  const ws = tl.windowStartPct;
+  const we = tl.windowEndPct;
+  const hasBand = ws != null && we != null;
+  const bandLeft = ws != null && we != null ? Math.min(ws, we) : 0;
+  const bandWidth = ws != null && we != null ? Math.abs(we - ws) : 0;
+  const maxStack = tl.marks.reduce((m, k) => Math.max(m, k.stackIndex), 0);
+  const singleYear = tl.minYear === tl.maxYear;
+  return (
+    <div className="tl">
+      <p className="tl-title">
+        Времева ос · дял {contractYearsLabel(l.firstDeclaredYear, l.lastDeclaredYear)} г. срещу
+        договори
+      </p>
+      <div
+        className="tl-track"
+        style={{ height: `${34 + (maxStack + 1) * 14}px` }}
+        role="img"
+        aria-label={`${count(inCount)} от ${count(tl.marks.length)} датирани договора са сключени в периода на декларирания дял`}
+      >
+        <div className="tl-axis" />
+        {hasBand && (
+          <div className="tl-band" style={{ left: `${bandLeft}%`, width: `${bandWidth}%` }} />
+        )}
+        {tl.marks.map((m) => (
+          <span
+            key={`${m.year}-${m.stackIndex}`}
+            className={`tl-mark ${m.inWindow ? 'in' : 'out'}`}
+            style={{ left: `${m.leftPct}%`, top: `${24 + m.stackIndex * 14}px` }}
+            title={String(m.year)}
+          />
+        ))}
+        {singleYear ? (
+          <span className="tl-year tl-year-mid">{tl.minYear}</span>
+        ) : (
+          <>
+            <span className="tl-year tl-year-start">{tl.minYear}</span>
+            <span className="tl-year tl-year-end">{tl.maxYear}</span>
+          </>
+        )}
+      </div>
+      <p className="tl-legend">
+        <span className="tl-dot in" aria-hidden="true" /> в периода на дела
+        <span className="tl-sep">·</span>
+        <span className="tl-dot out" aria-hidden="true" /> извън периода
+      </p>
+    </div>
   );
 }
 

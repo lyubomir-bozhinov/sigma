@@ -72,6 +72,18 @@ export function fundsCellLabel(link: ConflictLink): { primary: string; total: st
   return { primary: moneyBare(link.contractValueEur), total: null };
 }
 
+/** Ratio of conflict-window money to the winner's total, for the magnitude bar — how much of the money
+ *  moved while the stake was declared. null when there is nothing meaningful to plot (no in-window
+ *  contract, no summable total, or no window sum): the bar simply isn't drawn rather than showing 0/NaN.
+ *  The window sum is a subset of the total, so the ratio is clamped to 1 as a guard, never exceeds it. */
+export function fundsMagnitude(link: ConflictLink): number | null {
+  if (!hasContemporaneousContracts(link)) return null;
+  const total = link.contractValueEur;
+  const conflict = link.contemporaneousValueEur;
+  if (total == null || total <= 0 || conflict == null) return null;
+  return Math.min(1, conflict / total);
+}
+
 /** The on-demand resource URL for a link's contracts (client-fetched by the expandable row). Keyed on the
  *  URL-safe :scope/:slug/:ЕИК — never the raw link_key, which carries '|' and ':'. :scope (self | family)
  *  is a path segment, so it is part of the cache key and can't be cloaked away. */
@@ -108,6 +120,81 @@ export function partitionContracts(contracts: ConflictContract[]): {
 /** A contract's signing year, or „—" when the source carries no date. */
 export function contractYear(c: ConflictContract): string {
   return c.signedAt ? c.signedAt.slice(0, 4) : '—';
+}
+
+/** A four-digit year from a source string, or null (never NaN/0): `Number(null)` is 0 and `Number('')`
+ *  is 0, both of which would silently plot a bogus year 0 on the timeline. */
+function parseYear(s: string | null): number | null {
+  if (!s) return null;
+  const n = Number(s.slice(0, 4));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export interface TimelineMark {
+  year: number;
+  /** Horizontal position along the axis, 0–100. */
+  leftPct: number;
+  /** True only for a contract signed in the declared-stake window (temporal === 'contemporaneous'). */
+  inWindow: boolean;
+  /** 0-based rank among marks sharing a year, so the component can fan overlapping dots vertically. */
+  stackIndex: number;
+}
+
+export interface ContractTimeline {
+  marks: TimelineMark[];
+  minYear: number;
+  maxYear: number;
+  /** Declared-stake band edges, 0–100; null when the link carries no declared years to shade. */
+  windowStartPct: number | null;
+  windowEndPct: number | null;
+}
+
+/** Geometry for the per-link timeline: dated contracts as dots + the declared-stake window as a band,
+ *  all positioned along a shared year axis so the reader SEES which contracts fall inside the window
+ *  (Todor's ask, made visual). Returns null when no contract carries a date — there is nothing to plot,
+ *  and the textual in-window/outside split already covers the undated case. Undated contracts are
+ *  dropped from the axis (they can't be placed) but remain in the list below it. */
+export function contractTimeline(
+  link: Pick<ConflictLink, 'firstDeclaredYear' | 'lastDeclaredYear'>,
+  contracts: ConflictContract[],
+): ContractTimeline | null {
+  const dated = contracts
+    .map((c) => ({ year: parseYear(c.signedAt), inWindow: c.temporal === 'contemporaneous' }))
+    .filter((c): c is { year: number; inWindow: boolean } => c.year != null);
+  if (dated.length === 0) return null;
+
+  const ws = parseYear(link.firstDeclaredYear);
+  const we = parseYear(link.lastDeclaredYear);
+  const years = [
+    ...dated.map((c) => c.year),
+    ...(ws != null ? [ws] : []),
+    ...(we != null ? [we] : []),
+  ];
+  const minYear = Math.min(...years);
+  const maxYear = Math.max(...years);
+  const span = maxYear - minYear;
+  // A zero span (all activity in one year) has no axis to spread across — pin everything to the centre.
+  const toPct = (y: number): number => (span === 0 ? 50 : ((y - minYear) / span) * 100);
+
+  const seen = new Map<number, number>();
+  const marks: TimelineMark[] = dated
+    .sort((a, b) => a.year - b.year)
+    .map((c) => {
+      const stackIndex = seen.get(c.year) ?? 0;
+      seen.set(c.year, stackIndex + 1);
+      return { year: c.year, leftPct: toPct(c.year), inWindow: c.inWindow, stackIndex };
+    });
+
+  // Band edges: both years when the window is a range, one point when only one is known, none otherwise.
+  const bandLo = ws ?? we;
+  const bandHi = we ?? ws;
+  return {
+    marks,
+    minYear,
+    maxYear,
+    windowStartPct: bandLo != null ? toPct(bandLo) : null,
+    windowEndPct: bandHi != null ? toPct(bandHi) : null,
+  };
 }
 
 /** /contracts/:id — the contract detail page for a listed contract. */

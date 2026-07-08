@@ -229,6 +229,10 @@ td.rank {
   .tbl-prose tbody tr:hover td {
     background: transparent;
   }
+  /* Strong-signal card: accent the whole left edge (desktop accents only the first cell). */
+  .tbl-cards tr.has-conflict {
+    border-left-color: var(--accent);
+  }
 
   /* Numeric rows: label left, value right. flex-wrap lets a long text value
      drop to its own line instead of pushing the card past the viewport. */
@@ -443,6 +447,146 @@ thead th.num.funds-head {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
+}
+
+/* Signal-weighted chips: the conflict surface reads „strong vs weak" at a glance. „От собствената
+   институция" is the strongest signal (filled accent); „към момента на договор" is the window overlap
+   (soft accent tint). Colours only — base .chip shape/padding stays in components.css. */
+.chip-strong {
+  background: var(--accent);
+  color: var(--paper);
+  border-color: var(--accent);
+}
+.chip-window {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* A row whose winner signed a contract in the declared-stake window carries a left accent edge — the
+   at-a-glance strong-signal marker the flat table lacked. */
+tbody tr.has-conflict td:first-child {
+  border-left: 2px solid var(--accent);
+}
+
+/* The expanded case: magnitude bar + timeline stacked above the contract list. */
+.case-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.case-mag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+}
+.case-mag-label {
+  font: 500 10px/1.5 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.case-mag-figures {
+  font-size: 13px;
+  color: var(--ink-mid);
+  font-variant-numeric: tabular-nums;
+}
+.case-mag-figures strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+/* Overview hero bar sits between the summary facts and the list — a little air on each side. */
+.conflict-headline-mag {
+  margin: var(--s-3) 0 var(--s-4);
+}
+
+/* Timeline: contracts as dots on a year axis, the declared-stake window as a shaded band. Vertical plan:
+   year labels at the top (top:0), axis at 30px, dots centred on the axis and fanned downward by stackIndex
+   when several fall in one year. Track height is set inline from the max stack so dots never clip. */
+.tl-title {
+  font: 500 10px/1.5 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+}
+.tl-track {
+  position: relative;
+}
+.tl-axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30px;
+  height: 1px;
+  background: var(--rule);
+}
+.tl-band {
+  position: absolute;
+  top: 24px;
+  height: 14px;
+  min-width: 2px;
+  background: var(--accent-bg);
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  border-radius: 2px;
+}
+.tl-mark {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  border: 2px solid var(--paper);
+}
+.tl-mark.in {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.tl-mark.out {
+  background: var(--ink-soft);
+  box-shadow: 0 0 0 1px var(--rule);
+}
+.tl-year {
+  position: absolute;
+  top: 0;
+  font: 11px/1 var(--font-mono);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.tl-year-start {
+  left: 0;
+}
+.tl-year-end {
+  right: 0;
+}
+.tl-year-mid {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tl-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font: 11px/1.4 var(--font-mono);
+  color: var(--ink-soft);
+}
+.tl-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.tl-dot.in {
+  background: var(--accent);
+}
+.tl-dot.out {
+  background: var(--ink-soft);
+}
+.tl-sep {
+  margin: 0 2px;
 }
 
 /* Contract list: each contract is a flex-wrap row of small facts. A "·" is injected via ::before on
