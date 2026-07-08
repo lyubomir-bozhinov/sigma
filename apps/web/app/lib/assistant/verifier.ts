@@ -180,6 +180,12 @@ function capEvidence(
       return b.edges.length > MAX_EVIDENCE_ROWS
         ? { ...b, edges: b.edges.slice(0, MAX_EVIDENCE_ROWS), evidenceTruncated: true }
         : b;
+    case 'totals':
+      // Normally small, but cap for symmetry so a pathological/adversarial snapshot with many totals
+      // items can't enter the envelope unbounded and defeat the deterministic size cap.
+      return b.items.length > MAX_EVIDENCE_ROWS
+        ? { ...b, items: b.items.slice(0, MAX_EVIDENCE_ROWS), evidenceTruncated: true }
+        : b;
     default:
       return b;
   }
