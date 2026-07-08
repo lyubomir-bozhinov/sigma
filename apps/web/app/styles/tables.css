@@ -397,10 +397,11 @@ td.rank {
 .count-value {
   font-variant-numeric: tabular-nums;
 }
-/* Let the long „Публични средства (€)" header wrap to two lines so the column is content-sized (~115px)
+/* Let the long „Публични средства (€)" header wrap to two lines so the column is content-sized (~135px)
    rather than pinned to the single-line header width (~178px) — the last bit of horizontal room the 8th
-   column („Източник") needs to stay on-screen at ~1024px instead of scrolling off. */
-th.funds-head {
+   column („Източник") needs to stay on-screen at ~1024px instead of scrolling off. Must out-specify the
+   base `thead th.num { white-space: nowrap }` (0,1,2), hence `thead th.num.funds-head` (0,2,2). */
+thead th.num.funds-head {
   white-space: normal;
 }
 /* Chevron flips on expand; the affordance that the count is clickable. */
