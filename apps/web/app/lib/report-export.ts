@@ -65,7 +65,7 @@ export function reportToMarkdown(report: ResolvedReport): string {
       case 'bar':
         lines.push(
           ...block.points.map(
-            (pt, i) => `${i + 1}. ${pt.label} — ${fmt(pt.value, block.format ?? 'money')}`,
+            (pt, i) => `${i + 1}. ${pt.label ?? '—'} — ${fmt(pt.value, block.format ?? 'money')}`,
           ),
           '',
         );
@@ -105,16 +105,23 @@ export function downloadBlob(blob: Blob, filename: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Defer the revoke to a later tick: some browsers (notably Firefox) may not have started reading
+  // the blob when the synchronous click() returns, and revoking in the same task aborts the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function safeFilename(title: string, ext: string): string {
-  return `${title
+  const base = title
     .slice(0, 50)
     .replace(/[^а-яa-z0-9]/gi, '-')
     .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')}.${ext}`;
+    .replace(/^-|-$/g, '');
+  // A title with no [а-яa-z0-9] chars (emoji/CJK/punctuation-only) sanitizes to '', which would
+  // produce a blank, hidden-named download like `.docx`. Fall back to a stable default base.
+  return `${base || 'report'}.${ext}`;
 }
 
 export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
