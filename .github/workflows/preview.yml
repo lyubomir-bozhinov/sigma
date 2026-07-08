@@ -52,6 +52,10 @@ jobs:
       # dedicated step below (like ASSISTANT_API_KEY) from the 'preview' Environment, so the bot gate is
       # live on previews when that secret is set; if it is unset the gate stays a no-op (fail-open).
       SIGMA_ASSISTANT_ENABLED: 'true'
+      # Runtime deploy-env for the §9.3 HMAC gate (ADR-0012). A preview is ephemeral and public-but-throwaway,
+      # so it fails OPEN — the signing key is still provisioned below (so signing is exercised live), but a
+      # missing key degrades to UI-only rather than 503. wrangler-render stamps this into ENVIRONMENT.
+      SIGMA_ENVIRONMENT: 'preview'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -147,6 +151,15 @@ jobs:
             exit 0
           fi
           printf '%s' "${TURNSTILE_SECRET}" | pnpm --filter @sigma/web exec wrangler secret put TURNSTILE_SECRET --name "$SIGMA_WEB_NAME"
+
+      # The §9.3 transcript-signing key (ADR-0011/0012). Unlike the two secrets above there is no human
+      # value: it is a purely internal HMAC key, so CI generates it if absent (like LOG_IP_KEY in deploy.yml)
+      # and leaves it untouched on redeploys — a stable key keeps in-flight client transcripts verifiable.
+      # Provisioning it here makes signing ACTIVE on the preview so the round-trip can be validated live;
+      # the preview still fails OPEN at runtime (SIGMA_ENVIRONMENT=preview), so this can never block a deploy.
+      # Runs AFTER the deploy — the worker must exist before a secret can be put on it.
+      - name: Provision assistant HMAC key (ASSISTANT_HMAC_KEY) on the preview worker
+        run: node scripts/ensure-worker-secret.mjs ASSISTANT_HMAC_KEY
 
       - name: Comment preview URL on PR
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

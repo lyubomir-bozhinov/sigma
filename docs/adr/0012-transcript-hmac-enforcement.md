@@ -43,11 +43,16 @@
 (`ENVIRONMENT ∈ {production, staging}`), а не самото `isProduction` — за да не се третира публичен staging
 като dev.
 
-**6. Ключ и ротация.** `ASSISTANT_HMAC_KEY` е **wrangler secret** (≥256-bit random, генериран извън repo-то,
-`wrangler secret put` за всяка среда — документирано в `docs/deploy.md`). Транскриптите живеят в клиента през
-ротация, затова verify приема **два** ключа в прозорец: `ASSISTANT_HMAC_KEY` (+ опционален
-`ASSISTANT_HMAC_KEY_PREVIOUS`, verify-only). Подписваме само с текущия. Без този прозорец ротацията би
-инвалидирала всеки in-flight транскрипт наведнъж.
+**6. Ключ и ротация — авто-провизиониране от CI.** `ASSISTANT_HMAC_KEY` е **wrangler secret**, но понеже е
+чисто **вътрешен** ключ (никога не напуска Cloudflare, няма човешка стойност), не се управлява ръчно: CI го
+провизира по същия модел като `LOG_IP_KEY` — `scripts/ensure-worker-secret.mjs` го **генерира само ако
+липсва** (256-bit) и го оставя непроменен при redeploy, wire-нат в `deploy.yml` (prod/staging) и `preview.yml`
+(previews). Стабилен ключ през redeploy-и е задължителен: транскриптите живеят в клиента, а ротирането при
+всеки deploy би обезсилило наведнъж всеки in-flight транскрипт. За **умишлена** ротация verify приема **два**
+ключа в прозорец: `ASSISTANT_HMAC_KEY` (+ опционален `ASSISTANT_HMAC_KEY_PREVIOUS`, verify-only); подписваме
+само с текущия. Ключът се генерира in-process и се стриймва към `wrangler secret put` през stdin — не се
+появява в лог, затова няма нужда от `::add-mask::`. `SIGMA_ENVIRONMENT` (GitHub Environment променлива) храни
+`ENVIRONMENT` binding-а, който решава fail-closed vs fail-open (виж §5).
 
 ## Последствия
 
@@ -70,7 +75,11 @@
   срещу сглобеното от SDK съобщение — така минорен bump, който чупи симетрията, пада в CI, вместо тихо да
   дропне цялата история в prod (единственият сигнал иначе е `console.warn`). `data-report-ready` е сега
   bound в подписа (беше allowlist-нат през phase filter-а, но не и в тупъла).
+- **Провизиониране (в този PR):** `ENVIRONMENT` binding се stamp-ва per-target от `wrangler-render.mjs`
+  (от `SIGMA_ENVIRONMENT`), а `ASSISTANT_HMAC_KEY` се генерира-ако-липсва от `scripts/ensure-worker-secret.mjs`
+  (адверсарно unit-тестван), wire-нат в `deploy.yml` + `preview.yml`. Така feature-ът е self-contained: и
+  ключът, и средата се появяват в един и същ deploy, без ръчни стъпки.
 - **Follow-up:** `import.meta.env.PROD` → runtime `ENVIRONMENT` да се уеднакви и за съществуващия `isProd` път
-  (breaker/Turnstile) в отделен PR; `ENVIRONMENT` binding се stamp-ва per-target от `wrangler-render.mjs`.
+  (breaker/Turnstile) в отделен PR (използва вече stamp-натия `ENVIRONMENT`).
 - Индексиране: този ADR и [ADR-0011](0011-transcript-hmac-signing.md) в `docs/adr/README.md`; провизионирането
   в `docs/deploy.md` (docs-integrity гейт).
