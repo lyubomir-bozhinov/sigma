@@ -84,7 +84,10 @@ describe('error surfacing', () => {
         errors: [{ code: 10000, message: 'Authentication error' }],
       }),
     });
-    await assert.rejects(() => ensureGateway({ ...CREDS, fetchImpl }), /10000 Authentication error/);
+    await assert.rejects(
+      () => ensureGateway({ ...CREDS, fetchImpl }),
+      /10000 Authentication error/,
+    );
     await assert.rejects(
       () => ensureGateway({ token: 'tok', fetchImpl: () => assert.fail() }),
       /CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required/,
