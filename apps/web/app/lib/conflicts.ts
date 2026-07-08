@@ -73,10 +73,11 @@ export function fundsCellLabel(link: ConflictLink): { primary: string; total: st
 }
 
 /** The on-demand resource URL for a link's contracts (client-fetched by the expandable row). Keyed on the
- *  URL-safe officialSlug + ЕИК (+ family flag) — never the raw link_key, which carries '|' and ':'. */
+ *  URL-safe :scope/:slug/:ЕИК — never the raw link_key, which carries '|' and ':'. :scope (self | family)
+ *  is a path segment, so it is part of the cache key and can't be cloaked away. */
 export function linkContractsHref(link: ConflictLink): string {
-  const base = `/conflicts/link/${link.officialSlug}/${link.eik}/contracts`;
-  return isFamilyLink(link) ? `${base}?f=1` : base;
+  const scope = isFamilyLink(link) ? 'family' : 'self';
+  return `/conflicts/link/${scope}/${link.officialSlug}/${link.eik}/contracts`;
 }
 
 const TEMPORAL_LABEL: Record<ConflictContract['temporal'], string> = {

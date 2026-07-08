@@ -148,7 +148,11 @@ describe('contemporaneous split', () => {
   });
   it('fundsCellLabel leads with the conflict figure and keeps the total as context', () => {
     const withWindow = fundsCellLabel(
-      link({ contemporaneousContractCount: 2, contemporaneousValueEur: 2_000_000, contractValueEur: 5_000_000 }),
+      link({
+        contemporaneousContractCount: 2,
+        contemporaneousValueEur: 2_000_000,
+        contractValueEur: 5_000_000,
+      }),
     );
     expect(withWindow.primary).toBe(moneyBare(2_000_000)); // conflict-window sum first
     expect(withWindow.total).toBe(moneyBare(5_000_000)); // total kept as context
@@ -160,20 +164,24 @@ describe('contemporaneous split', () => {
     expect(noWindow.total).toBeNull();
     // in-window count but no summable value → fall back to the total, no phantom split
     const noValue = fundsCellLabel(
-      link({ contemporaneousContractCount: 2, contemporaneousValueEur: null, contractValueEur: 5_000_000 }),
+      link({
+        contemporaneousContractCount: 2,
+        contemporaneousValueEur: null,
+        contractValueEur: 5_000_000,
+      }),
     );
     expect(noValue.total).toBeNull();
   });
 });
 
 describe('linkContractsHref', () => {
-  it('keys on the URL-safe slug + ЕИК, flagging a family link', () => {
+  it('keys on the URL-safe scope + slug + ЕИК; scope is a path segment, not a query param', () => {
     expect(linkContractsHref(link({ officialSlug: 'c2VydA', eik: '111' }))).toBe(
-      '/conflicts/link/c2VydA/111/contracts',
+      '/conflicts/link/self/c2VydA/111/contracts',
     );
-    expect(linkContractsHref(link({ officialSlug: 'c2VydA', eik: '111', relation: 'related' }))).toBe(
-      '/conflicts/link/c2VydA/111/contracts?f=1',
-    );
+    expect(
+      linkContractsHref(link({ officialSlug: 'c2VydA', eik: '111', relation: 'related' })),
+    ).toBe('/conflicts/link/family/c2VydA/111/contracts');
   });
 });
 

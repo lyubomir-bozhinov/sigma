@@ -159,9 +159,7 @@ function ConflictRow({
             funds.primary
           )}
         </td>
-        <td data-label="Период">
-          {contractYearsLabel(l.firstContractYear, l.lastContractYear)}
-        </td>
+        <td data-label="Период">{contractYearsLabel(l.firstContractYear, l.lastContractYear)}</td>
         <td data-label="Източник">
           {l.sourceUrl ? (
             <a href={l.sourceUrl} target="_blank" rel="noopener noreferrer">
@@ -195,7 +193,9 @@ function ContractList({ contracts }: { contracts: ConflictContract[] }) {
       {inConflict.length > 0 ? (
         <>
           <p className="small m-0">
-            <strong>Договори, сключени в момент на деклариран дял ({count(inConflict.length)})</strong>
+            <strong>
+              Договори, сключени в момент на деклариран дял ({count(inConflict.length)})
+            </strong>
           </p>
           <ul className="contract-list">
             {inConflict.map((c, i) => (
@@ -204,9 +204,7 @@ function ContractList({ contracts }: { contracts: ConflictContract[] }) {
           </ul>
         </>
       ) : (
-        <p className="small muted m-0">
-          Няма договори, сключени в периода на декларирания дял.
-        </p>
+        <p className="small muted m-0">Няма договори, сключени в периода на декларирания дял.</p>
       )}
       {outside.length > 0 && (
         <details className="contract-outside">

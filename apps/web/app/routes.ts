@@ -25,7 +25,7 @@ export default [
   route('conflicts/methodology', 'routes/conflict.methodology.tsx'),
   route('conflicts/official/:id', 'routes/conflict.official.tsx'),
   route('conflicts/company/:eik', 'routes/conflict.company.tsx'),
-  route('conflicts/link/:slug/:eik/contracts', 'routes/conflict.contracts.tsx'),
+  route('conflicts/link/:scope/:slug/:eik/contracts', 'routes/conflict.contracts.tsx'),
   route('methodology', 'routes/methodology.tsx'),
   route('accessibility', 'routes/accessibility.tsx'),
   route('privacy', 'routes/privacy.tsx'),
