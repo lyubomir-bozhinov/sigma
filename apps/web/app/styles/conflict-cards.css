@@ -261,9 +261,18 @@
   color: var(--accent);
   font-weight: 600;
 }
-/* Overview hero bar (routes/conflicts.tsx) sits between the summary facts and the list. */
+/* Overview hero bar (routes/conflicts.tsx) sits between the summary facts and the list. As the page's
+   headline stat it stacks (label / bar / figures) with real breathing room, and a wider bar than the
+   inline per-card version — rather than the cramped single wrapped line. */
 .conflict-headline-mag {
-  margin: var(--s-3) 0 var(--s-4);
+  margin: var(--s-5) 0 var(--s-6);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+.conflict-headline-mag .share-bar {
+  width: min(240px, 60vw);
+  height: 8px;
 }
 
 /* ── Signal-weighted chips ────────────────────────────────────────────────── */
@@ -284,6 +293,8 @@
    several fall in one year. Track height is set inline from the max stack so dots never clip. */
 .tl-track {
   position: relative;
+  /* Breathing room between the „Времева ос…" heading and the year axis (adds to the section gap). */
+  margin-top: var(--s-3);
 }
 .tl-axis {
   position: absolute;
