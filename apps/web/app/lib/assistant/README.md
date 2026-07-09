@@ -149,6 +149,6 @@ embed cap + проверка за брой, без raw D1 грешка към м
 - **`semantic_search` — `ns: 'entity'` е празен** докато не се добави entity indexer (ETL, Фаза 2).
   Инструментът е регистриран и работи, но `semantic_search` ще връща 0 попадения за всяко запитване, докато
   pipeline-ът не напълни Vectorize с имена на компании/договори/възложители (schema-grounding-ът, `ns:
-  'schema'`, работи).
+'schema'`, работи).
 - **Runtime срещу живи облачни bindings** — чистите модули + agent loop-ът са unit- и typecheck-покрити;
   end-to-end срещу реален D1/Vectorize/AI Gateway се проверява на dev/preview, не в CI.
