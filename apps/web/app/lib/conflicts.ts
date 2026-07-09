@@ -272,6 +272,25 @@ export function authorityShares(contracts: ConflictContract[]): AuthorityShare[]
   return rows;
 }
 
+/** Below this the bar is an invisible sliver and a 1-dp % rounds toward „0,0%" — which next to a real €
+ *  capture reads as „no relationship" (the false-negative trap). Show „под 0,1%" instead of a fake zero. */
+const TINY_SHARE = 0.001;
+
+export type ShareDisplay =
+  | { mode: 'bar'; ratio: number } // a plottable share (≥ 0,1%)
+  | { mode: 'tiny' } // a real but sub-0,1% capture — „под 0,1%", never „0%"
+  | { mode: 'no-denom' } // the body has no rollup total → no share, just the € figure
+  | { mode: 'no-value' }; // no summable € for this body → neither share nor a fake „0 €"
+
+/** How one authority row presents its share. Kept here (not in JSX) so the „0%"-vs-„под 0,1%" and missing-
+ *  denominator / missing-value branches are unit-covered and the component stays a declarative switch. */
+export function authorityShareDisplay(s: AuthorityShare): ShareDisplay {
+  if (s.companyEur === 0) return { mode: 'no-value' };
+  if (s.ratio == null) return { mode: 'no-denom' };
+  if (s.ratio < TINY_SHARE) return { mode: 'tiny' };
+  return { mode: 'bar', ratio: s.ratio };
+}
+
 /** Leaderboard headline: total public money to linked winners, counts, and the family (свързано лице)
  *  subset. A null contract value counts as 0 (never NaN) — the money figure must never read as fabricated. */
 export function privateOwnershipHeadline(links: ConflictLink[]): {

@@ -5,6 +5,7 @@ import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-c
 import { Chip, ExternalEikLink, ShareBar } from './ui';
 import {
   authorityShares,
+  authorityShareDisplay,
   companyProfileHref,
   contractHref,
   contractTimeline,
@@ -240,27 +241,42 @@ function AuthorityShares({ contracts }: { contracts: ConflictContract[] }) {
     <section className="cc-section">
       <h4 className="cc-section-title">Дял при възложителите</h4>
       <ul className="auth-shares" role="list">
-        {shares.map((s) => (
-          <li key={s.authorityId} className="auth-share">
-            <span className="auth-share-head">
-              <span className="auth-share-name">{s.authority}</span>
-              {s.inWindow && <Chip tone="window">в декларирания период</Chip>}
-            </span>
-            {s.ratio != null ? (
-              <ShareBar ratio={s.ratio} />
-            ) : (
-              <span className="auth-share-nobar small muted">дял не е наличен</span>
-            )}
-            <span className="auth-share-figures small muted">
-              {money(s.companyEur)}
-              {s.authorityTotalEur != null && <> от общо {money(s.authorityTotalEur)} възложени</>}
-              <span className="auth-share-count">
-                {' · '}
-                {count(s.contractCount)} {plural(s.contractCount, 'договор', 'договора')}
+        {shares.map((s) => {
+          const display = authorityShareDisplay(s);
+          return (
+            <li key={s.authorityId} className="auth-share">
+              <span className="auth-share-head">
+                <span className="auth-share-name">{s.authority}</span>
+                {s.inWindow && <Chip tone="window">в декларирания период</Chip>}
               </span>
-            </span>
-          </li>
-        ))}
+              {display.mode === 'bar' ? (
+                <ShareBar ratio={display.ratio} />
+              ) : (
+                <span className="auth-share-nobar small muted">
+                  {display.mode === 'tiny'
+                    ? 'под 0,1%'
+                    : display.mode === 'no-value'
+                      ? 'сума не е налична'
+                      : 'дял не е наличен'}
+                </span>
+              )}
+              <span className="auth-share-figures small muted">
+                {display.mode !== 'no-value' && (
+                  <>
+                    {money(s.companyEur)}
+                    {s.authorityTotalEur != null && (
+                      <> от общо {money(s.authorityTotalEur)} възложени</>
+                    )}
+                    {' · '}
+                  </>
+                )}
+                <span className="auth-share-count">
+                  {count(s.contractCount)} {plural(s.contractCount, 'договор', 'договора')}
+                </span>
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

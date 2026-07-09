@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { moneyBare } from '@sigma/shared';
 import type { ConflictContract, ConflictLink } from '@sigma/api-contract';
 import {
+  authorityShareDisplay,
   authorityShares,
   companyConflictsHref,
   companyProfileHref,
@@ -447,5 +448,43 @@ describe('authorityShares', () => {
 
   it('is empty for no contracts', () => {
     expect(authorityShares([])).toEqual([]);
+  });
+});
+
+describe('authorityShareDisplay', () => {
+  const share = (over: Partial<Parameters<typeof authorityShareDisplay>[0]> = {}) => ({
+    authorityId: 'a:1',
+    authority: 'Община А',
+    companyEur: 1_000_000,
+    authorityTotalEur: 10_000_000,
+    ratio: 0.1,
+    inWindow: false,
+    contractCount: 1,
+    ...over,
+  });
+
+  it('plots a bar for a share ≥ 0,1%', () => {
+    expect(authorityShareDisplay(share({ ratio: 0.027 }))).toEqual({ mode: 'bar', ratio: 0.027 });
+    // exactly 0,1% is still plottable, not tiny
+    expect(authorityShareDisplay(share({ ratio: 0.001 }))).toEqual({ mode: 'bar', ratio: 0.001 });
+  });
+
+  it('shows „под 0,1%" for a real but sub-0,1% capture — never a fake „0%"', () => {
+    // 0,029% (131k of 454.8M — a real row that rounded to „0%" before this fix)
+    expect(authorityShareDisplay(share({ ratio: 0.00029 }))).toEqual({ mode: 'tiny' });
+  });
+
+  it('drops to the € figure alone when the body has no rollup denominator', () => {
+    expect(authorityShareDisplay(share({ ratio: null, authorityTotalEur: null }))).toEqual({
+      mode: 'no-denom',
+    });
+  });
+
+  it('shows neither share nor a fake „0 €" when there is no summable value', () => {
+    // companyEur 0 (all amounts were null) → no-value wins even if a ratio somehow computed to 0
+    expect(authorityShareDisplay(share({ companyEur: 0, ratio: 0 }))).toEqual({ mode: 'no-value' });
+    expect(authorityShareDisplay(share({ companyEur: 0, ratio: null }))).toEqual({
+      mode: 'no-value',
+    });
   });
 });
