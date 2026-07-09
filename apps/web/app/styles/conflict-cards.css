@@ -225,9 +225,17 @@
 .cc-section + .cc-section {
   border-top: 1px solid var(--rule-soft);
 }
-/* h4 is already mono-uppercase in base.css; soften to ink-soft for the section-label register. */
-.cc-section-title {
-  color: var(--ink-soft);
+/* .cc-section-title needs no rule — base h4 (base.css) is already mono-uppercase ink-soft. */
+
+/* Inline retry when a contract fetch fails (see ConflictCards.tsx). */
+.cc-retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* ── Magnitude bar (carried from the table version, div-based) ─────────────── */

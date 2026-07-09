@@ -1,6 +1,6 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Link, useFetcher } from 'react-router';
-import { count, money } from '@sigma/shared';
+import { count, money, plural } from '@sigma/shared';
 import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-contract';
 import { Chip, ExternalEikLink, ShareBar } from './ui';
 import {
@@ -75,12 +75,18 @@ function ConflictCard({
   const funds = fundsCellLabel(l);
   const conflict = hasContemporaneousContracts(l);
   const loaded = fetcher.data != null;
+  // Guards a double-fetch from a rapid re-toggle before React commits (fetcher.state is a stale closure
+  // read), and lets us tell "never opened" (null) from "opened but the load failed" (retry affordance).
+  const requested = useRef(false);
 
+  function load() {
+    requested.current = true;
+    fetcher.load(linkContractsHref(l));
+  }
   function toggle() {
     const next = !open;
     setOpen(next);
-    // Lazy-load once: the contract list is fetched the first time the card is opened, then cached by the card.
-    if (next && fetcher.state === 'idle' && !fetcher.data) fetcher.load(linkContractsHref(l));
+    if (next && !requested.current) load(); // lazy-load once; cached by the card thereafter
   }
 
   // Names the expanded region so several open cards on one page stay distinguishable to screen readers.
@@ -188,6 +194,13 @@ function ConflictCard({
                     <CaseDetail link={l} contracts={fetcher.data.contracts} />
                   ) : fetcher.state === 'loading' ? (
                     <p className="muted small m-0">Зареждане на договорите…</p>
+                  ) : requested.current ? (
+                    <p className="muted small m-0">
+                      Договорите не се заредиха.{' '}
+                      <button type="button" className="cc-retry" onClick={load}>
+                        Опитай отново
+                      </button>
+                    </p>
                   ) : null}
                 </div>
               </div>
@@ -229,6 +242,10 @@ function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: Confl
   const tl = contractTimeline(l, contracts);
   if (!tl) return null;
   const inCount = tl.marks.filter((m) => m.inWindow).length;
+  const dated = tl.marks.length;
+  // Agree the noun + verb with the count — „1 датиран договор е сключен" vs „17 датирани договора са сключени".
+  const datedNoun = plural(dated, 'датиран договор', 'датирани договора');
+  const datedVerb = plural(dated, 'е сключен', 'са сключени');
   // Narrow both edges inline: TS loses the narrowing if it's hidden behind an intermediate boolean.
   const ws = tl.windowStartPct;
   const we = tl.windowEndPct;
@@ -247,7 +264,7 @@ function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: Confl
         className="tl-track"
         style={{ height: `${34 + (maxStack + 1) * 14}px` }}
         role="img"
-        aria-label={`${count(inCount)} от ${count(tl.marks.length)} датирани договора са сключени в периода на декларирания дял`}
+        aria-label={`${count(inCount)} от ${count(dated)} ${datedNoun} ${datedVerb} в периода на декларирания дял`}
       >
         <div className="tl-axis" />
         {hasBand && (
