@@ -92,15 +92,19 @@ export function linkContractsHref(link: ConflictLink): string {
   return `/conflicts/link/${scope}/${link.officialSlug}/${link.eik}/contracts`;
 }
 
+// The declared YEARS are when the stake was DISCLOSED (declaration within a month of taking office, then
+// annually), NOT when it was acquired or sold — real ownership usually predates the first filing (ТР has the
+// true start). So a 'before' contract is not "before the person held the stake", only outside the DISCLOSED
+// window; the labels say „деклариран период", never „дял", to avoid implying an ownership boundary we can't prove.
 const TEMPORAL_LABEL: Record<ConflictContract['temporal'], string> = {
-  contemporaneous: 'в момент на дял',
-  before: 'преди дял',
-  after: 'след дял',
+  contemporaneous: 'в декларирания период',
+  before: 'преди декларирания период',
+  after: 'след декларирания период',
   unknown: 'без дата',
 };
 
-/** Bulgarian tag for a contract's position relative to the declared window. Only 'contemporaneous' is the
- *  claimed conflict; the rest are context, never asserted as a conflict. */
+/** Bulgarian tag for a contract's position relative to the DECLARED (disclosure) window — not an ownership
+ *  interval. Only 'contemporaneous' is the claimed conflict; the rest are context, never asserted as a conflict. */
 export function temporalLabel(t: ConflictContract['temporal']): string {
   return TEMPORAL_LABEL[t] ?? t;
 }

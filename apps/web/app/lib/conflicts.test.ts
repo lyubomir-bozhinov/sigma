@@ -330,10 +330,12 @@ describe('contract list helpers', () => {
     expect(inConflict.map((c) => c.contractNumber)).toEqual(['A']);
     expect(outside.map((c) => c.contractNumber)).toEqual(['B', 'C', 'D']);
   });
-  it('temporalLabel names each position; only „contemporaneous" is the conflict', () => {
-    expect(temporalLabel('contemporaneous')).toBe('в момент на дял');
-    expect(temporalLabel('before')).toBe('преди дял');
-    expect(temporalLabel('after')).toBe('след дял');
+  it('temporalLabel frames each contract vs the DECLARED (disclosure) period, not ownership', () => {
+    // „деклариран период", never „дял" — the label must not imply an ownership boundary we can't prove
+    // (real ownership usually predates the first filing; the declared years are only the disclosure window).
+    expect(temporalLabel('contemporaneous')).toBe('в декларирания период');
+    expect(temporalLabel('before')).toBe('преди декларирания период');
+    expect(temporalLabel('after')).toBe('след декларирания период');
     expect(temporalLabel('unknown')).toBe('без дата');
   });
   it('contractYear takes the signing year, or „—" when undated', () => {

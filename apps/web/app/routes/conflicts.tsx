@@ -117,14 +117,14 @@ export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
                 {
                   term: 'Публични средства към техните дружества',
                   value: money(headline.totalEur),
-                  sub: `сбор от всички договори на свързаните изпълнители; в т.ч. ${money(headline.contemporaneousEur)} по договори, сключени в момент на деклариран дял`,
+                  sub: `сбор от всички договори на свързаните изпълнители; в т.ч. ${money(headline.contemporaneousEur)} по договори, сключени в декларирания период`,
                 },
               ]}
             />
 
             {headline.totalEur > 0 && headline.contemporaneousEur > 0 && (
               <div className="case-mag conflict-headline-mag">
-                <span className="case-mag-label">В момент на деклариран дял</span>
+                <span className="case-mag-label">В декларирания период</span>
                 <ShareBar ratio={headline.contemporaneousEur / headline.totalEur} warn />
                 <span className="case-mag-figures">
                   <strong>{money(headline.contemporaneousEur)}</strong> от{' '}

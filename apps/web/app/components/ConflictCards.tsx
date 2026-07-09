@@ -139,7 +139,7 @@ function ConflictCard({
           <div className="cc-stat">
             <dt>Публични средства</dt>
             <dd>
-              <span className="cc-funds-primary" title="по договори в момент на деклариран дял">
+              <span className="cc-funds-primary" title="по договори в декларирания период">
                 {funds.primary}
               </span>
               {funds.total && <span className="cc-funds-total">от {funds.total}</span>}
@@ -213,7 +213,7 @@ function CaseDetail({ link: l, contracts }: { link: ConflictLink; contracts: Con
     <div className="cc-case">
       {mag != null && funds.total && (
         <section className="cc-section">
-          <h4 className="cc-section-title">В момент на деклариран дял</h4>
+          <h4 className="cc-section-title">В декларирания период</h4>
           <div className="case-mag">
             <ShareBar ratio={mag} warn />
             <span className="case-mag-figures">
@@ -255,7 +255,7 @@ function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: Confl
         className="tl-track"
         style={{ height: `${34 + (maxStack + 1) * 14}px` }}
         role="img"
-        aria-label={`${count(inCount)} от ${count(dated)} ${datedNoun} ${datedVerb} в периода на декларирания дял`}
+        aria-label={`${count(inCount)} от ${count(dated)} ${datedNoun} ${datedVerb} в декларирания период`}
       >
         <div className="tl-axis" />
         {hasBand && (
@@ -276,7 +276,7 @@ function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: Confl
         ))}
       </div>
       <p className="tl-legend">
-        <span className="tl-dot in" aria-hidden="true" /> в периода на дял
+        <span className="tl-dot in" aria-hidden="true" /> в декларирания период
         <span className="tl-sep">·</span>
         <span className="tl-dot out" aria-hidden="true" /> извън периода
       </p>
@@ -305,7 +305,7 @@ function ContractList({ contracts }: { contracts: ConflictContract[] }) {
       {inConflict.length > 0 ? (
         <>
           <h4 className="cc-section-title">
-            Договори, сключени в момент на деклариран дял ({count(inConflict.length)})
+            Договори, сключени в декларирания период ({count(inConflict.length)})
           </h4>
           <ul className="contract-list">
             {inConflict.map((c, i) => (
@@ -314,7 +314,7 @@ function ContractList({ contracts }: { contracts: ConflictContract[] }) {
           </ul>
         </>
       ) : (
-        <p className="small muted m-0">Няма договори, сключени в периода на декларирания дял.</p>
+        <p className="small muted m-0">Няма договори, сключени в декларирания период.</p>
       )}
       {outside.length > 0 && (
         <details className="contract-outside">
@@ -346,7 +346,7 @@ function ContractItem({ c, conflict = false }: { c: ConflictContract; conflict?:
           {c.contractNumber ? `№ ${c.contractNumber}` : 'договор'}
         </Link>
         <span className="contract-amt">{money(c.amountEur)}</span>
-        {/* In-window items sit under the „…в момент на деклариран дял" heading + carry a left accent rail,
+        {/* In-window items sit under the „…в декларирания период" heading + carry a left accent rail,
             so a per-item chip would just repeat that; only the outside items need a temporal tag. */}
         {!conflict && <span className="small muted">{temporalLabel(c.temporal)}</span>}
       </span>
