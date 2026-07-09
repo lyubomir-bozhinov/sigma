@@ -166,6 +166,18 @@ SELECT 'contract', c.id, COALESCE(NULLIF(c.contract_subject, ''), t.title),
 FROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id
 JOIN bidders b ON b.id = c.bidder_id
 WHERE COALESCE(NULLIF(c.contract_subject, ''), t.title) IS NOT NULL;
+-- Свързани лица: one row per official with a PUBLISHED conflict link (private/family ownership), so a NAME
+-- search reaches their /conflicts/official profile. ref = person_id (→ personSlug at read), title = name,
+-- subtitle = latest declared institution (disambiguates homonyms), amount = total contract € of their
+-- linked winners. Published-only inherits the surface's expiry — a withdrawn/left-office official drops out.
+INSERT INTO search_index (kind, ref, title, ident, subtitle, amount)
+SELECT 'official', il.person_id, p.name, NULL,
+  (SELECT d.institution FROM declarations d WHERE d.person_id = il.person_id
+   ORDER BY d.declared_year DESC LIMIT 1),
+  SUM(il.contract_value_eur)
+FROM interest_links il JOIN persons p ON p.id = il.person_id
+WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+GROUP BY il.person_id, p.name;
 
 -- Summary (last result set printed by `wrangler d1 execute`)
 SELECT

@@ -1308,6 +1308,16 @@ DELETE FROM search_index WHERE kind = 'authority';
 INSERT INTO search_index (kind, ref, title, ident, subtitle, amount)
 SELECT 'authority', at.authority_id, at.name, COALESCE(substr(at.authority_id, 6), ''), COALESCE(at.settlement, ''), at.spent_eur
 FROM authority_totals at;
+-- Свързани лица: full delete+reinsert (officials are few) so a withdrawn/left-office official — one with no
+-- remaining PUBLISHED link — drops out of search, never lingering as a „current" conflict. Mirrors precompute.
+DELETE FROM search_index WHERE kind = 'official';
+INSERT INTO search_index (kind, ref, title, ident, subtitle, amount)
+SELECT 'official', il.person_id, p.name, NULL,
+  (SELECT d.institution FROM declarations d WHERE d.person_id = il.person_id ORDER BY d.declared_year DESC LIMIT 1),
+  SUM(il.contract_value_eur)
+FROM interest_links il JOIN persons p ON p.id = il.person_id
+WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+GROUP BY il.person_id, p.name;
 
 -- @refresh-batch contract-search-index
 DELETE FROM search_index WHERE kind = 'contract' AND ref IN (SELECT id FROM refresh_touched_contracts);

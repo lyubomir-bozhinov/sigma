@@ -555,7 +555,7 @@ export interface CompetitionData {
 // ── Search ──────────────────────────────────────────────────────────────────────────────────────
 
 export interface SearchHit {
-  kind: 'authority' | 'company' | 'contract';
+  kind: 'authority' | 'company' | 'contract' | 'official';
   slug: string;
   href: string;
   title: string;
@@ -564,13 +564,14 @@ export interface SearchHit {
   hasEik?: boolean;
   ownershipKind?: OwnershipKind | null;
   memberCount?: number | null;
+  hasConflict?: boolean; // company: has ≥1 PUBLISHED свързани-лица link → badge linking on to /conflicts/company/:eik
   subtitle: string | null;
   amountEur: number | null;
-  amountLabel: string; // „общо похарчено" / „общо спечелено" / „стойност"
+  amountLabel: string; // „общо похарчено" / „общо спечелено" / „стойност" / „по договори"
 }
 
 export interface SearchGroup {
-  kind: 'authority' | 'company' | 'contract';
+  kind: 'authority' | 'company' | 'contract' | 'official';
   label: string;
   total: number;
   hits: SearchHit[];
