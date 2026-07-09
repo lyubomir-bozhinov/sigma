@@ -5,7 +5,7 @@ import type { Route } from './+types/conflict.company';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
 import { Section, Callout, ExternalEikLink } from '../components/ui';
-import { ConflictTable } from '../components/ConflictTable';
+import { ConflictCards } from '../components/ConflictCards';
 import { publicCache } from '../lib/cache';
 import { withDbRetry } from '../lib/retry';
 import { seoMeta } from '../lib/meta';
@@ -75,7 +75,7 @@ export default function ConflictCompany({ loaderData }: Route.ComponentProps) {
           title="Длъжностни лица с деклариран дял"
           hint="Подредени по силата на връзката: първо договори от собствената институция, после дял към момента на договора."
         >
-          <ConflictTable
+          <ConflictCards
             links={links}
             caption={`Длъжностни лица с деклариран дял в ${company}`}
             omit="company"

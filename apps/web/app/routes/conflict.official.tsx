@@ -4,7 +4,7 @@ import type { Route } from './+types/conflict.official';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
 import { Section, Callout } from '../components/ui';
-import { ConflictTable } from '../components/ConflictTable';
+import { ConflictCards } from '../components/ConflictCards';
 import { publicCache } from '../lib/cache';
 import { withDbRetry } from '../lib/retry';
 import { seoMeta } from '../lib/meta';
@@ -69,7 +69,7 @@ export default function ConflictOfficial({ loaderData }: Route.ComponentProps) {
           title="Деклариран дял в компании изпълнители"
           hint="Дружества, спечелили обществени поръчки, в които лицето е декларирало дял — свой или на свързано лице. Подредени по силата на връзката."
         >
-          <ConflictTable
+          <ConflictCards
             links={links}
             caption={`Деклариран дял на ${official} в компании изпълнители`}
             omit="official"

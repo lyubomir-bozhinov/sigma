@@ -6,7 +6,7 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
 import { FactsList } from '../components/FactsList';
 import { Section, Callout, ShareBar } from '../components/ui';
-import { ConflictTable } from '../components/ConflictTable';
+import { ConflictCards } from '../components/ConflictCards';
 import { Pagination } from '../components/Pagination';
 import { publicCache } from '../lib/cache';
 import { withDbRetry } from '../lib/retry';
@@ -138,9 +138,10 @@ export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
               title="Деклариран дял в компании изпълнители"
               hint="Лица, декларирали дял — свой или на свързано лице — в дружество, спечелило поръчка. Подредени по силата на връзката: първо договори от собствената институция, после дял към момента на договора."
             >
-              <ConflictTable
+              <ConflictCards
                 links={pageLinks}
                 startRank={leaderboardRankOffset(page, PER_PAGE)}
+                totalCount={links.length}
                 caption="Длъжностни лица с деклариран дял в компании изпълнители"
               />
               {pageCount > 1 && <Pagination nav={nav} pageSize={PER_PAGE} unit="връзки" />}
