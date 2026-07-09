@@ -73,6 +73,11 @@ export const EMIT_REPORT_BLOCKS_GUIDE =
   '(отделна заявка `SELECT SUM(...)/COUNT(*)`). НЕ реферирай ред от многоредова серия (напр. ред 0 на ' +
   '„разход по година") като „общ" — това показва един ред вместо целия сбор. За серия ползвай ' +
   '`timeseries`/`table`; ако искаш и общ сбор, изпълни отделна обобщаваща заявка.\n' +
+  '  ЗА КЛАСАЦИИ/ТОП-N (напр. „10-те най-големи възложители/компании"): водещото `totals` НЕ бива да е ' +
+  'ГЛОБАЛНАТА сума за цялата таблица (напр. „общ разход на ВСИЧКИ възложители" = 52 млрд) — това подвежда ' +
+  'като заглавно число за въпрос само за топ-N. Или сумирай САМО показаните редове ' +
+  '(напр. `SELECT SUM(x) FROM (…ORDER BY x DESC LIMIT 10)`), или пропусни водещия `totals` и остави ' +
+  'класацията (`table`/`bar`) да е отговорът.\n' +
   '- facts: {"type":"facts","items":[{"term":"…","ref":{"resultId":"R1","row":0,"col":"…"}}]}\n' +
   '- table: {"type":"table","resultId":"R1","columns":[{"key":"name","header":"Възложител","format":"text","link":{"kind":"authority","idCol":"authority_id"}},{"key":"spent_eur","header":"Похарчено","format":"money"}]}\n' +
   '- bar: {"type":"bar","resultId":"R1","labelCol":"name","valueCol":"spent_eur"}\n' +
