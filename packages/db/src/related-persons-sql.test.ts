@@ -214,12 +214,16 @@ describe('свързани-лица SQL (real SQLite)', () => {
       expect(list.map((r) => r.id)).toEqual(['c:2', 'c:1', 'c:3', 'c:4']);
       // INVARIANT: the in-window amounts here sum to EXACTLY the leaderboard's contemporaneous_value_eur —
       // the list and the split cannot disagree (same join, same window bounds). This is the libel proof.
-      const inWindowSum = list
-        .filter((r) => r.temporal === 'contemporaneous')
-        .reduce((s, r) => s + Number(r.amount_eur), 0);
+      const inWindow = list.filter((r) => r.temporal === 'contemporaneous');
+      const inWindowSum = inWindow.reduce((s, r) => s + Number(r.amount_eur), 0);
       const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
       const ivan = board.find((r) => r.official === 'Иван Минев')!;
       expect(inWindowSum).toBe(Number(ivan.contemporaneous_value_eur));
+      // …and its COUNT twin: the leaderboard's contemporaneous_contract_count (the „X" in „X от Y" on the
+      // card) must equal the in-window rows the list expands to. Both are computed live from the same join,
+      // so a drift here = the collapsed card contradicting its own detail — decoupled from fixture literals
+      // above, this ties the two query paths directly and fails on any predicate skew between them.
+      expect(inWindow).toHaveLength(Number(ivan.contemporaneous_contract_count));
     });
   });
 

@@ -75,18 +75,16 @@ function ConflictCard({
   const funds = fundsCellLabel(l);
   const conflict = hasContemporaneousContracts(l);
   const loaded = fetcher.data != null;
-  // Guards a double-fetch from a rapid re-toggle before React commits (fetcher.state is a stale closure
-  // read), and lets us tell "never opened" (null) from "opened but the load failed" (retry affordance).
+  // Guards a double-fetch from a rapid re-toggle before React commits (fetcher.state is a stale closure read).
   const requested = useRef(false);
 
-  function load() {
-    requested.current = true;
-    fetcher.load(linkContractsHref(l));
-  }
   function toggle() {
     const next = !open;
     setOpen(next);
-    if (next && !requested.current) load(); // lazy-load once; cached by the card thereafter
+    if (next && !requested.current) {
+      requested.current = true;
+      fetcher.load(linkContractsHref(l)); // lazy-load once; cached by the card thereafter
+    }
   }
 
   // Names the expanded region so several open cards on one page stay distinguishable to screen readers.
@@ -185,7 +183,6 @@ function ConflictCard({
                   id={panelId}
                   role="region"
                   aria-label={`Договори — ${subject}`}
-                  aria-live="polite"
                   className="cc-panel"
                   inert={!open}
                   data-state={loaded ? 'loaded' : 'loading'}
@@ -193,13 +190,8 @@ function ConflictCard({
                   {fetcher.data ? (
                     <CaseDetail link={l} contracts={fetcher.data.contracts} />
                   ) : fetcher.state === 'loading' ? (
-                    <p className="muted small m-0">Зареждане на договорите…</p>
-                  ) : requested.current ? (
-                    <p className="muted small m-0">
-                      Договорите не се заредиха.{' '}
-                      <button type="button" className="cc-retry" onClick={load}>
-                        Опитай отново
-                      </button>
+                    <p className="muted small m-0" role="status">
+                      Зареждане на договорите…
                     </p>
                   ) : null}
                 </div>
