@@ -319,22 +319,13 @@
   background: var(--ink-soft);
   box-shadow: 0 0 0 1px var(--rule);
 }
+/* Year labels (start … middle years … end) — each anchored inline by tickStyle() in the component. */
 .tl-year {
   position: absolute;
   top: 0;
   font: 11px/1 var(--font-mono);
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
-}
-.tl-year-start {
-  left: 0;
-}
-.tl-year-end {
-  right: 0;
-}
-.tl-year-mid {
-  left: 50%;
-  transform: translateX(-50%);
 }
 .tl-legend {
   display: flex;
@@ -399,8 +390,29 @@
 .contract-outside {
   margin-top: 4px;
 }
-.contract-outside summary {
+/* Custom disclosure marker with a real gap — the native marker sat too close to „Извън периода". */
+.contract-outside > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
   cursor: pointer;
+  list-style: none;
+}
+.contract-outside > summary::-webkit-details-marker {
+  display: none;
+}
+.contract-outside > summary::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s ease;
+}
+.contract-outside[open] > summary::before {
+  transform: rotate(180deg);
 }
 
 /* ── Enhance: wider viewport → the signal strip lays its facts out in a row ──── */

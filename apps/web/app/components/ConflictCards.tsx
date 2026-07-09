@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type CSSProperties } from 'react';
 import { Link, useFetcher } from 'react-router';
 import { count, money, plural } from '@sigma/shared';
 import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-contract';
@@ -144,7 +144,7 @@ function ConflictCard({
               <span className="cc-funds-primary" title="по договори в момент на деклариран дял">
                 {funds.primary}
               </span>
-              {funds.total && <span className="cc-funds-total">от {funds.total} общо</span>}
+              {funds.total && <span className="cc-funds-total">от {funds.total}</span>}
             </dd>
           </div>
           <div className="cc-stat">
@@ -225,7 +225,7 @@ function CaseDetail({ link: l, contracts }: { link: ConflictLink; contracts: Con
           <div className="case-mag">
             <ShareBar ratio={mag} warn />
             <span className="case-mag-figures">
-              <strong>{funds.primary}</strong> от {funds.total} общо
+              <strong>{funds.primary}</strong> от {funds.total}
             </span>
           </div>
         </section>
@@ -253,7 +253,6 @@ function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: Confl
   const bandLeft = ws != null && we != null ? Math.min(ws, we) : 0;
   const bandWidth = ws != null && we != null ? Math.abs(we - ws) : 0;
   const maxStack = tl.marks.reduce((m, k) => Math.max(m, k.stackIndex), 0);
-  const singleYear = tl.minYear === tl.maxYear;
   return (
     <section className="cc-section">
       <h4 className="cc-section-title">
@@ -278,22 +277,27 @@ function Timeline({ link: l, contracts }: { link: ConflictLink; contracts: Confl
             title={String(m.year)}
           />
         ))}
-        {singleYear ? (
-          <span className="tl-year tl-year-mid">{tl.minYear}</span>
-        ) : (
-          <>
-            <span className="tl-year tl-year-start">{tl.minYear}</span>
-            <span className="tl-year tl-year-end">{tl.maxYear}</span>
-          </>
-        )}
+        {tl.ticks.map((t) => (
+          <span key={t.year} className="tl-year" style={tickStyle(t.leftPct)}>
+            {t.year}
+          </span>
+        ))}
       </div>
       <p className="tl-legend">
-        <span className="tl-dot in" aria-hidden="true" /> в периода на дела
+        <span className="tl-dot in" aria-hidden="true" /> в периода на дял
         <span className="tl-sep">·</span>
         <span className="tl-dot out" aria-hidden="true" /> извън периода
       </p>
     </section>
   );
+}
+
+// Anchor a year label: flush-left at the start, flush-right at the end, centred on its tick otherwise —
+// so the outermost labels never overflow the track (dots at the edges bleed ±half their width).
+function tickStyle(pct: number): CSSProperties {
+  if (pct <= 0) return { left: 0 };
+  if (pct >= 100) return { right: 0 };
+  return { left: `${pct}%`, transform: 'translateX(-50%)' };
 }
 
 function ContractList({ contracts }: { contracts: ConflictContract[] }) {
@@ -344,11 +348,9 @@ function ContractItem({ c, conflict = false }: { c: ConflictContract; conflict?:
         {c.contractNumber ? `№ ${c.contractNumber}` : 'договор'}
       </Link>
       <span className="contract-amt">{money(c.amountEur)}</span>
-      {conflict ? (
-        <Chip>в момент на дял</Chip>
-      ) : (
-        <span className="small muted">{temporalLabel(c.temporal)}</span>
-      )}
+      {/* In-window items sit under the „…в момент на деклариран дял" heading + carry a left accent rail,
+          so a per-item chip would just repeat that; only the outside items need a temporal tag. */}
+      {!conflict && <span className="small muted">{temporalLabel(c.temporal)}</span>}
     </li>
   );
 }

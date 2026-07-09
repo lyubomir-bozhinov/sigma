@@ -94,8 +94,8 @@ export function linkContractsHref(link: ConflictLink): string {
 
 const TEMPORAL_LABEL: Record<ConflictContract['temporal'], string> = {
   contemporaneous: 'в момент на дял',
-  before: 'преди дела',
-  after: 'след дела',
+  before: 'преди дял',
+  after: 'след дял',
   unknown: 'без дата',
 };
 
@@ -144,6 +144,8 @@ export interface ContractTimeline {
   marks: TimelineMark[];
   minYear: number;
   maxYear: number;
+  /** Year labels along the axis (start … middle years … end), thinned to stay legible on a narrow card. */
+  ticks: { year: number; leftPct: number }[];
   /** Declared-stake band edges, 0–100; null when the link carries no declared years to shade. */
   windowStartPct: number | null;
   windowEndPct: number | null;
@@ -185,6 +187,13 @@ export function contractTimeline(
       return { year: c.year, leftPct: toPct(c.year), inWindow: c.inWindow, stackIndex };
     });
 
+  // Year labels: every year when the span is short, thinned to ≤ ~8 labels on longer spans so they stay
+  // legible on a narrow card; the end year is always included exactly (not dropped by the step).
+  const step = Math.max(1, Math.ceil((span + 1) / 8));
+  const ticks: { year: number; leftPct: number }[] = [];
+  for (let y = minYear; y <= maxYear; y += step) ticks.push({ year: y, leftPct: toPct(y) });
+  if (ticks[ticks.length - 1].year !== maxYear) ticks.push({ year: maxYear, leftPct: 100 });
+
   // Band edges: both years when the window is a range, one point when only one is known, none otherwise.
   const bandLo = ws ?? we;
   const bandHi = we ?? ws;
@@ -192,6 +201,7 @@ export function contractTimeline(
     marks,
     minYear,
     maxYear,
+    ticks,
     windowStartPct: bandLo != null ? toPct(bandLo) : null,
     windowEndPct: bandHi != null ? toPct(bandHi) : null,
   };

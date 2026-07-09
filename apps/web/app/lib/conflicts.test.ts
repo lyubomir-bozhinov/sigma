@@ -249,6 +249,26 @@ describe('contractTimeline', () => {
     // the two 2024 contracts are flagged in-window and fanned by stackIndex
     const inWin = tl!.marks.filter((m) => m.inWindow);
     expect(inWin.map((m) => m.stackIndex)).toEqual([0, 1]);
+    // year ticks: a short span labels every year, start at 0% and end at 100% (middle years present)
+    expect(tl!.ticks.map((t) => t.year)).toEqual([2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]);
+    expect(tl!.ticks[0].leftPct).toBe(0);
+    expect(tl!.ticks[tl!.ticks.length - 1].leftPct).toBe(100);
+  });
+  it('thins year ticks on a long span but always keeps the end year', () => {
+    // 2000 → 2020 span 20 → step ceil(21/8)=3 → 2000,2003,…,2018, then the end year 2020 appended exactly
+    const tl = contractTimeline({ firstDeclaredYear: '2000', lastDeclaredYear: '2000' }, [
+      contract({ signedAt: '2000-01-01', temporal: 'contemporaneous' }),
+      contract({ signedAt: '2020-01-01', temporal: 'after' }),
+    ]);
+    const years = tl!.ticks.map((t) => t.year);
+    expect(years).toEqual([2000, 2003, 2006, 2009, 2012, 2015, 2018, 2020]);
+    expect(tl!.ticks[tl!.ticks.length - 1].leftPct).toBe(100);
+  });
+  it('renders a single centred tick when all activity is in one year', () => {
+    const tl = contractTimeline({ firstDeclaredYear: '2024', lastDeclaredYear: '2024' }, [
+      contract({ signedAt: '2024-01-01', temporal: 'contemporaneous' }),
+    ]);
+    expect(tl!.ticks).toEqual([{ year: 2024, leftPct: 50 }]);
   });
   it('returns null when no contract carries a date (nothing to plot)', () => {
     expect(
@@ -310,8 +330,8 @@ describe('contract list helpers', () => {
   });
   it('temporalLabel names each position; only „contemporaneous" is the conflict', () => {
     expect(temporalLabel('contemporaneous')).toBe('в момент на дял');
-    expect(temporalLabel('before')).toBe('преди дела');
-    expect(temporalLabel('after')).toBe('след дела');
+    expect(temporalLabel('before')).toBe('преди дял');
+    expect(temporalLabel('after')).toBe('след дял');
     expect(temporalLabel('unknown')).toBe('без дата');
   });
   it('contractYear takes the signing year, or „—" when undated', () => {

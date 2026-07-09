@@ -128,7 +128,7 @@ export default function Conflicts({ loaderData: links }: Route.ComponentProps) {
                 <ShareBar ratio={headline.contemporaneousEur / headline.totalEur} warn />
                 <span className="case-mag-figures">
                   <strong>{money(headline.contemporaneousEur)}</strong> от{' '}
-                  {money(headline.totalEur)} общо
+                  {money(headline.totalEur)}
                 </span>
               </div>
             )}
