@@ -387,9 +387,11 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
       // binding via a result handle, log a warning for the Promise observer. Not a hard block — false
       // positives exist (dates, IDs, CPV codes), so this is a signal, not an enforcement gate.
       if (modelProducedText && opts.ctx.results.length > 0 && hasBareNumbers(event.text)) {
+        // Redacted telemetry: the prose can contain personal names / a citizen's query echo, so log
+        // only non-identifying signal (length), never the text itself (GDPR — no PII to Workers logs).
         console.warn(
           '[assistant] prose-number leak: bare numeric token in assistant text outside report',
-          { sample: event.text.slice(0, 300) },
+          { textLen: event.text.length },
         );
       }
       resolveModelFinished();
@@ -552,11 +554,13 @@ export async function runAssistant(opts: RunAssistantOptions): Promise<Response>
           const persisted = await persistReport(opts.ctx, verified.report, modelId, verified);
           if (persisted) opts.ctx.persistedReport = persisted;
           const toolCallId = `fallback_${randomReportId()}`;
-          writer.write({ type: 'tool-input-start', toolCallId, toolName: 'emit_report' });
+          // Reuse EMIT_REPORT_TOOL (the same constant the tool registry and model path use) so a future
+          // rename of the tool name can't silently desync this synthesized fallback part from the real tool.
+          writer.write({ type: 'tool-input-start', toolCallId, toolName: EMIT_REPORT_TOOL });
           writer.write({
             type: 'tool-input-available',
             toolCallId,
-            toolName: 'emit_report',
+            toolName: EMIT_REPORT_TOOL,
             input: {},
           });
           writer.write({

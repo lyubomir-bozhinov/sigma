@@ -15,7 +15,7 @@
 // Until C4 deploys, every /reports/:id request returns 404.
 
 import type { Route } from './+types/report';
-import { type StoredReport, STORED_REPORT_SCHEMA_VERSION } from '~/lib/assistant-contract/report';
+import { type StoredReport } from '~/lib/assistant-contract/report';
 import { ReportBlockRenderer } from '~/components/ReportBlockRenderer';
 import { ReportAiWatermark } from '~/components/ReportAiWatermark';
 import { ReportToolbar } from '~/components/ReportToolbar';
@@ -24,11 +24,15 @@ import { ReportToolbar } from '~/components/ReportToolbar';
 
 function isStoredReport(value: unknown): value is StoredReport {
   if (typeof value !== 'object' || value === null) return false;
-  // Accept schemaVersion >= 1 so future minor bumps render as best-effort rather than 404.
+  // Accept any schemaVersion >= 1 (a stable floor), NOT `>= STORED_REPORT_SCHEMA_VERSION`: StoredReports
+  // are immutable in R2, so gating on the current code's version would 404 every already-stored v1 report
+  // the moment that constant is bumped. Forward-compat is intentional — newer reports render best-effort
+  // on older code — so the floor stays a literal 1. (STORED_REPORT_SCHEMA_VERSION marks what THIS code
+  // writes, not the minimum it can read.)
   if (
     !('schemaVersion' in value) ||
     typeof value.schemaVersion !== 'number' ||
-    (value.schemaVersion as number) < STORED_REPORT_SCHEMA_VERSION
+    (value.schemaVersion as number) < 1
   ) {
     return false;
   }

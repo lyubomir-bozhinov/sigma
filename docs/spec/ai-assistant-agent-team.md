@@ -741,8 +741,9 @@ resources. The entity corpus needs an embed/index step in the ETL, re-run on the
 - **Latency.** A 3-LLM chain on 27B FP8 is seconds; stream prose early, finalize the report card async
   so the dock stays responsive.
 - **Open:** Orchestrator as a Durable Object or a Cloudflare Workflow? DO fits per-turn coordination;
-  Workflow fits resumable multi-minute generations. With the rate-limit breaker now in AI Gateway (§4),
-  the orchestrator only needs per-generation coordination + concurrency — so a DO is the lighter fit
+  Workflow fits resumable multi-minute generations. With the global rate-limit cap enforced by the
+  `BgGptCircuitBreaker` Durable Object (§4), not AI Gateway, the orchestrator only needs per-generation
+  coordination + concurrency — so a DO is the lighter fit
   unless generations grow long enough to want Workflow durability.
 - **Open:** confirm AI Gateway passes the Whisper audio endpoint and AI SDK streaming end-to-end (§4);
   if audio passthrough is unsupported, route Whisper direct and gateway only the chat path.

@@ -20,7 +20,8 @@ const Y_TICK_COUNT = 4;
 const MAX_X_LABELS = 8;
 
 // CSS class cycle for multi-series stroke colours (defined in app.css under .ts-s0–.ts-s3).
-// Capped at 4 entries — a 5th series would silently reuse ts-s0 (indistinguishable).
+// Capped at 4 entries; series beyond the 4th are dropped by `.slice(0, MAX_SERIES)` below (only
+// single-series is emitted today). If multi-series past 4 ever ships, surface a truncation note.
 // Multi-series is a future extension; the public block contract only emits single-series today.
 const SERIES_CLASSES = ['ts-s0', 'ts-s1', 'ts-s2', 'ts-s3'] as const;
 const MAX_SERIES = SERIES_CLASSES.length;

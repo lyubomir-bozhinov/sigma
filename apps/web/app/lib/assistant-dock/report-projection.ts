@@ -7,13 +7,13 @@ import { count, date, money, pct } from '@sigma/shared';
 import { EMIT_REPORT_PART } from '../assistant-contract/stream';
 import { DEDUP_PART, type DedupData } from '../../../workers/assistant/dedup-stream';
 import type { DedupLayer } from '../../../workers/assistant/dedup';
+import type { CellFormat, EmitReportOutput, ResolvedReport } from './contract';
 
 // Client-safe allowlist for the untrusted `layer` (dedup.ts itself is worker-only — it runs key
 // derivation at module load, so we import DedupLayer type-only and keep the runtime set here). The
 // `satisfies` lock fails the build if any entry stops being a valid layer; a NEW union member merely
 // won't render its reuse affordance until added here (benign — falls back to regeneration).
 const DEDUP_LAYERS = ['L0', 'L1', 'L2', 'L2.5', 'L3'] as const satisfies readonly DedupLayer[];
-import type { CellFormat, EmitReportOutput, ResolvedReport } from './contract';
 
 // Minimal shape we read from a useChat UIMessage part — avoids coupling to the SDK's full part typing
 // (we only ever read `type`, `state`, `output`, and — for the dedup part — `data`).

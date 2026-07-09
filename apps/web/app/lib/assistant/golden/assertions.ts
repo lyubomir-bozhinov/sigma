@@ -169,6 +169,18 @@ export function assertNoNaNOrEmpty(report: ResolvedReport, emptyOk = false): voi
         if (!Number.isFinite(e.valueEur))
           throw new Error(`flow edge has a non-finite value: ${e.valueEur}`);
       }
+    } else if (block.type === 'facts') {
+      // facts items surface numbers via refs (e.g. value_eur, contracts, authorities). A string or
+      // null value is a legitimate display ('—'), but a numeric value that resolved to NaN/Infinity
+      // must be caught here too — the assertion's contract is "every numeric value the report
+      // presents is finite", and facts were previously skipped entirely.
+      for (const item of block.items) {
+        if (typeof item.value === 'number' && !Number.isFinite(item.value)) {
+          throw new Error(
+            `facts item "${item.term}" has a non-finite numeric value: ${item.value}`,
+          );
+        }
+      }
     }
 
     // Non-empty data arrays unless the fixture allows an empty result.

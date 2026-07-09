@@ -1266,12 +1266,23 @@ WHERE b.eik_normalized IN (SELECT eik FROM raw_ocds_parties WHERE eik IS NOT NUL
 -- default (0) and leak past the default filter (c.is_synthetic != 1) into public answers — and the
 -- reconcilable rollups below (which now exclude synthetic) would disagree with a live aggregate.
 -- Admin-derived c: rows keep their full-normalize value (this scopes to c:e:/c:o: only).
+-- Scoped to refresh_touched_contracts (like the D1-hot rollups below) rather than a full-table write
+-- on every slice: the touch-tenders batch above already inserts every contract joined to a raw_tenders
+-- row loaded this slice, so any contract whose tender's procedure_type could have changed this slice is
+-- already in the touched set. Contracts under untouched tenders keep their correct prior-slice value.
+-- This narrowing is sound ONLY while two invariants hold — breaking either reintroduces stale is_synthetic
+-- (a synthetic contract wrongly kept public, or vice versa): (1) the touch-tenders INSERT above stays
+-- unfiltered by lot_id, so it remains a superset of the header-only (lot_id IS NULL) tenders upsert that
+-- mutates procedure_type; (2) procedure_type is mutated ONLY by that tenders upsert (the raw_contracts-
+-- derived upsert omits it from DO UPDATE SET). Adding a lot_id filter to touch-tenders, or procedure_type
+-- to the raw_contracts upsert's DO UPDATE SET, would require reverting this to a full-table write.
 UPDATE contracts
 SET is_synthetic = COALESCE((
   SELECT CASE WHEN t.procedure_type = 'неизвестна' THEN 1 ELSE 0 END
   FROM tenders t WHERE t.id = contracts.tender_id
 ), 0)  -- COALESCE: a (today-unreachable) dangling tender_id yields NULL → NOT NULL abort; degrade to 0
-WHERE id GLOB 'c:[eo]:*';
+WHERE id GLOB 'c:[eo]:*'
+  AND id IN (SELECT id FROM refresh_touched_contracts);
 
 -- 6) Refresh rollups + FTS. Only the D1-hot rollups are scoped to touched rows; cheaper rollups stay
 -- full-recomputed in isolated batches so convergence stays simple.

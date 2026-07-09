@@ -61,22 +61,22 @@ describe('buildSlot1', () => {
   it('embeds the money figure, sanitized authority name, and sector label', () => {
     const built = buildSlot1(
       [{ authority: 'Институция А', amount_eur: 9000, value_flag: 'ok', div: '45' }],
-      '2024-01-03',
+      '2024-01-04',
       '2024-01-10',
     );
     expect(built?.label).toBe(
-      `Най-голяма поръчка, подписана 2024-01-03–2024-01-10: 9${NB}хил.${NB}€ — Институция А (Строителни и монтажни работи)`,
+      `Най-голяма поръчка, подписана 2024-01-04–2024-01-10: 9${NB}хил.${NB}€ — Институция А (Строителни и монтажни работи)`,
     );
   });
 
   it('uses a number-free period send query that carries no authority name', () => {
     const built = buildSlot1(
       [{ authority: 'Институция А', amount_eur: 9000, value_flag: 'ok', div: '45' }],
-      '2024-01-03',
+      '2024-01-04',
       '2024-01-10',
     );
     expect(built?.sendQuery).toBe(
-      'Покажи най-голямата поръчка, подписана в периода 2024-01-03–2024-01-10.',
+      'Покажи най-голямата поръчка, подписана в периода 2024-01-04–2024-01-10.',
     );
   });
 
@@ -86,48 +86,48 @@ describe('buildSlot1', () => {
         { authority: 'Институция А', amount_eur: 10_000_000, value_flag: 'ok', div: '45' },
         { authority: 'Институция Б', amount_eur: 1000, value_flag: 'ok', div: '45' },
       ],
-      '2024-01-03',
+      '2024-01-04',
       '2024-01-10',
     );
     expect(built?.label).toBe(
-      `Най-голяма поръчка, подписана 2024-01-03–2024-01-10: 10${NB}млн.${NB}€`,
+      `Най-голяма поръчка, подписана 2024-01-04–2024-01-10: 10${NB}млн.${NB}€`,
     );
   });
 
   it('returns null when no rows', () => {
-    expect(buildSlot1([], '2024-01-03', '2024-01-10')).toBe(null);
+    expect(buildSlot1([], '2024-01-04', '2024-01-10')).toBe(null);
   });
 });
 
 describe('buildSlot2', () => {
   it('labels the top sector with money and contract count', () => {
-    const built = buildSlot2({ div: '45', eur: 17_000, n: 4 }, '2024-01-03', '2024-01-10');
+    const built = buildSlot2({ div: '45', eur: 17_000, n: 4 }, '2024-01-04', '2024-01-10');
     expect(built?.label).toBe(
-      `Сектор с най-много средства 2024-01-03–2024-01-10: Строителни и монтажни работи — 17${NB}хил.${NB}€ по 4 договора`,
+      `Сектор с най-много средства 2024-01-04–2024-01-10: Строителни и монтажни работи — 17${NB}хил.${NB}€ по 4 договора`,
     );
   });
 
   it('returns null for an unknown CPV division', () => {
-    expect(buildSlot2({ div: '99', eur: 17_000, n: 4 }, '2024-01-03', '2024-01-10')).toBe(null);
+    expect(buildSlot2({ div: '99', eur: 17_000, n: 4 }, '2024-01-04', '2024-01-10')).toBe(null);
   });
 });
 
 describe('buildSlot3', () => {
   it('labels window activity with count and money', () => {
-    const built = buildSlot3({ n: 5, eur: 17_500 }, '2024-01-03', '2024-01-10');
-    expect(built.label).toBe(`Подписани 2024-01-03–2024-01-10: 5 договора за 18${NB}хил.${NB}€`);
+    const built = buildSlot3({ n: 5, eur: 17_500 }, '2024-01-04', '2024-01-10');
+    expect(built.label).toBe(`Подписани 2024-01-04–2024-01-10: 5 договора за 18${NB}хил.${NB}€`);
   });
 });
 
 describe('buildSlot4', () => {
   it('drops the slot when the total sample is below 20', () => {
-    expect(buildSlot4({ single: 2, total: 3 }, '2024-01-03', '2024-01-10')).toBe(null);
+    expect(buildSlot4({ single: 2, total: 3 }, '2024-01-04', '2024-01-10')).toBe(null);
   });
 
   it('labels the single-offer share as a percentage at the sample floor', () => {
-    const built = buildSlot4({ single: 5, total: 20 }, '2024-01-03', '2024-01-10');
+    const built = buildSlot4({ single: 5, total: 20 }, '2024-01-04', '2024-01-10');
     expect(built?.label).toBe(
-      `5 от 20 договора с известен брой оферти (25%) са с една оферта, 2024-01-03–2024-01-10`,
+      `5 от 20 договора с известен брой оферти (25%) са с една оферта, 2024-01-04–2024-01-10`,
     );
   });
 });
@@ -192,6 +192,18 @@ describe('generateSuggestedPrompts (fake D1)', () => {
     const upserts: UpsertCall[] = [];
     await generateSuggestedPrompts(fakeDb(upserts), new Date('2024-01-11T06:00:00Z'));
     expect(upserts.map((u) => u.slot)).toStrictEqual([1, 2, 3, 4]);
+  });
+
+  it('labels the window from its first INCLUDED day, not the excluded strict-> boundary', async () => {
+    // as_of=2024-01-10, 7-day window: SQL is signed_at > date(as_of,'-7 day') so 2024-01-03 is
+    // excluded and the earliest included day is 2024-01-04. Every label must read 2024-01-04, not
+    // the off-by-one 2024-01-03. Regresses if windowFrom drops the +1.
+    const upserts: UpsertCall[] = [];
+    await generateSuggestedPrompts(fakeDb(upserts), new Date('2024-01-11T06:00:00Z'));
+    for (const u of upserts) {
+      expect(u.label).toContain('2024-01-04–2024-01-10');
+      expect(u.label).not.toContain('2024-01-03');
+    }
   });
 
   it('writes the same labels on a second run (idempotent)', async () => {

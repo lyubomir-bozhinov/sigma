@@ -31,6 +31,21 @@ const parser = new Parser();
 /** Tables run_sql may read — the documented data dictionary (describe-schema.ts). */
 export const ALLOWED_TABLES: ReadonlySet<string> = new Set(TABLES.map((t) => t.name.toLowerCase()));
 
+// Personal-contact columns (GDPR). The table allowlist is table-level, so these are reachable via
+// run_sql even though describe-schema.ts never advertises them — a natural-person-data exposure the
+// public site itself suppresses (company.tsx). Deny any reference; keep public identifiers
+// (bulstat / eik) queryable. Contact-fields-only policy (PRIV-1).
+export const DENIED_COLUMNS: ReadonlySet<string> = new Set([
+  'address',
+  'street_address',
+  'contact_email',
+  'contact_phone',
+]);
+
+// Tables that carry a DENIED_COLUMNS field. A `*` / `table.*` over any of these expands to a denied
+// column, so a star is rejected while one is in scope — forcing explicit, non-personal columns.
+const PII_TABLES: ReadonlySet<string> = new Set(['authorities', 'bidders', 'parties']);
+
 const deny = (reason: string): GuardResult => ({ ok: false, reason });
 
 // Function policy, enforced at the AST level by NORMALISED name (quoting-proof: node-sql-parser maps
@@ -334,6 +349,7 @@ function denyAmplifyingStringChain(ast: unknown): string | null {
 type LimitNode = { seperator?: string; value?: unknown[] } | null | undefined;
 type FromEntry = {
   table?: string | null; // a plain table reference
+  as?: string | null; // its alias, if any (`contracts c` → as: 'c')
   join?: unknown; // join kind for entries after the first ('INNER JOIN', …)
   on?: unknown; // join condition; null for an (explicit) cross-join
   using?: unknown; // USING(...) join condition — the other bounded form
@@ -583,6 +599,144 @@ function limitCount(v: unknown): number {
   return NaN;
 }
 
+// Collect every FROM/JOIN table name at any nesting depth (used to decide whether a personal-data table
+// is in scope for the `*`-star rule below).
+function collectFromTables(node: unknown, acc: Set<string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const x of node) collectFromTables(x, acc);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.from)) {
+    for (const f of obj.from as FromEntry[]) {
+      if (f && typeof f.table === 'string') acc.add(f.table.toLowerCase());
+    }
+  }
+  for (const k of Object.keys(obj)) collectFromTables(obj[k], acc);
+}
+
+// Map every FROM/JOIN alias (or bare table name when unaliased) to its base table, at any depth — used to
+// resolve which table a `alias.*` star actually expands, so the star rule can reject only a star over a
+// personal-data table (`a.*` on authorities) while letting a safe one through (`c.*` on contracts, even
+// when a name table is joined for the label columns).
+function collectAliasMap(node: unknown, acc: Map<string, string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const x of node) collectAliasMap(x, acc);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.from)) {
+    for (const f of obj.from as FromEntry[]) {
+      if (f && typeof f.table === 'string' && f.table.length > 0) {
+        const base = f.table.toLowerCase();
+        const alias = typeof f.as === 'string' && f.as.length > 0 ? f.as.toLowerCase() : base;
+        acc.set(alias, base);
+      }
+    }
+  }
+  for (const k of Object.keys(obj)) collectAliasMap(obj[k], acc);
+}
+
+// The lowercased identifier a node names, or null if it is not one. A bare/qualified reference is a
+// `column_ref` (`.column`); a DOUBLE-QUOTED identifier — `"contact_email"` — parses as a
+// `double_quote_string` (`.value`), NOT a column_ref (node-sql-parser). Both must be recognised so the
+// personal-data denylist is quoting-proof — mirroring functionName's fn/"fn" normalisation (a column
+// check that inspected only column_ref nodes let `SELECT "contact_email" …` slip the denylist — PRIV-1).
+function identifierName(obj: Record<string, unknown>): string | null {
+  if (obj.type === 'column_ref' && typeof obj.column === 'string') return obj.column.toLowerCase();
+  if (obj.type === 'double_quote_string' && typeof obj.value === 'string')
+    return obj.value.toLowerCase();
+  return null;
+}
+
+// Reject any reference to a personal-contact column (SELECT list, WHERE, ORDER BY, JOIN ON, sub-query —
+// identifiers appear everywhere and this walks the whole AST), and reject a `*` / `table.*` while a
+// personal-data table is in scope (a star would expand to a denied column). Recognises both bare and
+// double-quoted names via identifierName (Layer 2 of the quoting-proof column guard). Fail-closed (PRIV-1).
+function denyDeniedColumn(ast: unknown): string | null {
+  const fromTables = new Set<string>();
+  collectFromTables(ast, fromTables);
+  const aliasMap = new Map<string, string>();
+  collectAliasMap(ast, aliasMap);
+  let piiInScope = false;
+  for (const t of fromTables) {
+    if (PII_TABLES.has(t)) {
+      piiInScope = true;
+      break;
+    }
+  }
+  let offender: string | null = null;
+  const walk = (node: unknown): void => {
+    if (offender || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const x of node) walk(x);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    const col = identifierName(obj); // bare/qualified column_ref OR a double-quoted identifier
+    if (col !== null) {
+      if (DENIED_COLUMNS.has(col)) {
+        offender = `column not allowed: ${col} (personal data)`;
+        return;
+      }
+      if (col === '*') {
+        // Resolve which table the star expands. A QUALIFIED star (`c.*`) is rejected only when its base
+        // table is a personal-data table — so `c.*` on contracts passes even when authorities/bidders are
+        // joined for label columns. A BARE `*` can pull in any joined table's columns, so it is rejected
+        // whenever a personal-data table is in scope. (Fixes the contract-list over-block; PRIV-1.)
+        const qualifier =
+          obj.type === 'column_ref' && typeof obj.table === 'string' && obj.table.length > 0
+            ? obj.table.toLowerCase()
+            : null;
+        if (qualifier) {
+          const base = aliasMap.get(qualifier) ?? qualifier;
+          if (PII_TABLES.has(base)) {
+            offender = `${qualifier}.* is not allowed — it expands a table with personal-data columns; list explicit columns`;
+            return;
+          }
+        } else if (piiInScope) {
+          offender =
+            'SELECT * is not allowed while a table with personal-data columns is in scope; list explicit columns';
+          return;
+        }
+      }
+    }
+    for (const k of Object.keys(obj)) walk(obj[k]);
+  };
+  walk(ast);
+  return offender;
+}
+
+// Reject every DOUBLE-QUOTED identifier anywhere in the statement (Layer 1 of the quoting-proof guard).
+// `"col"` is the SQL-standard identifier quote, so D1/SQLite resolves it to a real column regardless of
+// the DQS (double-quoted-string) setting — SQLite's DQS misfeature only widens this. That is exactly how a
+// double-quoted name evades a check that inspects only column_ref nodes. No canonical/curated analytics
+// query uses double-quoted identifiers (all use bare identifiers with single-quoted literals), so refuse
+// the whole class fail-closed — the same posture already applied to FUNCTIONS (functionName normalises
+// `fn`/`"fn"`). denyDeniedColumn runs FIRST, so a double-quoted PII column still surfaces its specific
+// "(personal data)" reason; any other double-quoted identifier is caught here. The AST is a finite tree.
+function denyQuotedIdentifier(node: unknown): string | null {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = denyQuotedIdentifier(item);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  if (obj.type === 'double_quote_string') {
+    return 'double-quoted identifiers are not allowed; use bare identifiers';
+  }
+  for (const key of Object.keys(obj)) {
+    const r = denyQuotedIdentifier(obj[key]);
+    if (r) return r;
+  }
+  return null;
+}
+
 /**
  * Parse-verify and scope `sql`: assert a single read-only SELECT over allowlisted tables (plain tables
  * / sub-queries only — no table-valued functions), no comma or ON-less cross-join, no recursion, and a
@@ -640,6 +794,19 @@ export function guardSelect(sql: string, maxRows = MAX_ROWS): GuardResult {
   // table cannot be smuggled past the check by an out-of-scope CTE of the same name (review #80).
   const badTable = denyDisallowedTable(ast, new Set<string>());
   if (badTable) return deny(badTable);
+
+  // Personal-contact columns are reachable because the allowlist is table-level; deny them (and a
+  // `*` over a personal-data table) so run_sql cannot surface a natural person's email/phone/address.
+  // Recognises bare AND double-quoted names (Layer 2) so a double-quoted PII column gets its specific
+  // reason before the blanket double-quote rejection below.
+  const badColumn = denyDeniedColumn(ast);
+  if (badColumn) return deny(badColumn);
+
+  // Refuse any remaining double-quoted identifier (Layer 1). Double quotes are the SQL-standard identifier
+  // quote — `"contact_email"` resolves to the real column, which is how it slipped a column_ref-only check
+  // (PRIV-1). No legitimate query needs them; fail closed, matching the function guard's quoting-proof posture.
+  const quotedIdent = denyQuotedIdentifier(ast);
+  if (quotedIdent) return deny(quotedIdent);
 
   // Bound the OUTER result with an AST-authoritative LIMIT. The SQLite `LIMIT offset, count` COMMA form
   // fools the regex-based enforceLimit — it captures the offset (the first number), not the count, so a

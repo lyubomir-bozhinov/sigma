@@ -41,8 +41,10 @@ export const AssistantEmptyState = ({
       Опитайте например:
     </p>
     <ul className="assistant-empty__prompts">
-      {prompts.map((p) => (
-        <li key={p.label}>
+      {prompts.map((p, i) => (
+        // Key by index+send: dynamic loader prompts aren't guaranteed to have unique labels, and a
+        // duplicate `label` key would trigger a React duplicate-key warning and unstable reconciliation.
+        <li key={`${i}:${p.send}`}>
           <button type="button" className="assistant-empty__prompt" onClick={() => onPick(p.send)}>
             {p.label}
           </button>

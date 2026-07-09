@@ -28,12 +28,14 @@ const ROLE_LABEL: Record<string, string> = {
 /** Each bullet gist is capped so no single verbose turn dominates the recap. */
 export const GIST_MAX_CHARS = 200;
 
+// Cap a single line to GIST_MAX_CHARS so no one verbose turn dominates the recap.
+const capGist = (line: string): string =>
+  line.length > GIST_MAX_CHARS ? `${line.slice(0, GIST_MAX_CHARS).trimEnd()}…` : line;
+
 // The message's visible prose (messageText: pre-tool preamble and <tool_response> echoes already
 // excluded), reduced to its first line and capped — a one-line gist of the turn.
-const firstLineOf = (message: UIMessage): string => {
-  const line = messageText(message).split('\n', 1)[0].trim();
-  return line.length > GIST_MAX_CHARS ? `${line.slice(0, GIST_MAX_CHARS).trimEnd()}…` : line;
-};
+const firstLineOf = (message: UIMessage): string =>
+  capGist(messageText(message).split('\n', 1)[0].trim());
 
 // The one-line gist of a turn. An assistant turn that produced a report is best summarised by the
 // report's own projection (title + lead stat — the same essence the chip shows); prose falls back to
@@ -44,7 +46,8 @@ const gistOf = (message: UIMessage): string => {
     const output = reportOutputFromMessage(message);
     if (output?.ok) {
       const chip = projectChip(output.report);
-      return chip.leadStat ? `${chip.title} — ${chip.leadStat}` : chip.title;
+      // Cap the report gist too — otherwise a long title/leadStat bypasses the per-bullet GIST cap.
+      return capGist(chip.leadStat ? `${chip.title} — ${chip.leadStat}` : chip.title);
     }
   }
   return firstLineOf(message);
@@ -76,6 +79,10 @@ export function condenseForPost(messages: UIMessage[]): UIMessage[] {
   const recent = messages.slice(-KEEP_RECENT);
 
   let bullets = older.map(bulletFor).filter((b): b is string => b !== null);
+  // If every older turn reduced to nothing (all malformed/empty), a recap would be a header-only
+  // message that silently discards the older context while still consuming a message slot. Emit only
+  // the recent window instead.
+  if (bullets.length === 0) return recent;
   // Enforce the recap cap by dropping oldest bullets first. `join` adds one '\n' per line incl. header.
   let length = RECAP_HEADER.length + bullets.reduce((n, b) => n + b.length + 1, 0);
   while (bullets.length > 1 && length > RECAP_MAX_CHARS) {

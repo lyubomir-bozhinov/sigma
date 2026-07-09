@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
 import {
   isRouteErrorResponse,
   Link,
@@ -19,7 +19,12 @@ import { useNonce } from './nonce';
 import { SiteHeader } from './components/SiteHeader';
 import { SiteFooter } from './components/SiteFooter';
 import { AccessibilityWidget } from './components/AccessibilityWidget';
-import { AssistantDock } from './lib/assistant-dock/AssistantDock';
+// Lazy so the AI SDK + dock tree stay out of every page's critical bundle — the dock is mount-gated
+// (renders null on the server and first client render) so a client-only chunk causes no hydration
+// mismatch, and it only loads when the launch gate is on.
+const AssistantDock = lazy(() =>
+  import('./lib/assistant-dock/AssistantDock').then((m) => ({ default: m.AssistantDock })),
+);
 import { assistantEnabled } from './lib/assistant/enabled';
 import { PageHeader } from './components/PageHeader';
 import { getCoverageMeta } from './lib/coverage';
@@ -156,6 +161,23 @@ function RouteProgress() {
   return <div className="route-progress" aria-hidden="true" data-busy={busy} />;
 }
 
+// Isolate the assistant dock: a render throw inside it must not take down the whole page chrome.
+// The dock is a supplementary tool, so the fallback is simply nothing.
+class AssistantBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown, info: { componentStack?: string }) {
+    // The dock is an AI-SDK + streaming + Turnstile surface; a silent disappearance would hide real
+    // regressions. Log so a crash is at least visible in the browser console / error reporting.
+    console.error('[assistant] dock crashed and was suppressed', error, info?.componentStack);
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 export default function App({ loaderData }: Route.ComponentProps) {
   // After a client-side navigation, move focus to the main region so keyboard and
   // screen-reader users aren't stranded on <body> mid-page (and the skip link stays
@@ -198,7 +220,11 @@ export default function App({ loaderData }: Route.ComponentProps) {
       />
       <AccessibilityWidget />
       {loaderData.assistantEnabled && (
-        <AssistantDock turnstileSiteKey={loaderData.turnstileSiteKey} />
+        <AssistantBoundary>
+          <Suspense fallback={null}>
+            <AssistantDock turnstileSiteKey={loaderData.turnstileSiteKey} />
+          </Suspense>
+        </AssistantBoundary>
       )}
     </>
   );

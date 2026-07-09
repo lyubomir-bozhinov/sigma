@@ -562,7 +562,8 @@ html.a11y-textonly body:has(.assistant-dock--panel) {
   display: inline-block;
   padding: 2px var(--s-2);
   background: #ca8a04;
-  color: #fff;
+  /* Black on #ca8a04 ≈ 7.2:1 (WCAG 1.4.3 AA). White (#fff) was 2.94:1 — fails. */
+  color: #000;
   font: 700 10px/1.4 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1100,7 +1101,8 @@ html.a11y-textonly .report-bar {
 
   .report-watermark__badge {
     background: #ca8a04 !important;
-    color: white !important;
+    /* Black on #ca8a04 ≈ 7.2:1 (WCAG 1.4.3 AA); white was 2.94:1. */
+    color: #000 !important;
     font-size: 7pt !important;
     padding: 1pt 4pt !important;
     -webkit-print-color-adjust: exact;

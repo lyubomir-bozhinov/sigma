@@ -39,8 +39,6 @@ export interface DefaultFilterResult {
   sql: { fragment: string; params: unknown[] };
 }
 
-const SYNTHETIC_PROCEDURE = 'неизвестна';
-
 const DATE_COLUMN: Record<DateField, string> = {
   signed_at: 'c.signed_at',
   published_at: 'c.published_at',

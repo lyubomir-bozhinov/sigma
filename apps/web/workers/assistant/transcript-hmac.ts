@@ -164,7 +164,11 @@ function hasValidSlot(msg: TranscriptMessage): boolean {
     Number.isInteger(msg.turnIndex) &&
     msg.turnIndex >= 0 &&
     Number.isInteger(msg.position) &&
-    msg.position >= 0
+    msg.position >= 0 &&
+    // `reports` is client-authored; a non-array value (e.g. a number) would make `(msg.reports ??
+    // []).length` undefined and throw in canonicalBytes. Drop such a message rather than let the
+    // uncaught throw fail the whole verify/filter pass.
+    (msg.reports == null || Array.isArray(msg.reports))
   );
 }
 
