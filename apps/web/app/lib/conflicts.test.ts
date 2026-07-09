@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { moneyBare } from '@sigma/shared';
 import type { ConflictContract, ConflictLink } from '@sigma/api-contract';
 import {
+  authorityShares,
   companyConflictsHref,
   companyProfileHref,
   contractHref,
@@ -50,6 +51,8 @@ function contract(over: Partial<ConflictContract> = {}): ConflictContract {
     contractSlug: 'e:abc123',
     signedAt: '2021-05-01',
     authority: 'Община Пловдив',
+    authorityId: 'a:plovdiv',
+    authorityTotalEur: 10_000_000,
     contractKind: 'Услуги',
     procedureType: 'открита процедура',
     subject: 'Ремонт на общински път',
@@ -344,5 +347,105 @@ describe('contract list helpers', () => {
   });
   it('contractHref points at the contract detail page', () => {
     expect(contractHref(contract({ contractSlug: 'e:abc123' }))).toBe('/contracts/e:abc123');
+  });
+});
+
+describe('authorityShares', () => {
+  it('groups by authority, computes the capture share, and sorts strongest first', () => {
+    // Body A: winner took 2M of a 10M body = 20%. Body B: 1M of a 2M body = 50% → B leads on share
+    // despite A's larger absolute €.
+    const shares = authorityShares([
+      contract({
+        authorityId: 'a:A',
+        authority: 'Община А',
+        amountEur: 2_000_000,
+        authorityTotalEur: 10_000_000,
+      }),
+      contract({
+        authorityId: 'a:B',
+        authority: 'Община Б',
+        amountEur: 1_000_000,
+        authorityTotalEur: 2_000_000,
+      }),
+    ]);
+    expect(shares.map((s) => s.authorityId)).toEqual(['a:B', 'a:A']);
+    expect(shares[0]).toMatchObject({
+      authority: 'Община Б',
+      companyEur: 1_000_000,
+      ratio: 0.5,
+      contractCount: 1,
+    });
+    expect(shares[1]).toMatchObject({ authority: 'Община А', companyEur: 2_000_000, ratio: 0.2 });
+  });
+
+  it('sums the winner ALL its contracts at a body — window-consistent numerator over the all-time base', () => {
+    // The denominator (authority_totals.spent_eur) is all-time; so the numerator must be all the winner's
+    // contracts at that body, NOT just the in-window ones — else it is an in-window sum over an all-time base
+    // (the exact framing trap). before + contemporaneous + after all count toward companyEur here.
+    const shares = authorityShares([
+      contract({
+        authorityId: 'a:A',
+        amountEur: 1_000_000,
+        temporal: 'before',
+        authorityTotalEur: 10_000_000,
+      }),
+      contract({
+        authorityId: 'a:A',
+        amountEur: 2_000_000,
+        temporal: 'contemporaneous',
+        authorityTotalEur: 10_000_000,
+      }),
+      contract({
+        authorityId: 'a:A',
+        amountEur: 1_000_000,
+        temporal: 'after',
+        authorityTotalEur: 10_000_000,
+      }),
+    ]);
+    expect(shares).toHaveLength(1);
+    expect(shares[0]).toMatchObject({
+      companyEur: 4_000_000,
+      ratio: 0.4,
+      inWindow: true,
+      contractCount: 3,
+    });
+  });
+
+  it('marks inWindow only when a contract falls in the declared period', () => {
+    const noWindow = authorityShares([
+      contract({ authorityId: 'a:A', temporal: 'before' }),
+      contract({ authorityId: 'a:A', temporal: 'after' }),
+    ]);
+    expect(noWindow[0].inWindow).toBe(false);
+  });
+
+  it('counts a null amount as 0, never NaN', () => {
+    const shares = authorityShares([
+      contract({ authorityId: 'a:A', amountEur: null, authorityTotalEur: 10_000_000 }),
+      contract({ authorityId: 'a:A', amountEur: 500_000, authorityTotalEur: 10_000_000 }),
+    ]);
+    expect(shares[0].companyEur).toBe(500_000);
+    expect(shares[0].ratio).toBe(0.05);
+  });
+
+  it('suppresses the ratio (null) when the body has no rollup denominator, and sorts it last', () => {
+    const shares = authorityShares([
+      contract({ authorityId: 'a:none', amountEur: 9_000_000, authorityTotalEur: null }),
+      contract({ authorityId: 'a:A', amountEur: 1_000_000, authorityTotalEur: 10_000_000 }),
+    ]);
+    // The un-rolled-up body has a bigger € but no share → it must trail the body with a real share.
+    expect(shares.map((s) => s.authorityId)).toEqual(['a:A', 'a:none']);
+    expect(shares[1].ratio).toBeNull();
+  });
+
+  it('clamps the ratio to 1 as a guard (numerator can never legitimately exceed the base)', () => {
+    const shares = authorityShares([
+      contract({ authorityId: 'a:A', amountEur: 12_000_000, authorityTotalEur: 10_000_000 }),
+    ]);
+    expect(shares[0].ratio).toBe(1);
+  });
+
+  it('is empty for no contracts', () => {
+    expect(authorityShares([])).toEqual([]);
   });
 });

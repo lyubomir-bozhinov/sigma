@@ -157,6 +157,8 @@ interface ContractRow {
   id: string;
   signed_at: string | null;
   authority: string | null;
+  authority_id: string;
+  authority_total_eur: number | null; // authority_totals.spent_eur; null when the body has no rollup row
   contract_kind: string | null;
   contract_number: string | null;
   amount_eur: number | null;
@@ -169,7 +171,8 @@ interface ContractRow {
 // status/interest_class means a non-surfaced link_key returns [] — never a way to enumerate held/internal
 // links. Marking mirrors classify.temporalStatus (min/max declared-year span) so the 'contemporaneous'
 // rows here are exactly the subset counted by contemporaneous_contract_count in LINK_SELECT.
-export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS authority, cc.contract_kind,
+export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS authority, aa.id AS authority_id,
+    ath.spent_eur AS authority_total_eur, cc.contract_kind,
     cc.contract_number, cc.amount_eur,
     COALESCE(NULLIF(cc.contract_subject, ''), tt.title) AS subject,
     NULLIF(tt.procedure_type, 'неизвестна') AS procedure_type,
@@ -184,6 +187,7 @@ export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS author
     JOIN contracts cc ON cc.bidder_id = bb.id
     JOIN tenders tt ON tt.id = cc.tender_id
     JOIN authorities aa ON aa.id = tt.authority_id
+    LEFT JOIN authority_totals ath ON ath.authority_id = aa.id
   WHERE il.link_key = ?
     AND il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
   ORDER BY (temporal = 'contemporaneous') DESC, cc.signed_at DESC, cc.amount_eur DESC`;
@@ -199,6 +203,8 @@ export async function getLinkContracts(
     contractSlug: contractSlug(r.id),
     signedAt: r.signed_at,
     authority: r.authority ?? '',
+    authorityId: r.authority_id,
+    authorityTotalEur: r.authority_total_eur,
     contractKind: r.contract_kind,
     contractNumber: r.contract_number,
     amountEur: r.amount_eur,

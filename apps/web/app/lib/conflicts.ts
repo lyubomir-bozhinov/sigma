@@ -216,6 +216,62 @@ export function contractHref(c: ConflictContract): string {
   return `/contracts/${c.contractSlug}`;
 }
 
+export interface AuthorityShare {
+  authorityId: string;
+  authority: string;
+  /** This winner's € from THIS body — sum of all its listed contracts here (all temporal buckets). */
+  companyEur: number;
+  /** The body's total recorded procurement (authority_totals.spent_eur), the ratio's denominator. */
+  authorityTotalEur: number | null;
+  /** companyEur / authorityTotalEur, clamped to [0,1]; null when the denominator is missing or ≤0. */
+  ratio: number | null;
+  /** ≥1 of these contracts falls in the declared-disclosure window — the conflict subset, a row marker. */
+  inWindow: boolean;
+  contractCount: number;
+}
+
+/** Per-awarding-body capture: how big a slice of each authority's recorded procurement went to this winner.
+ *  Numerator and denominator share the SAME all-time window — the winner's full contract set at that body vs
+ *  the body's total recorded spend — so the share is window-consistent (never an in-window sum over an
+ *  all-time base, the framing trap the timeline relabel fixed). `inWindow` only MARKS bodies where a contract
+ *  falls in the declared period; it never redefines the ratio. Sorted strongest-share-first (nulls last), so
+ *  the body a conflicted winner dominates leads. A null figure counts as 0 — the € never reads as fabricated. */
+export function authorityShares(contracts: ConflictContract[]): AuthorityShare[] {
+  const byAuthority = new Map<string, AuthorityShare>();
+  for (const c of contracts) {
+    let row = byAuthority.get(c.authorityId);
+    if (!row) {
+      row = {
+        authorityId: c.authorityId,
+        authority: c.authority,
+        companyEur: 0,
+        authorityTotalEur: c.authorityTotalEur,
+        ratio: null,
+        inWindow: false,
+        contractCount: 0,
+      };
+      byAuthority.set(c.authorityId, row);
+    }
+    row.companyEur += c.amountEur ?? 0;
+    row.contractCount += 1;
+    if (c.temporal === 'contemporaneous') row.inWindow = true;
+  }
+  const rows = [...byAuthority.values()];
+  for (const r of rows) {
+    r.ratio =
+      r.authorityTotalEur != null && r.authorityTotalEur > 0
+        ? Math.min(1, r.companyEur / r.authorityTotalEur)
+        : null;
+  }
+  rows.sort((a, b) => {
+    if (a.ratio == null && b.ratio == null) return b.companyEur - a.companyEur;
+    if (a.ratio == null) return 1;
+    if (b.ratio == null) return -1;
+    return b.ratio - a.ratio || b.companyEur - a.companyEur;
+  });
+  return rows;
+}
+
 /** Leaderboard headline: total public money to linked winners, counts, and the family (свързано лице)
  *  subset. A null contract value counts as 0 (never NaN) — the money figure must never read as fabricated. */
 export function privateOwnershipHeadline(links: ConflictLink[]): {

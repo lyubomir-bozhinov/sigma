@@ -4,6 +4,7 @@ import { count, money, plural } from '@sigma/shared';
 import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-contract';
 import { Chip, ExternalEikLink, ShareBar } from './ui';
 import {
+  authorityShares,
   companyProfileHref,
   contractHref,
   contractTimeline,
@@ -223,8 +224,45 @@ function CaseDetail({ link: l, contracts }: { link: ConflictLink; contracts: Con
         </section>
       )}
       <Timeline link={l} contracts={contracts} />
+      <AuthorityShares contracts={contracts} />
       <ContractList contracts={contracts} />
     </div>
+  );
+}
+
+// How big a slice of each awarding body's recorded procurement this winner captured — the materiality axis
+// the timeline lacks (a small sum can still be a huge share of a small municipality). Bodies where a contract
+// falls in the declared window carry a marker; the bar is neutral (a high share is a question, not a verdict).
+function AuthorityShares({ contracts }: { contracts: ConflictContract[] }) {
+  const shares = authorityShares(contracts);
+  if (shares.length === 0) return null;
+  return (
+    <section className="cc-section">
+      <h4 className="cc-section-title">Дял при възложителите</h4>
+      <ul className="auth-shares" role="list">
+        {shares.map((s) => (
+          <li key={s.authorityId} className="auth-share">
+            <span className="auth-share-head">
+              <span className="auth-share-name">{s.authority}</span>
+              {s.inWindow && <Chip tone="window">в декларирания период</Chip>}
+            </span>
+            {s.ratio != null ? (
+              <ShareBar ratio={s.ratio} />
+            ) : (
+              <span className="auth-share-nobar small muted">дял не е наличен</span>
+            )}
+            <span className="auth-share-figures small muted">
+              {money(s.companyEur)}
+              {s.authorityTotalEur != null && <> от общо {money(s.authorityTotalEur)} възложени</>}
+              <span className="auth-share-count">
+                {' · '}
+                {count(s.contractCount)} {plural(s.contractCount, 'договор', 'договора')}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

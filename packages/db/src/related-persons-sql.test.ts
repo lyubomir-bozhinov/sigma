@@ -94,6 +94,9 @@ INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, co
   ('c:2','t:2','eik:111',20000000,'EUR','2023-07-01','Д-2',20000000),
   ('c:3','t:3','eik:111',5000000,'EUR','2024-02-01','Д-3',5000000),
   ('c:4','t:4','eik:111',1000000,'EUR',NULL,'Д-4',1000000);
+-- Rollup row for the awarding body — the per-authority capture-share denominator the read query LEFT JOINs.
+INSERT INTO authority_totals (authority_id, name, spent_eur, contracts, suppliers, avg_eur) VALUES
+  ('a:1','ОБЩИНА ТЕСТ',50000000,10,4,5000000);
 `;
 
 describe('свързани-лица SQL (real SQLite)', () => {
@@ -222,6 +225,10 @@ describe('свързани-лица SQL (real SQLite)', () => {
       expect(byNum['Д-1'].procedure_type).toBe('открита процедура');
       expect(byNum['Д-4'].procedure_type).toBeNull(); // NULLIF folds the synthetic-tender sentinel
       expect(byNum['Д-2'].subject).toBe('Доставка на софтуер');
+      // Per-authority capture join: every row carries its body id + the body's rollup total (the share's
+      // denominator). Same authority here → same id + total across all four rows.
+      expect(list.map((r) => r.authority_id)).toEqual(['a:1', 'a:1', 'a:1', 'a:1']);
+      expect(list.every((r) => Number(r.authority_total_eur) === 50000000)).toBe(true);
       // INVARIANT: the in-window amounts here sum to EXACTLY the leaderboard's contemporaneous_value_eur —
       // the list and the split cannot disagree (same join, same window bounds). This is the libel proof.
       const inWindow = list.filter((r) => r.temporal === 'contemporaneous');
@@ -234,6 +241,17 @@ describe('свързани-лица SQL (real SQLite)', () => {
       // so a drift here = the collapsed card contradicting its own detail — decoupled from fixture literals
       // above, this ties the two query paths directly and fails on any predicate skew between them.
       expect(inWindow).toHaveLength(Number(ivan.contemporaneous_contract_count));
+    });
+  });
+
+  it('LEFT JOINs the authority rollup — a body with no total still returns its contracts (null total, no drop)', () => {
+    withDb((dbPath) => {
+      // Drop the rollup so a:1 has no total row. An INNER JOIN here would silently vanish every contract
+      // (data loss → undercount); the LEFT JOIN must keep all four with a null denominator instead.
+      sqlite(dbPath, `DELETE FROM authority_totals;`);
+      const list = rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:ivan|111'));
+      expect(list).toHaveLength(4);
+      expect(list.every((r) => r.authority_total_eur === null)).toBe(true);
     });
   });
 
