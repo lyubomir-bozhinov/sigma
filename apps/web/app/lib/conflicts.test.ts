@@ -51,6 +51,8 @@ function contract(over: Partial<ConflictContract> = {}): ConflictContract {
     signedAt: '2021-05-01',
     authority: 'Община Пловдив',
     contractKind: 'Услуги',
+    procedureType: 'открита процедура',
+    subject: 'Ремонт на общински път',
     contractNumber: 'Д-1',
     amountEur: 1_000_000,
     temporal: 'contemporaneous',

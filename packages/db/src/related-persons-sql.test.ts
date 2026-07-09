@@ -83,9 +83,12 @@ INSERT INTO interest_links
 -- deterministic: contemporaneous = 2 contracts / €30M; the total contract_value_eur column is unrelated
 -- (stored €88M) — the point is the read-time window subset, not the stored aggregate.
 INSERT INTO authorities (id, name) VALUES ('a:1','ОБЩИНА ТЕСТ');
+-- t:2 is a DIRECT AWARD (no public notice) — the read query surfaces the procedure verbatim per tender, so
+-- this must ride through as-is; t:4 is a synthetic tender ('неизвестна') that the mapping folds to null.
 INSERT INTO tenders (id, source_id, title, authority_id, procedure_type) VALUES
-  ('t:1','unp1','Т1','a:1','открита'),('t:2','unp2','Т2','a:1','открита'),
-  ('t:3','unp3','Т3','a:1','открита'),('t:4','unp4','Т4','a:1','открита');
+  ('t:1','unp1','Ремонт на път','a:1','открита процедура'),
+  ('t:2','unp2','Доставка на софтуер','a:1','договаряне без обявление'),
+  ('t:3','unp3','Т3','a:1','открита процедура'),('t:4','unp4','Т4','a:1','неизвестна');
 INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, amount_eur) VALUES
   ('c:1','t:1','eik:111',10000000,'EUR','2020-05-01','Д-1',10000000),
   ('c:2','t:2','eik:111',20000000,'EUR','2023-07-01','Д-2',20000000),
@@ -212,6 +215,13 @@ describe('свързани-лица SQL (real SQLite)', () => {
       ]);
       // the contract id rides along in the same order → the UI links each row to /contracts/:id
       expect(list.map((r) => r.id)).toEqual(['c:2', 'c:1', 'c:3', 'c:4']);
+      // award procedure + subject ride through verbatim, per tender (proves it's not a hardcoded column):
+      // Д-2/t:2 is the direct award, Д-1/t:1 the open one, and the synthetic 'неизвестна' folds to NULL.
+      const byNum = Object.fromEntries(list.map((r) => [r.contract_number, r]));
+      expect(byNum['Д-2'].procedure_type).toBe('договаряне без обявление');
+      expect(byNum['Д-1'].procedure_type).toBe('открита процедура');
+      expect(byNum['Д-4'].procedure_type).toBeNull(); // NULLIF folds the synthetic-tender sentinel
+      expect(byNum['Д-2'].subject).toBe('Доставка на софтуер');
       // INVARIANT: the in-window amounts here sum to EXACTLY the leaderboard's contemporaneous_value_eur —
       // the list and the split cannot disagree (same join, same window bounds). This is the libel proof.
       const inWindow = list.filter((r) => r.temporal === 'contemporaneous');

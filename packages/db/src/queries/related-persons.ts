@@ -160,6 +160,8 @@ interface ContractRow {
   contract_kind: string | null;
   contract_number: string | null;
   amount_eur: number | null;
+  procedure_type: string | null; // award procedure (tenders.procedure_type); 'неизвестна' for synthetic tenders
+  subject: string | null; // tender subject (tenders.title AS subject)
   temporal: ConflictContract['temporal'];
 }
 
@@ -169,6 +171,8 @@ interface ContractRow {
 // rows here are exactly the subset counted by contemporaneous_contract_count in LINK_SELECT.
 export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS authority, cc.contract_kind,
     cc.contract_number, cc.amount_eur,
+    COALESCE(NULLIF(cc.contract_subject, ''), tt.title) AS subject,
+    NULLIF(tt.procedure_type, 'неизвестна') AS procedure_type,
     CASE
       WHEN cc.signed_at IS NULL OR il.first_declared_year IS NULL OR il.last_declared_year IS NULL THEN 'unknown'
       WHEN CAST(strftime('%Y', cc.signed_at) AS INTEGER) < CAST(il.first_declared_year AS INTEGER) THEN 'before'
@@ -198,6 +202,10 @@ export async function getLinkContracts(
     contractKind: r.contract_kind,
     contractNumber: r.contract_number,
     amountEur: r.amount_eur,
+    // procedure_type is NULLIF'd against 'неизвестна' (the migration's synthetic-tender sentinel) in the
+    // query, so null here means "procedure unknown" → the UI omits it rather than showing a placeholder.
+    procedureType: r.procedure_type,
+    subject: r.subject,
     temporal: r.temporal,
   }));
 }

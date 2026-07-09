@@ -628,7 +628,9 @@ export interface ConflictContract {
   contractSlug: string; // URL segment for /contracts/:id (the contract detail page)
   signedAt: string | null; // ISO date as recorded; null when the source has no signing date
   authority: string; // awarding public body (public record)
-  contractKind: string | null; // Доставки / Услуги / Строителство
+  contractKind: string | null; // Доставки / Услуги / Строителство (what KIND of contract)
+  procedureType: string | null; // award procedure verbatim (открита процедура / договаряне без обявление…); null = unknown/synthetic. HOW it was awarded — the competition signal.
+  subject: string | null; // tender subject (предмет) as recorded — what the contract was FOR
   contractNumber: string | null;
   amountEur: number | null; // canonical SAFE-to-sum EUR; null when no trustworthy figure
   temporal: 'contemporaneous' | 'before' | 'after' | 'unknown';

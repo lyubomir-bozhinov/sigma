@@ -333,16 +333,23 @@ function ContractList({ contracts }: { contracts: ConflictContract[] }) {
 function ContractItem({ c, conflict = false }: { c: ConflictContract; conflict?: boolean }) {
   return (
     <li className={conflict ? 'contract-item contract-item-conflict' : 'contract-item'}>
-      <span className="contract-year">{contractYear(c)}</span>
-      <span className="contract-authority">{c.authority || '—'}</span>
-      {c.contractKind && <span className="contract-kind">{c.contractKind}</span>}
-      <Link to={contractHref(c)} className="contract-link">
-        {c.contractNumber ? `№ ${c.contractNumber}` : 'договор'}
-      </Link>
-      <span className="contract-amt">{money(c.amountEur)}</span>
-      {/* In-window items sit under the „…в момент на деклариран дял" heading + carry a left accent rail,
-          so a per-item chip would just repeat that; only the outside items need a temporal tag. */}
-      {!conflict && <span className="small muted">{temporalLabel(c.temporal)}</span>}
+      {/* The tender subject (предмет) — what the money bought — leads; it's the concrete fact a reader wants. */}
+      {c.subject && <span className="contract-subject">{c.subject}</span>}
+      <span className="contract-meta">
+        <span className="contract-year">{contractYear(c)}</span>
+        <span className="contract-authority">{c.authority || '—'}</span>
+        {/* Award procedure verbatim (open vs direct/no-notice) — the competition signal. Shown neutrally for
+            now; emphasis + a "без открита процедура" aggregate wait until the ЗОП type allowlist is pinned. */}
+        {c.procedureType && <span className="contract-procedure">{c.procedureType}</span>}
+        {c.contractKind && <span className="contract-kind">{c.contractKind}</span>}
+        <Link to={contractHref(c)} className="contract-link">
+          {c.contractNumber ? `№ ${c.contractNumber}` : 'договор'}
+        </Link>
+        <span className="contract-amt">{money(c.amountEur)}</span>
+        {/* In-window items sit under the „…в момент на деклариран дял" heading + carry a left accent rail,
+            so a per-item chip would just repeat that; only the outside items need a temporal tag. */}
+        {!conflict && <span className="small muted">{temporalLabel(c.temporal)}</span>}
+      </span>
     </li>
   );
 }

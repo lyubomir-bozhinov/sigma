@@ -363,9 +363,8 @@
 }
 .contract-item {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 0;
+  flex-direction: column;
+  gap: 2px;
   padding: 4px 0 4px 10px;
   border-left: 2px solid var(--rule);
   font-size: 13px;
@@ -374,7 +373,20 @@
 .contract-item-conflict {
   border-left-color: var(--accent);
 }
-.contract-item > * + *::before {
+/* The subject (предмет) leads on its own line — it can run long, so it must not share the wrapping meta row. */
+.contract-subject {
+  color: var(--ink);
+  font-weight: 500;
+}
+/* The meta row: the compact dot-separated facts (year · authority · procedure · kind · № · amount). */
+.contract-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  color: var(--ink-mid);
+}
+.contract-meta > * + *::before {
   content: '·';
   display: inline-block;
   margin: 0 6px;
