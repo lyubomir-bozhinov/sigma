@@ -7,7 +7,9 @@ function csp(scriptSrc: string[]): string {
   return [
     "default-src 'self'",
     `script-src 'self' ${TURNSTILE_ORIGIN} ${scriptSrc.join(' ')}`.trim(),
-    `frame-src ${TURNSTILE_ORIGIN}`,
+    // Keep 'self': CSP does NOT fall back to default-src once frame-src is present, so omitting 'self'
+    // here would block every same-origin <iframe> on the site, not just widen it to the Turnstile origin.
+    `frame-src 'self' ${TURNSTILE_ORIGIN}`,
     // `style-src` keeps 'unsafe-inline': the only remaining inline `style=` attributes carry
     // genuinely dynamic, per-row values that cannot be enumerated as classes — chart-bar widths
     // (StackedBar, RankedBars, ShareBar, SingleOfferPortion) and the procedure-mix segment colours

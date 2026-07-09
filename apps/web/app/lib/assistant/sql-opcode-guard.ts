@@ -59,6 +59,13 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   'AggFinal',
   'AggStep',
   'BeginSubrtn',
+  // Bitwise/shift arithmetic ops (`&`, `|`, `~`, `<<`, `>>`). Pure register math, read-only — the write
+  // signal is OpenWrite/VUpdate, never these. D1 emits `BitAnd` for some boolean/`NOT IN` compilations,
+  // so omitting them false-denied valid read-only SELECTs (observed on Q41 „възложители извън София",
+  // 2026-07-08); mirror of the already-allowed Add/Subtract/Multiply/Remainder.
+  'BitAnd',
+  'BitNot',
+  'BitOr',
   'Blob', // load a blob/text value into a register — read (SQLite 3.51.3 / Node 22)
   'Cast',
   'Close', // close a cursor — read (SQLite 3.51.3 / Node 22)
@@ -137,6 +144,8 @@ export const READ_ONLY_OPCODES: ReadonlySet<string> = new Set([
   // indexed column (e.g. `signed_at >= a AND signed_at < b`); missing from the node:sqlite harvest, so it
   // false-denied the exact range shape the temporal template produces (observed in production 2026-07-02).
   'Sequence',
+  'ShiftLeft', // `<<` — pure register bitwise shift, read-only (mirror of BitAnd/BitOr).
+  'ShiftRight', // `>>` — pure register bitwise shift, read-only.
   'Sort',
   'SorterData',
   'SorterInsert',

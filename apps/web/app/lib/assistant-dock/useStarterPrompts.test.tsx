@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useStarterPrompts } from './useStarterPrompts';
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -7,6 +7,13 @@ const jsonResponse = (body: unknown, status = 200) =>
     status,
     headers: { 'content-type': 'application/json' },
   });
+
+// The hook's effect awaits fetch → response.json() → parsePrompts before it can setState — at least two
+// microtask hops. A single `await Promise.resolve()` only drains ONE hop, so a "stays undefined" assertion
+// would pass even with the validation removed (the chain simply hasn't finished). Crossing a macrotask
+// boundary (setTimeout(0)) guarantees the whole microtask queue — fetch, json, parse, any setState — has
+// drained, so the negative assertions actually exercise the rejection path.
+const flushAsyncWork = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -38,7 +45,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 
@@ -50,7 +57,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 
@@ -62,7 +69,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 
@@ -74,7 +81,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 
@@ -86,7 +93,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 
@@ -102,7 +109,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 
@@ -114,7 +121,7 @@ describe('useStarterPrompts', () => {
 
     const { result } = renderHook(() => useStarterPrompts());
 
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(result.current).toBeUndefined();
   });
 });

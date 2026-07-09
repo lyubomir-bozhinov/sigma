@@ -155,9 +155,10 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * for another (#97). Tags are unquoted, so they can never alias a real string value (which
  * `JSON.stringify` always quotes) nor each other.
  *
- * Domain: JSON values — from D1 bind params, D1 result rows, and JSON tool-call args — plus `Date`;
- * acyclic by construction (parsed JSON and D1 rows cannot contain cycles), so the recursion is bounded.
- * Non-JSON exotics (Map/Set/Symbol/function) cannot cross those boundaries, so they are out of scope.
+ * Domain: JSON values — from D1 bind params, D1 result rows, and JSON tool-call args — plus `Date` and
+ * ArrayBuffer/typed arrays (D1 BLOB columns deserialize to these); acyclic by construction (parsed JSON
+ * and D1 rows cannot contain cycles), so the recursion is bounded. Non-JSON exotics (Map/Set/Symbol/
+ * function) cannot cross those boundaries, so they are out of scope.
  */
 function canonicalJson(value: unknown): string {
   if (typeof value === 'bigint') return `bigint:${value}`;
@@ -165,6 +166,16 @@ function canonicalJson(value: unknown): string {
   if (value instanceof Date) return `date:${value.getTime()}`;
   if (typeof value === 'number' && !Number.isFinite(value)) return `number:${value}`; // NaN, ±Infinity
   if (Object.is(value, -0)) return 'number:-0'; // JSON.stringify erases the sign (-0 → "0")
+  // D1 BLOB columns deserialize to ArrayBuffer/typed arrays. `Object.keys` on these is [], so without
+  // an explicit branch every distinct binary value would canonicalize to `{}` and collide — exactly the
+  // cross-question numeric collision (#97) this fingerprint exists to prevent. Tag by byte content.
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    const bytes =
+      value instanceof ArrayBuffer
+        ? new Uint8Array(value)
+        : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `blob:${bytes.length}:${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  }
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value) ?? 'null';
   }

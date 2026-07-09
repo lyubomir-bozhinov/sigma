@@ -73,7 +73,8 @@ export type NegativeKind =
   | 'prose-number' // emit smuggles a material number into text/callout prose → bind must fail
   | 'home-totals' // reconcile target is `home_totals` → assertion 4 must reject
   | 'reconcile-mismatch' // aggregate disagrees with the rollup → assertReconciled must throw
-  | 'dangling-handle'; // emit references a missing column/handle → bind must fail
+  | 'dangling-handle'; // emit references a missing display column → bind SUCCEEDS with a warning (the
+//                       cell renders null); it is no longer a hard bind failure (see reports.golden.test)
 
 export interface GoldenFixture {
   id: string;

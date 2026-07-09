@@ -21,6 +21,36 @@ const ENDPOINT = '/assistant/chat';
 const isAbortError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError';
 
+// Upper bound for a single chat request. Streaming answers take seconds; 90s comfortably covers a slow
+// model turn while still rescuing the UI from a silently-dropped connection.
+const STREAM_TIMEOUT_MS = 90_000;
+
+// Combine the user-abort signal with a request timeout. Uses the platform AbortSignal.timeout/any when
+// present; falls back to a manual AbortController for older browsers (AbortSignal.any is Chrome 116 /
+// Firefox 124 / Safari 17.4) so the call never throws TypeError and the timeout guard isn't silently
+// dead. A timeout aborts with a TimeoutError (not AbortError), so it surfaces the network-error path,
+// while a propagated user stop() stays a silent AbortError.
+function requestSignal(userSignal: AbortSignal | null | undefined, timeoutMs: number): AbortSignal {
+  if (typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function') {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    return userSignal ? AbortSignal.any([userSignal, timeout]) : timeout;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('The operation timed out.', 'TimeoutError')),
+    timeoutMs,
+  );
+  controller.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+  if (userSignal) {
+    if (userSignal.aborted) controller.abort(userSignal.reason);
+    else
+      userSignal.addEventListener('abort', () => controller.abort(userSignal.reason), {
+        once: true,
+      });
+  }
+  return controller.signal;
+}
+
 // Pull a string `{ error }` out of an untrusted JSON body, or null.
 const errorField = (body: unknown): string | null =>
   typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
@@ -38,9 +68,11 @@ export const classifyingFetch = async (
 ): Promise<Response> => {
   // Attach a fresh Turnstile token when the gate is active; a no-op (unchanged init) otherwise.
   const token = await nextTurnstileToken();
-  const requestInit = token
-    ? { ...init, headers: withTurnstileHeader(init?.headers, token) }
-    : init;
+  const baseInit = token ? { ...init, headers: withTurnstileHeader(init?.headers, token) } : init;
+  // Bound the request so a wedged/half-open socket can't leave the dock stuck on a spinner forever
+  // (combined with the user-abort signal; falls back to a manual controller on older browsers).
+  const signal = requestSignal(baseInit?.signal, STREAM_TIMEOUT_MS);
+  const requestInit = { ...baseInit, signal };
   let response: Response;
   try {
     response = await fetch(input, requestInit);

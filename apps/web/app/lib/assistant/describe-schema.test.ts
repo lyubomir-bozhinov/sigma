@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CANONICAL_QUERIES, DATA_TRAPS, TABLES } from './describe-schema';
+import {
+  CANONICAL_QUERIES,
+  cpvReference,
+  DATA_TRAPS,
+  describeSchema,
+  TABLES,
+} from './describe-schema';
 
 // The data dictionary is the RAG grounding corpus (rag.ts embeds these chunks; ADR-0008). Drift between
 // the canonical queries and the documented tables silently poisons that grounding — the model adapts a
@@ -26,9 +32,32 @@ describe('describe-schema data dictionary', () => {
 
   it('data traps are non-empty, distinct imperative rules', () => {
     // Exact count (not a floor) so an accidental deletion trips the test too (review #52).
-    expect(DATA_TRAPS.length).toBe(14);
+    expect(DATA_TRAPS.length).toBe(15);
     expect(new Set(DATA_TRAPS).size).toBe(DATA_TRAPS.length);
     for (const trap of DATA_TRAPS) expect(trap.trim().length).toBeGreaterThan(20);
+  });
+
+  it('CPV reference maps the health theme to divisions 33 and 85 (not 38) — Q24 guard', () => {
+    const ref = cpvReference();
+    // The curated health group must resolve to 33 (medical/pharma) + 85 (health services), so the model
+    // stops mapping „здравеопазване" to 38 (lab/optical) or 31 (electrical).
+    expect(ref).toMatch(/Здравеопазване[^\n]*→ раздели[^\n]*33/);
+    expect(ref).toMatch(/Здравеопазване[^\n]*85/);
+    expect(ref).toContain(
+      '33 — Медицинско оборудване, фармацевтични продукти и продукти за лични грижи',
+    );
+    // and it ships inside the assembled dictionary the model actually reads
+    expect(describeSchema()).toContain('Речник на CPV раздели');
+  });
+
+  it('documents authority region as a NAME, not a NUTS3 code — Q41 guard', () => {
+    const totals = TABLES.find((t) => t.name === 'authority_totals');
+    expect(totals?.columns).toMatch(/region \(ИМЕ/);
+    expect(totals?.columns).toContain('НЕ е NUTS3 код');
+    // an „извън София" example exists and excludes by NAME, never by code
+    const outsideSofia = CANONICAL_QUERIES.find((q) => q.intent.includes('ИЗВЪН София'));
+    expect(outsideSofia?.sql).toContain("NOT IN ('София (столица)', 'София')");
+    expect(outsideSofia?.sql).not.toContain('BG411');
   });
 
   it('every canonical query joins only documented tables (or its own CTEs)', () => {

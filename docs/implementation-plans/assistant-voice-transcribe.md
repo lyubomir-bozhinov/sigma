@@ -51,8 +51,11 @@ for chat (internal company — privacy is a non-issue here).
   server-side `ASSISTANT_API_KEY`. Base/model overridable via `BGGPT_STT_BASE_URL` / `BGGPT_STT_MODEL`
   (defaults `https://api.bggpt.ai/v1`, `bggpt-whisper-large-v3`).
 - **Fallback — Cloudflare Workers AI Whisper.** `env.AI.run('@cf/openai/whisper-large-v3-turbo', { audio,
-language: 'bg' })`, called **directly with no AI Gateway** — the gateway logs request/response _payloads_
-  by default (`collectLog` is all-or-nothing), so routing audio through it would persist voice in logs.
+language: 'bg' }, { gateway: { id, collectLog: false } })` — **superseded**: ADR-0013 (the newer, accepted
+  decision) routes BOTH legs through the `sigma-assistant` AI Gateway with `cf-aig-collect-log: false`, so
+  audio is never persisted while cost/latency stay observable for both STT legs. The shipped code
+  (`assistant.transcribe.tsx`) passes the gateway options accordingly; the earlier "called directly with no
+  AI Gateway" plan is no longer accurate.
 - **Order + observability.** `TRANSCRIBE_PRIMARY` env (`bggpt` default, or `workers-ai`) flips the order
   without a deploy. The two attempts are `?? `-chained; an **empty/mis-shaped** primary result is treated as
   a _failed_ attempt so the fallback engages (guards against a silent BgGPT shape change). The response

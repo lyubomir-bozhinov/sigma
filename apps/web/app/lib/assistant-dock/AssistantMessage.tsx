@@ -9,8 +9,9 @@ import { MarkdownBlock } from '~/components/MarkdownBlock';
 //    sentence or partial table ("| Изпълнител…") before embedding the <tool_call> tag. That text
 //    becomes a TextUIPart before the first ToolUIPart. Primary strategy: prefer text that appears
 //    AFTER the last tool-call/tool-result part. Exception: if the post-tool text is shorter than
-//    MIN_LEN characters (a stray fragment like "ума"), fall back to pre-tool preamble prose if it
-//    is substantial and does not start with '|' (i.e. is not a partial markdown table).
+//    MIN_LEN characters — including the empty case, where the model wrote its whole summary before
+//    the <tool_call> and emitted nothing after — fall back to pre-tool preamble prose if it is
+//    substantial and does not start with '|' (i.e. is not a partial markdown table).
 //
 // 2. LEAKED TOOL/REPORT MARKUP — the model sometimes writes structural pseudo-XML into a TEXT part
 //    instead of (or alongside) a real tool part: a <tool_response> echo of the JSON result, a malformed
@@ -50,12 +51,13 @@ export const messageText = (message: UIMessage): string => {
   // Text before the last tool part is pre-tool preamble — discard it by default.
   const postTool = extractText(parts.slice(lastToolIdx + 1));
 
-  // A short post-tool fragment (the model emitted a stray token after the last tool result, e.g.
-  // "ума") is meaningless. Fall back to the pre-tool preamble: the Gemma-based model often writes
-  // the actual summary prose BEFORE its first tool call. Skip preambles starting with `|` (partial
-  // markdown tables — the confusing case the original preamble-discard rule was written to prevent).
+  // A short or empty post-tool result is unusable: either the model emitted a stray token after the
+  // last tool result (e.g. "ума"), or it wrote nothing after the tool call at all. In both cases fall
+  // back to the pre-tool preamble — the Gemma-based model often writes the actual summary prose BEFORE
+  // its first tool call, so an empty post-tool text must not silently drop that summary. Skip preambles
+  // starting with `|` (partial markdown tables — the case the original preamble-discard rule prevents).
   const MIN_LEN = 10;
-  if (lastToolIdx >= 0 && postTool.length > 0 && postTool.length < MIN_LEN) {
+  if (lastToolIdx >= 0 && postTool.length < MIN_LEN) {
     let firstToolIdx = parts.length;
     for (let i = 0; i < parts.length; i++) {
       if (parts[i].type !== 'text' && parts[i].type !== 'step-start') {

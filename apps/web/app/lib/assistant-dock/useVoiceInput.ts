@@ -286,7 +286,12 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
         capTimerRef.current = setTimeout(() => stopRef.current(), MAX_RECORDING_MS);
         startSilenceMonitor(stream);
       })
-      .catch((err) => fail(classifyMediaError(err)));
+      .catch((err) => {
+        // Mirror the resolve path's mount guard: if getUserMedia rejects after unmount (permission
+        // prompt dismissed post-unmount), don't run fail()/setState on a torn-down component.
+        if (!mountedRef.current) return;
+        fail(classifyMediaError(err));
+      });
   }, [state.status, fail, transcribe, teardown, startSilenceMonitor]);
 
   // Cleanup on unmount — the ONLY effect (never starts capture, per the Rules of React).

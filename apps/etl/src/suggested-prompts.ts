@@ -203,11 +203,16 @@ export function buildSlot4(row: Slot4Row | null, from: string, to: string): Prom
   };
 }
 
-/** ISO date `days` before (and inclusive at) `asOf`, matching the SQL `signed_at > date(asOf,'-Nd')`. */
+/**
+ * First calendar day actually included by the slot window, for display labels. The SQL lower bound is
+ * STRICT (`signed_at > date(asOf,'-Nd')`), so `date(asOf,'-Nd')` itself is excluded and the earliest
+ * included day is `asOf - days + 1`. Returning that here keeps the `${from}–${to}` label honest: a
+ * reader who sees a contract dated exactly on the displayed start will find it in the results.
+ */
 function windowFrom(asOf: string, days: number): string {
   const to = new Date(`${asOf}T00:00:00Z`);
   const from = new Date(to);
-  from.setUTCDate(from.getUTCDate() - days);
+  from.setUTCDate(from.getUTCDate() - days + 1);
   return from.toISOString().slice(0, 10);
 }
 

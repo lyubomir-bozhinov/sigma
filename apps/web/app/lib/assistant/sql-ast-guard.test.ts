@@ -127,10 +127,11 @@ describe('guardSelect', () => {
   it('rejects an explicit JOIN / CROSS JOIN with no ON/USING (Cartesian product, review #80)', () => {
     expect(guardSelect('SELECT * FROM contracts JOIN bidders').ok).toBe(false);
     expect(guardSelect('SELECT * FROM contracts CROSS JOIN bidders').ok).toBe(false);
-    // a JOIN that DOES carry a condition is accepted
-    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON b.id = c.bidder_id').ok).toBe(
-      true,
-    );
+    // a JOIN that DOES carry a condition is accepted (explicit column — `*` over bidders is denied by
+    // the PRIV-1 personal-data star rule, unrelated to the cross-join check under test here)
+    expect(
+      guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON b.id = c.bidder_id').ok,
+    ).toBe(true);
   });
 
   it('rejects a table-valued function nested in a sub-query or WHERE-IN (review #80, ydimitrof H1)', () => {
@@ -240,10 +241,11 @@ describe('guardSelect', () => {
     expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON c.id = c.tender_id').ok).toBe(
       false,
     );
-    // a real connecting condition passes
-    expect(guardSelect('SELECT * FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok).toBe(
-      true,
-    );
+    // a real connecting condition passes (explicit column — `*` over bidders is denied by the PRIV-1
+    // personal-data star rule, which is unrelated to the cross-join check under test here)
+    expect(
+      guardSelect('SELECT c.id FROM contracts c JOIN bidders b ON c.bidder_id = b.id').ok,
+    ).toBe(true);
   });
 
   it('rejects a JOIN whose ON connects only via a sub-query qualifier (Cartesian bypass — review #80, ultra)', () => {
@@ -395,5 +397,130 @@ describe('guardSelect', () => {
       expect(r.ok, sql).toBe(false);
       if (!r.ok) expect(r.reason, sql).toMatch(reason);
     }
+  });
+});
+
+describe('guardSelect — personal-data column denylist (PRIV-1)', () => {
+  it('rejects contact_email in the SELECT list', () => {
+    const r = guardSelect('SELECT contact_email FROM authorities');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: contact_email \(personal data\)/);
+  });
+
+  it('rejects contact_phone referenced only in WHERE', () => {
+    const r = guardSelect('SELECT a.name FROM authorities a WHERE a.contact_phone IS NOT NULL');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: contact_phone \(personal data\)/);
+  });
+
+  it('rejects address on bidders', () => {
+    const r = guardSelect('SELECT address FROM bidders');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: address \(personal data\)/);
+  });
+
+  it('rejects street_address on the parties projection', () => {
+    const r = guardSelect('SELECT street_address FROM parties');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: street_address \(personal data\)/);
+  });
+
+  it('rejects SELECT * when a personal-data table is in scope', () => {
+    const r = guardSelect('SELECT * FROM authorities');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
+  });
+
+  it('rejects a qualified authorities.* star (expands personal-data columns)', () => {
+    const r = guardSelect('SELECT a.* FROM authorities a');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/a\.\* is not allowed/);
+  });
+
+  it('allows a qualified c.* on contracts even when name tables are joined (contract-list path)', () => {
+    const r = guardSelect(
+      'SELECT c.*, a.name AS authority, b.name AS bidder FROM contracts c ' +
+        'JOIN tenders t ON t.id = c.tender_id ' +
+        'JOIN authorities a ON a.id = t.authority_id ' +
+        'JOIN bidders b ON b.id = c.bidder_id',
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects a bare * when a personal-data table is joined into a contract list', () => {
+    const r = guardSelect('SELECT * FROM contracts c JOIN authorities a ON a.id = c.tender_id');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/SELECT \* is not allowed/);
+  });
+
+  it('allows public identifiers (name, bulstat) on authorities', () => {
+    const r = guardSelect('SELECT name, bulstat FROM authorities');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows eik_normalized on bidders', () => {
+    const r = guardSelect('SELECT eik_normalized FROM bidders WHERE eik_valid = 1');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows COUNT(*) over a personal-data table (aggregate star is not a column expansion)', () => {
+    const r = guardSelect('SELECT COUNT(*) FROM authorities');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows SELECT * on a non-personal table (tenders)', () => {
+    const r = guardSelect('SELECT * FROM tenders');
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('guardSelect — double-quoted identifier bypass (PRIV-1, quoting-proof)', () => {
+  // A double-quoted identifier parses as a `double_quote_string`, NOT a `column_ref`, so a check that
+  // inspected only column_ref nodes let `SELECT "contact_email" …` slip the personal-data denylist. Both
+  // layers are exercised through guardSelect: a double-quoted PII column surfaces the specific
+  // "(personal data)" reason (denyDeniedColumn, quote-aware), and any other double-quoted identifier the
+  // blanket double-quote rejection.
+
+  it('rejects a double-quoted PII column with the personal-data reason (Layer 2)', () => {
+    const r = guardSelect('SELECT "contact_email" FROM authorities');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/column not allowed: contact_email \(personal data\)/);
+  });
+
+  it('rejects double-quoted address/contact_phone on bidders', () => {
+    const r = guardSelect('SELECT "address", "contact_phone" FROM bidders');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/personal data/);
+  });
+
+  it('rejects a double-quoted PII column behind an alias', () => {
+    const r = guardSelect('SELECT "contact_email" AS e FROM parties');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/personal data/);
+  });
+
+  it('rejects a double-quoted PII column mixed with a public column and a quoted WHERE ref', () => {
+    const r = guardSelect(
+      'SELECT eik, "contact_email" FROM authorities WHERE "contact_phone" IS NOT NULL',
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/personal data/);
+  });
+
+  it('rejects a double-quoted NON-PII identifier too (blanket no-double-quotes policy, Layer 1)', () => {
+    const r = guardSelect('SELECT "name" FROM tenders');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/double-quoted identifiers are not allowed/);
+  });
+
+  it('rejects a double-quoted identifier in ORDER BY', () => {
+    const r = guardSelect('SELECT id FROM tenders ORDER BY "id" LIMIT 5');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/double-quoted identifiers are not allowed/);
+  });
+
+  it('still allows the equivalent bare-identifier query', () => {
+    const r = guardSelect('SELECT name FROM tenders');
+    expect(r.ok).toBe(true);
   });
 });

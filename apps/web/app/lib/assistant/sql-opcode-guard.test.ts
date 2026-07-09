@@ -217,6 +217,24 @@ describe('guardOpcodes — real plans', () => {
       expect(READ_ONLY_OPCODES.has(op), op).toBe(true);
     }
   });
+
+  it('accepts read-only bitwise/shift opcodes (D1 emits BitAnd for some NOT IN/boolean shapes)', () => {
+    // Regression: Q41 „възложители извън София" ran a valid read-only SELECT whose plan contained BitAnd,
+    // which was false-denied as „non-read-only opcode in plan: BitAnd" before these were allowlisted.
+    const plan = [
+      { opcode: 'Init' },
+      { opcode: 'OpenRead' },
+      { opcode: 'Column' },
+      { opcode: 'BitAnd' },
+      { opcode: 'ShiftRight' },
+      { opcode: 'ResultRow' },
+      { opcode: 'Halt' },
+    ];
+    expect(guardOpcodes(plan)).toEqual({ ok: true, sql: '' });
+    for (const op of ['BitAnd', 'BitOr', 'BitNot', 'ShiftLeft', 'ShiftRight']) {
+      expect(READ_ONLY_OPCODES.has(op), op).toBe(true);
+    }
+  });
 });
 
 describe('allowlist invariants', () => {
