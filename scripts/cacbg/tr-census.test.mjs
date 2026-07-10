@@ -61,7 +61,8 @@ test('buildCensus indexes name-key → set of ЕИК over the nested export (ded
 
 test('promote publishes only globally-unique tier-C links; shared names stay held', () => {
   const db = new DatabaseSync(dbPath);
-  const res = promote(db, buildCensus(dump));
+  // census covers 3 distinct ЕИК → assert coverage with --min-eik 3 (the partial-census gate).
+  const res = promote(db, buildCensus(dump), { minEik: 3 });
   assert.equal(res.promoted, 1);
   const rows = new Map(
     db
@@ -72,6 +73,35 @@ test('promote publishes only globally-unique tier-C links; shared names stay hel
   assert.equal(rows.get('p1|444444447').status, 'published');
   assert.match(rows.get('p1|444444447').match_method, /tr_census/);
   assert.equal(rows.get('p2|555555556').status, 'held'); // two namesakes → stays held
+  db.close();
+});
+
+test('partial-census gate: a real promote refuses without --min-eik, and when coverage is below it', () => {
+  const db = new DatabaseSync(dbPath);
+  // isolate: p1 back to held (an earlier test may have published it — shared dbPath)
+  db.exec(
+    "UPDATE interest_links SET status='held', match_method='exact_name_key' WHERE link_key='p1|444444447'",
+  );
+  const census = buildCensus(dump); // 3 distinct ЕИК
+  // no --min-eik → refuse (can't assert completeness → could fabricate a false-unique attribution)
+  assert.throws(() => promote(db, census, {}), /--min-eik/);
+  // --min-eik above the census's coverage → refuse (partial dump)
+  assert.throws(() => promote(db, census, { minEik: 4 }), /partial census|distinct ЕИК/);
+  // the refused runs published nothing — p1 is still held
+  assert.equal(
+    db.prepare("SELECT status FROM interest_links WHERE link_key='p1|444444447'").get().status,
+    'held',
+  );
+  db.close();
+});
+
+test('partial-census gate: --force-partial is the explicit override', () => {
+  const db = new DatabaseSync(dbPath);
+  db.exec(
+    "UPDATE interest_links SET status='held', match_method='exact_name_key' WHERE link_key='p1|444444447'",
+  );
+  const res = promote(db, buildCensus(dump), { forcePartial: true }); // no minEik, but forced
+  assert.equal(res.promoted, 1);
   db.close();
 });
 

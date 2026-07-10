@@ -108,7 +108,28 @@ export function buildCensus(dumps) {
 // ЕИК is the matched winner's (a national namesake, even at a different ЕИК, keeps the link held). With
 // dryRun, report the would-promote set without writing — used to validate against a PARTIAL census, which
 // must never actually promote (an un-ingested namesake would make a false-unique claim = libel).
-export function promote(db, census, { dryRun = false } = {}) {
+export function promote(db, census, { dryRun = false, minEik = null, forcePartial = false } = {}) {
+  // Partial-census guard (libel gate). A census smaller than the real ТР register can make a genuinely
+  // non-unique name look unique (`eiks.size === 1`) → a false, libelous attribution. A real promote must
+  // ASSERT coverage in code, not by convention: pass `--min-eik ≥ register size` (the census's distinct-ЕИК
+  // count must meet it) or the explicit `--force-partial` escape hatch. dryRun is exempt — it writes nothing
+  // and exists precisely to inspect a partial census.
+  if (!dryRun && !forcePartial) {
+    if (!Number.isInteger(minEik) || minEik < 1) {
+      throw new Error(
+        'refusing to promote without --min-eik <register size>: a partial census silently fabricates ' +
+          'false-unique attributions. Pass --min-eik ≥ the known ТР register size, or --force-partial to override.',
+      );
+    }
+    const distinctEik = new Set();
+    for (const s of census.values()) for (const e of s) distinctEik.add(e);
+    if (distinctEik.size < minEik) {
+      throw new Error(
+        `refusing to promote from a partial census: ${distinctEik.size} distinct ЕИК < --min-eik ${minEik}. ` +
+          'Ingest more ТР dumps until coverage meets the register size, or pass --force-partial to override.',
+      );
+    }
+  }
   const held = db
     .prepare(
       "SELECT link_key, eik, entity_key FROM interest_links WHERE status='held' AND publish_tier='C_hold'",
@@ -150,6 +171,8 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const files = dumpFiles();
   const dryRun = process.argv.includes('--dry-run');
+  const forcePartial = process.argv.includes('--force-partial');
+  const minEik = arg('min-eik') !== undefined ? Number(arg('min-eik')) : null;
   if (!files.length) {
     console.log(
       'no --dump/--dump-dir provided; census not run. Provide TR open-data files to promote tier-C links.',
@@ -161,7 +184,7 @@ if (isMain) {
     console.log(
       `census: ${files.length} file(s) → ${census.size} distinct name-keys / ${eikTotal} ЕИК`,
     );
-    const { promoted, stillHeld, would } = promote(db, census, { dryRun });
+    const { promoted, stillHeld, would } = promote(db, census, { dryRun, minEik, forcePartial });
     console.log(
       `${dryRun ? 'DRY-RUN would promote' : 'tier-C promotions'}: ${promoted} published, ${stillHeld} still held (non-unique or namesake mismatch)`,
     );
