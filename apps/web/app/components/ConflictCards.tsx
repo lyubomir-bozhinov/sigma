@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type CSSProperties } from 'react';
 import { Link, useFetcher } from 'react-router';
-import { count, money, plural } from '@sigma/shared';
+import { count, money, pct, plural } from '@sigma/shared';
 import type { ConflictContract, ConflictLink, LinkContracts } from '@sigma/api-contract';
 import { Chip, ExternalEikLink, ShareBar } from './ui';
 import {
@@ -232,8 +232,9 @@ function CaseDetail({ link: l, contracts }: { link: ConflictLink; contracts: Con
 }
 
 // How big a slice of each awarding body's recorded procurement this winner captured — the materiality axis
-// the timeline lacks (a small sum can still be a huge share of a small municipality). Bodies where a contract
-// falls in the declared window carry a marker; the bar is neutral (a high share is a question, not a verdict).
+// the timeline lacks (a small sum can still be a huge share of a small municipality). Each row is a stat:
+// the body + its capture share paired on one line, a neutral bar tied directly beneath, then the figures.
+// The bar is neutral (a high share is a question, not a verdict); a contract in the declared window is marked.
 function AuthorityShares({ contracts }: { contracts: ConflictContract[] }) {
   const shares = authorityShares(contracts);
   if (shares.length === 0) return null;
@@ -243,33 +244,36 @@ function AuthorityShares({ contracts }: { contracts: ConflictContract[] }) {
       <ul className="auth-shares" role="list">
         {shares.map((s) => {
           const display = authorityShareDisplay(s);
+          const bar = display.mode === 'bar';
+          // The share value labels the body. „под 0,1%" for a real sub-threshold capture, „—" when there is
+          // no denominator/value — both muted, so only a plottable share reads as a hard number.
+          const pctLabel = bar ? pct(display.ratio, 1) : display.mode === 'tiny' ? 'под 0,1%' : '—';
           return (
             <li key={s.authorityId} className="auth-share">
-              <span className="auth-share-head">
-                <span className="auth-share-name">{s.authority}</span>
-                {s.inWindow && <Chip tone="window">в декларирания период</Chip>}
-              </span>
-              {display.mode === 'bar' ? (
-                <ShareBar ratio={display.ratio} />
-              ) : (
-                <span className="auth-share-nobar small muted">
-                  {display.mode === 'tiny'
-                    ? 'под 0,1%'
-                    : display.mode === 'no-value'
-                      ? 'сума не е налична'
-                      : 'дял не е наличен'}
+              <div className="auth-share-top">
+                <span className="auth-share-name">
+                  {s.authority}
+                  {s.inWindow && <Chip tone="window">в декларирания период</Chip>}
+                </span>
+                <span className={`auth-share-pct${bar ? '' : ' is-muted'}`}>{pctLabel}</span>
+              </div>
+              {(bar || display.mode === 'tiny') && (
+                <span className="auth-bar" aria-hidden="true">
+                  {bar && <i style={{ width: `${(display.ratio * 100).toFixed(1)}%` }} />}
                 </span>
               )}
               <span className="auth-share-figures small muted">
-                {display.mode !== 'no-value' && (
+                {display.mode === 'no-value' ? (
+                  'сума не е налична'
+                ) : (
                   <>
                     {money(s.companyEur)}
                     {s.authorityTotalEur != null && (
                       <> от общо {money(s.authorityTotalEur)} възложени</>
                     )}
-                    {' · '}
                   </>
                 )}
+                {' · '}
                 <span className="auth-share-count">
                   {count(s.contractCount)} {plural(s.contractCount, 'договор', 'договора')}
                 </span>

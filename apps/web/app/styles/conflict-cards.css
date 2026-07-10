@@ -427,10 +427,11 @@
   transform: rotate(180deg);
 }
 
-/* ── Дял при възложителите: per-authority capture bars ──────────────────────────
-   Each row stacks — the body name (+ a marker when a contract falls in the declared window) / a
-   full-width NEUTRAL share bar / the figures. The bar flexes to the section width so visual weight
-   tracks the share; a missing denominator drops the bar for „дял не е наличен" rather than a fake 0%. */
+/* ── Дял при възложителите: per-authority capture rows ───────────────────────────
+   Each body is a stat block: name + its capture share paired on one line, a neutral full-width bar tied
+   directly beneath, then the € figures. A hairline rule between rows makes the shares a scannable column.
+   The bar shows only for a real share (a sub-0,1% capture reads „под 0,1%" with an empty track; a missing
+   denominator/value shows „—" and no bar — absence, never a fake 0%). */
 .auth-shares {
   list-style: none;
   margin: 0;
@@ -438,8 +439,6 @@
   display: flex;
   flex-direction: column;
 }
-/* Each body is its own block: comfortable internal rhythm (name / bar / figures) and a hairline rule
-   between rows so shares read as a scannable column, not one dense wall of text. */
 .auth-share {
   display: flex;
   flex-direction: column;
@@ -452,28 +451,51 @@
 .auth-share + .auth-share {
   border-top: 1px solid var(--rule-soft);
 }
-.auth-share-head {
+/* Name (label) left, share (value) right — a paired stat, so the number sits with what it measures. */
+.auth-share-top {
   display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+}
+.auth-share-name {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-1) var(--s-2);
-}
-.auth-share-name {
   font-weight: 500;
   color: var(--ink);
   line-height: 1.3;
 }
-/* Full-width bar, % flush-right — shares line up down the list for at-a-glance comparison. */
-.auth-share .share {
-  display: flex;
+.auth-share-pct {
+  flex-shrink: 0;
+  font: 600 14px/1 var(--font-mono);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.auth-share-pct.is-muted {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.auth-bar {
+  display: block;
+  position: relative;
   width: 100%;
+  height: 6px;
+  background: var(--rule-soft);
+  border-radius: 1px;
 }
-.auth-share .share-bar {
-  flex: 1;
-  width: auto;
-}
-.auth-share-nobar {
-  font-style: italic;
+.auth-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  min-width: 2px; /* a real (≥0,1%) share is always at least a visible sliver, never a zero-width ghost */
+  background: var(--ink-mid);
+  border-radius: 1px;
 }
 .auth-share-figures {
   font-variant-numeric: tabular-nums;
