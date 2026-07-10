@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { companyNameKey } from './company-name-key';
+import { companyNameKey, isMatchableKey } from './company-name-key';
 
 // The libel proof. Fixture rows are labelled by `companyId` (the real-world entity).
 // PROPERTY: no normalized key may span two distinct companyId values (zero over-merge).
@@ -51,6 +51,9 @@ const FIXTURES: Fixture[] = [
   // Cyrillic vs Latin homoglyph — must never transliterate-merge
   { raw: 'АЛФА ЕООД', companyId: 'alfa-eood' }, // all-Cyrillic (dup of alfa-eood on purpose)
   { raw: 'AЛФA ЕООД', companyId: 'alfa-latin-homoglyph' }, // Latin A's — distinct codepoints
+  // inner quote separates tokens — dropping it (АБ"ВГ→АБВГ) would collide with a genuinely distinct АБВГ
+  { raw: 'АБ"ВГ ООД', companyId: 'ab-vg-inner-quote' },
+  { raw: 'АБВГ ООД', companyId: 'abvg-plain' },
 ];
 
 describe('companyNameKey', () => {
@@ -99,5 +102,27 @@ describe('companyNameKey', () => {
 
   it('does not fold и and & ', () => {
     expect(companyNameKey('ИВАН И СИН ООД')).not.toBe(companyNameKey('ИВАН & СИН ООД'));
+  });
+
+  it('maps an inner quote to a separator, not a deletion (АБ"ВГ ≠ АБВГ)', () => {
+    // The regression: `.replace(/"/g,'')` merged `АБ"ВГ`→`АБВГ`, colliding with a distinct `АБВГ`.
+    expect(companyNameKey('АБ"ВГ')).toBe('АБ ВГ');
+    expect(companyNameKey('АБ"ВГ')).not.toBe(companyNameKey('АБВГ'));
+    // surrounding quotes still fold away (they collapse at the trim/whitespace step)
+    expect(companyNameKey('"АЛФА" ЕООД')).toBe('АЛФА ЕООД');
+  });
+
+  describe('isMatchableKey — the empty-key over-merge guard', () => {
+    it('is false for degenerate input that folds to the empty key', () => {
+      for (const raw of ['', '   ', '""', '„"', '  " "  ']) {
+        expect(companyNameKey(raw), `raw=${JSON.stringify(raw)}`).toBe('');
+        expect(isMatchableKey(companyNameKey(raw)), `raw=${JSON.stringify(raw)}`).toBe(false);
+      }
+    });
+    it('is true for any real name', () => {
+      for (const raw of ['АЛФА ЕООД', 'СТРОЙ 1', 'ЕТ ИВАН ПЕТРОВ']) {
+        expect(isMatchableKey(companyNameKey(raw)), raw).toBe(true);
+      }
+    });
   });
 });

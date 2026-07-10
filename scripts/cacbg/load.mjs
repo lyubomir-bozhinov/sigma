@@ -28,7 +28,8 @@ const STAGING = process.env.CACBG_STAGING || path.join(ROOT, 'scratch/cacbg/stag
 const MIGRATION = path.join(ROOT, 'packages/db/migrations/0002_related_persons_foundation.sql');
 const REPORT = path.join(STAGING, 'findings.md');
 const MATCHER_VERSION = 'cnk-1+classify-1'; // bump when the normalizer or classify logic changes
-const { companyNameKey } = await import('../../packages/shared/src/company-name-key.ts');
+const { companyNameKey, isMatchableKey } =
+  await import('../../packages/shared/src/company-name-key.ts');
 
 const norm = (s) =>
   String(s ?? '')
@@ -88,8 +89,13 @@ const byKey = new Map();
 const bidderByEik = new Map(); // valid winners, for declared-ЕИК-in-text matching
 for (const b of bidders) {
   const k = companyNameKey(b.name);
-  if (!byKey.has(k)) byKey.set(k, new Map());
-  byKey.get(k).set(b.eik ?? `name:${b.name}`, b);
+  // A degenerate bidder name (empty/quote-only) folds to the empty key; indexing it would let every
+  // degenerate declared name cross-match into this bucket — an over-merge. Keep it out of the name map
+  // (it can still match by ЕИК via bidderByEik below, which is exact).
+  if (isMatchableKey(k)) {
+    if (!byKey.has(k)) byKey.set(k, new Map());
+    byKey.get(k).set(b.eik ?? `name:${b.name}`, b);
+  }
   if (b.eik && b.valid) bidderByEik.set(b.eik, b);
 }
 
@@ -111,6 +117,9 @@ function resolveEntity(entity) {
     const b = bidderByEik.get(de);
     if (!b) continue;
     const winnerKey = companyNameKey(b.name);
+    // An empty winner key would make `key.includes(winnerKey)` trivially true (every string includes '')
+    // → a name cross-check that never actually checks. Skip it; the ЕИК alone isn't enough here by design.
+    if (!isMatchableKey(winnerKey)) continue;
     if (
       key.includes(winnerKey) ||
       companyCandidates(entity).some((c) => companyNameKey(c) === winnerKey)
@@ -170,10 +179,18 @@ const ownMaxByScope = new Map();
 let diN = 0,
   noMatch = 0,
   quarantined = 0,
-  immaterialFamily = 0;
+  immaterialFamily = 0,
+  namelessPerson = 0;
 
 db.exec('BEGIN');
 for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
+  // A degenerate official name folds to the empty person key (`person:`), which would MERGE every such
+  // official into one identity and mis-attribute their links. Can't attribute a stake to a nameless person
+  // — skip the row (bad-input, not a resolvable holding).
+  if (!isMatchableKey(companyNameKey(h.person))) {
+    namelessPerson++;
+    continue;
+  }
   const pid = personId(h.person);
   const did = `decl:${h.xmlFile}`;
   insPerson.run(pid, h.person);
@@ -535,6 +552,7 @@ const S = {
   noMatch,
   quarantined,
   immaterialFamilySkipped: immaterialFamily,
+  namelessPersonSkipped: namelessPerson,
 };
 console.log(JSON.stringify(S, null, 2));
 
