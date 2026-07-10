@@ -16,6 +16,23 @@ test('companyCandidates pulls „NAME" ФОРМА out of prose', () => {
   assert.deepEqual(companyCandidates('някакъв текст без фирма'), []);
 });
 
+test('companyCandidates keeps a mid-name form-token word intact (greedy, no truncation over-merge)', () => {
+  // „БЪЛГАРСКА АД ГРУП" ООД contains „АД" as a MIDDLE word. A lazy match truncated the candidate at that
+  // first „АД" → key „БЪЛГАРСКА АД", which could exact-match an unrelated short bidder of that name and
+  // attach ITS contracts (ADR-0016 libel class). Greedy must capture the full name instead.
+  const keys = companyCandidates('„БЪЛГАРСКА АД ГРУП" ООД, ЕИК 100000008').map(companyNameKey);
+  assert.ok(keys.includes('БЪЛГАРСКА АД ГРУП ООД'), 'full name key present');
+  assert.ok(!keys.includes('БЪЛГАРСКА АД'), 'no truncated key that would over-merge');
+});
+
+test('companyCandidates handles «…» guillemet quotes and non-listed legal forms (recall)', () => {
+  // The «…» quote style previously produced zero candidates (char-class asymmetry) — a silent recall miss.
+  assert.deepEqual(companyCandidates('«Кристала» АД').map(companyNameKey), ['КРИСТАЛА АД']);
+  // КООПЕРАЦИЯ / ФОНДАЦИЯ / СДРУЖЕНИЕ are real BG forms (present in classify.mjs) — must be recognised too.
+  assert.ok(companyCandidates('„НАПРЕДЪК" КООПЕРАЦИЯ').length > 0, 'cooperative form recognised');
+  assert.ok(companyCandidates('„ДОБРО ДЕЛО" ФОНДАЦИЯ').length > 0, 'foundation form recognised');
+});
+
 test('declaredEiks finds 9/13-digit ЕИК but not 10-digit ЕГН/date shapes', () => {
   assert.deepEqual(declaredEiks('"ТРАНСПОМЕД" ЕООД, ЕИК 101677351'), ['101677351']);
   assert.deepEqual(declaredEiks('ЕИК 2016176540070 нещо'), ['2016176540070']); // 13-digit

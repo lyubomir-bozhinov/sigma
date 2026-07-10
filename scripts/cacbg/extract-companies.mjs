@@ -3,7 +3,8 @@
 // clean фирма. These pull the deterministic signals out of that prose. No I/O, no normalizer dependency
 // (the caller applies companyNameKey), so they're unit-testable directly.
 
-const FORM = '(?:ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ)';
+// Kept in sync with classify.mjs's FORM — cooperatives/foundations/associations are real bidders too.
+const FORM = '(?:КООПЕРАЦИЯ|ФОНДАЦИЯ|СДРУЖЕНИЕ|ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ)';
 
 /**
  * Candidate „NAME" ФОРМА / NAME ФОРМА company substrings inside a free-text declaration entry.
@@ -12,9 +13,13 @@ const FORM = '(?:ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ)
 export function companyCandidates(text) {
   const out = [];
   // name (optionally quoted) + a required separator (space or closing quote) + a legal form not glued
-  // to a longer word. `\b` is unreliable here — it is ASCII-only under the /u flag, so Cyrillic breaks it.
+  // to a longer word. The name quantifier is GREEDY: a form-token WORD embedded mid-name (e.g.
+  // „БЪЛГАРСКА АД ГРУП" ООД) must NOT truncate the candidate at the first „АД" — the longest span wins so
+  // the trailing real form matches and the full name is captured. A truncated key („БЪЛГАРСКА АД") could
+  // exact-match an unrelated short bidder = a fabricated conflict (ADR-0016). Both „…" and «…» quote styles
+  // are handled. `\b` is unreliable here — ASCII-only under the /u flag, so Cyrillic breaks it.
   const re = new RegExp(
-    '[„"“»]?\\s*([^„"“»,;]{2,60}?)[\\s”"«]+(?:' + FORM + ')(?![А-Яа-яA-Za-z])',
+    '[„"“«»]?\\s*([^„"“«»,;]{2,60})[\\s”"«»]+(?:' + FORM + ')(?![А-Яа-яA-Za-z])',
     'gu',
   );
   for (const m of String(text).matchAll(re)) {
