@@ -229,10 +229,6 @@ td.rank {
   .tbl-prose tbody tr:hover td {
     background: transparent;
   }
-  /* Strong-signal card: accent the whole left edge (desktop accents only the first cell). */
-  .tbl-cards tr.has-conflict {
-    border-left-color: var(--accent);
-  }
 
   /* Numeric rows: label left, value right. flex-wrap lets a long text value
      drop to its own line instead of pushing the card past the viewport. */
@@ -290,19 +286,6 @@ td.rank {
   .tbl-cards td.cell-title .small.muted {
     display: block;
     margin-top: 3px;
-  }
-
-  /* Prose cell: content with several parts (relation text + chips + a note) reads as a left-aligned
-     block, not a numeric label↔value row. Without this, .tbl-cards td's `justify-content:space-between`
-     scatters the parts — label pinned left, note flung right, chips floating mid-row — at 360px. */
-  .tbl-cards td.cell-prose {
-    display: block;
-    text-align: left;
-  }
-  .tbl-cards td.cell-prose::before {
-    display: block;
-    max-width: none;
-    margin-bottom: 4px;
   }
 
   /* Rank → small badge in the card's top-right corner */
