@@ -231,6 +231,19 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
     immaterialFamily++;
     continue;
   }
+  // E11 divestment horizon (per person+scope) — advance BEFORE resolution, over EVERY material ownership
+  // filing, not only winner-resolved ones. Most declared holdings are ordinary non-winner companies; if the
+  // horizon only advanced on resolved holdings, an official who divested a winner-stake and kept filing
+  // (listing only non-winner companies) would never advance it, so the stale winner link would keep
+  // asserting a CURRENT stake — a false present-tense claim. `divested` below compares each link's own last
+  // year against this scope-wide horizon, so it must see the official's latest filing regardless of match.
+  if (material) {
+    const hy = yr(h.year);
+    if (Number.isFinite(hy)) {
+      const sk = `${pid}|${scope}`;
+      ownMaxByScope.set(sk, Math.max(ownMaxByScope.get(sk) ?? hy, hy));
+    }
+  }
   // resolve (clean name → declared ЕИК → extracted-from-prose name)
   const res = resolveEntity(h.entity);
   if (!res || res.ambiguous) {
@@ -264,18 +277,14 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
   rec.kinds.add(h.kind);
   const y = yr(h.year);
   if (Number.isFinite(y)) rec.declYears.add(y);
-  // Material ownership years, per (person,company,scope) AND per (person,scope). A later ownership filing
-  // that omits a company = divested → the link is withdrawn (§8/E11), so a stale link never asserts a
-  // CURRENT stake. Material-ownership only: management filing cadence is unverified (spec §6). Blind spot
-  // (documented): a divest-to-ZERO filing produces no holdings row, so the temporal dating is the residual
-  // mitigation.
+  // Per-company material ownership years (this resolved winner only) — `recOwnMax` below dates the link to
+  // its last declaration. The per-scope horizon (ownMaxByScope) is advanced above, before resolution, so it
+  // spans ALL material filings; comparing the two is what detects divestment (§8/E11). Material-ownership
+  // only: management filing cadence is unverified (spec §6). Blind spot (documented): a divest-to-ZERO
+  // filing produces no holdings row, so the temporal dating is the residual mitigation.
   if (material) {
     rec.hasMaterialOwn = true;
-    if (Number.isFinite(y)) {
-      rec.ownYears.add(y);
-      const sk = `${pid}|${scope}`;
-      ownMaxByScope.set(sk, Math.max(ownMaxByScope.get(sk) ?? y, y));
-    }
+    if (Number.isFinite(y)) rec.ownYears.add(y);
   }
   if (h.seat) rec.seats.add(h.seat);
   if (h.institution) rec.institutions.add(h.institution);
