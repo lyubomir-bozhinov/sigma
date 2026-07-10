@@ -145,6 +145,14 @@ describe('search helpers', () => {
     expect(searchMatchQuery('и')).toBeNull();
     expect(searchMatchQuery('a b c')).toBeNull();
   });
+
+  it('reduces FTS5 operators/punctuation to plain prefix terms — no MATCH-syntax injection', () => {
+    // Quotes, NEAR, parentheses, a bare OR keyword and a column filter (`x:1`) must survive only as
+    // ordinary prefix tokens — never as FTS5 syntax that could error the query or widen the scan.
+    const out = searchMatchQuery('алфа" NEAR/2 (бета) OR x:1')!;
+    expect(out).toBe('алфа* near* бета* or*');
+    expect(out).not.toMatch(/["():/=]/);
+  });
 });
 
 describe('search', () => {

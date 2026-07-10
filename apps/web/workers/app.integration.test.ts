@@ -113,6 +113,11 @@ describe('handleRequest — /conflicts responses are noindex (HTML + .data twin)
     'http://local/conflicts/company/123456789',
     // The exact gap Playwright caught: the resource-route twin, whose loader header never propagated.
     'http://local/conflicts/link/self/ivan-petrov-1/123456789/contracts.data',
+    // Search now surfaces свързани-лица officials by name → its HTML, its .data twin, and the
+    // /search/suggest typeahead JSON (a headless resource route) all name individuals.
+    'http://local/search?q=ivan',
+    'http://local/search.data?q=ivan',
+    'http://local/search/suggest?q=ivan',
   ];
   for (const url of noindexed) {
     it(`sets X-Robots-Tag: noindex on ${url.replace('http://local', '')}`, async () => {

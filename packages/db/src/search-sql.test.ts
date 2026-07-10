@@ -41,20 +41,33 @@ const FIXTURE = `
 INSERT INTO bidders (id, name, eik_normalized, eik_valid, kind) VALUES
   ('eik:111','АЛФА ООД','111111111',1,'company'),
   ('eik:222','БЕТА ООД','222222222',1,'company'),
-  ('eik:333','ГАМА ООД','333333333',1,'company');
+  ('eik:333','ГАМА ООД','333333333',1,'company'),
+  ('eik:444','ДЕЛТА ООД','444444444',1,'company'),
+  ('eik:555','ЕПСИЛОН ООД','555555555',1,'company');
 INSERT INTO company_totals (bidder_id, name, kind, eik, eik_valid, won_eur, contracts, authorities) VALUES
   ('eik:111','АЛФА ООД','company','111111111',1,1000000,1,1),
   ('eik:222','БЕТА ООД','company','222222222',1,500000,1,1),
-  ('eik:333','ГАМА ООД','company','333333333',1,200000,1,1);
-INSERT INTO persons (id, name) VALUES ('person:ИВАН МИНЕВ','Иван Минев'),('person:ГЕОРГИ ПЕТРОВ','Георги Петров');
+  ('eik:333','ГАМА ООД','company','333333333',1,200000,1,1),
+  ('eik:444','ДЕЛТА ООД','company','444444444',1,300000,1,1),
+  ('eik:555','ЕПСИЛОН ООД','company','555555555',1,700000,1,1);
+INSERT INTO persons (id, name) VALUES
+  ('person:ИВАН МИНЕВ','Иван Минев'),('person:ГЕОРГИ ПЕТРОВ','Георги Петров'),
+  ('person:ДАНА ФАМ','Дана Фам'),('person:БОРИС БОРД','Борис Борд');
 INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, declared_year, template, category, institution, position, source_url) VALUES
   ('decl:i','person:ИВАН МИНЕВ','i.xml','H1','2024','2023','assets','','ОБЩИНА РУСЕ','', 'https://register.cacbg.bg/2024/i.xml'),
-  ('decl:g','person:ГЕОРГИ ПЕТРОВ','g.xml','H2','2024','2023','assets','','МИНИСТЕРСТВО Х','', 'https://register.cacbg.bg/2024/g.xml');
+  ('decl:g','person:ГЕОРГИ ПЕТРОВ','g.xml','H2','2024','2023','assets','','МИНИСТЕРСТВО Х','', 'https://register.cacbg.bg/2024/g.xml'),
+  ('decl:d','person:ДАНА ФАМ','d.xml','H3','2024','2023','assets','','ОБЩИНА ВАРНА','', 'https://register.cacbg.bg/2024/d.xml'),
+  ('decl:b','person:БОРИС БОРД','b.xml','H4','2024','2023','assets','','АГЕНЦИЯ У','', 'https://register.cacbg.bg/2024/b.xml');
 INSERT INTO interest_links
   (id, link_key, person_id, bidder_id, eik, entity_key, match_method, matcher_version, publish_tier, relation, interest_class, contemporaneous, own_institution, evidence_count, first_declared_year, last_declared_year, contract_count, contract_value_eur, first_contract_year, last_contract_year, status) VALUES
   ('il:ia','person:ИВАН МИНЕВ|111','person:ИВАН МИНЕВ','eik:111','111111111','АЛФА ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'none',1,'2020','2023',1,1000000,'2021','2021','published'),
   ('il:ig','person:ИВАН МИНЕВ|333','person:ИВАН МИНЕВ','eik:333','333333333','ГАМА ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',0,'none',1,'2020','2023',1,200000,'2021','2021','published'),
-  ('il:gb','person:ГЕОРГИ ПЕТРОВ|222','person:ГЕОРГИ ПЕТРОВ','eik:222','222222222','БЕТА ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,'2020','2020',1,500000,'2021','2021','held');
+  ('il:gb','person:ГЕОРГИ ПЕТРОВ|222','person:ГЕОРГИ ПЕТРОВ','eik:222','222222222','БЕТА ООД','exact_name_key','v1','C_hold','owns','private_ownership',0,'none',1,'2020','2020',1,500000,'2021','2021','held'),
+  -- family_ownership, published → a public-surface class → the holder official IS searchable, company IS flagged.
+  ('il:df','person:ДАНА ФАМ|444','person:ДАНА ФАМ','eik:444','444444444','ДЕЛТА ООД','exact_name_key','v1','B_distinctive','related','family_ownership',0,'none',1,'2020','2023',1,300000,'2021','2021','published'),
+  -- management_role, marked published (a hypothetical mis-status) → the interest_class gate must STILL exclude
+  -- it: a statutory board/management role is never a declared conflict, so it can never reach search or a badge.
+  ('il:bm','person:БОРИС БОРД|555','person:БОРИС БОРД','eik:555','555555555','ЕПСИЛОН ООД','exact_name_key','v1','B_distinctive','manages','management_role',0,'none',1,'2020','2023',1,700000,'2021','2021','published');
 `;
 
 // Search-index population — mirrors scripts/precompute.sql (company + officials). Kept here so the test
@@ -111,6 +124,26 @@ describe('search свързани-лица SQL', () => {
       const beta = rows(dbPath, lit(SEARCH_HITS_SQL, 'company', 'бета*', 10));
       expect(beta).toHaveLength(1);
       expect(beta[0]!.has_conflict).toBe(0);
+    });
+  });
+
+  it('indexes family_ownership but NEVER management_role/ex-officio (the interest_class gate)', () => {
+    withDb((dbPath) => {
+      // family_ownership is a public-surface class → the holder official IS searchable, company IS flagged.
+      const dana = rows(dbPath, lit(SEARCH_HITS_SQL, 'official', 'дана*', 10));
+      expect(dana).toHaveLength(1);
+      expect(dana[0]!.ref).toBe('person:ДАНА ФАМ');
+      expect(dana[0]!.amount).toBe(300000);
+      const delta = rows(dbPath, lit(SEARCH_HITS_SQL, 'company', 'делта*', 10));
+      expect(delta[0]!.has_conflict).toBe(1);
+
+      // management_role marked published → the interest_class gate must still exclude it, both from the
+      // officials index (no name in search) and from the company badge join. A statutory board/management
+      // role is never surfaced as a "conflict" — the libel-critical distinction.
+      expect(rows(dbPath, lit(SEARCH_HITS_SQL, 'official', 'борис*', 10))).toHaveLength(0);
+      const epsilon = rows(dbPath, lit(SEARCH_HITS_SQL, 'company', 'епсилон*', 10));
+      expect(epsilon).toHaveLength(1);
+      expect(epsilon[0]!.has_conflict).toBe(0);
     });
   });
 
