@@ -437,12 +437,20 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
 }
+/* Each body is its own block: comfortable internal rhythm (name / bar / figures) and a hairline rule
+   between rows so shares read as a scannable column, not one dense wall of text. */
 .auth-share {
   display: flex;
   flex-direction: column;
-  gap: var(--s-1);
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+}
+.auth-share:first-child {
+  padding-top: 0;
+}
+.auth-share + .auth-share {
+  border-top: 1px solid var(--rule-soft);
 }
 .auth-share-head {
   display: flex;
