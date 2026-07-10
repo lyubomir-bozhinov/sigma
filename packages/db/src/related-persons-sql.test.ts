@@ -138,6 +138,38 @@ describe('свързани-лица SQL (real SQLite)', () => {
     });
   });
 
+  it('ranks by the CONTEMPORANEOUS conflict-window value, not the lifetime total, when the nexus tier ties', () => {
+    withDb((dbPath) => {
+      // Two officials in the SAME nexus tier (own_institution='none', contemporaneous=1) whose lifetime and
+      // in-window values DISAGREE on order. Ален: small €1M lifetime but €900k signed inside his window.
+      // Боян: large €10M lifetime but only €100k in-window (the rest signed after he divested). The headline
+      // number the card shows is the €900k / €100k contemporaneous figure — so the ranking must put Ален
+      // above Боян. The old `contract_value_eur DESC` tiebreak ranked by lifetime and put Боян (€10M) first,
+      // contradicting the number on his own card. This pins that the sort key matches the displayed value.
+      sqlite(
+        dbPath,
+        `INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, kind) VALUES
+           ('eik:701','АЛЕН КО ООД','701','701',1,'company'),('eik:702','БОЯН КО ООД','702','702',1,'company');
+         INSERT INTO persons (id, name) VALUES ('person:alen','Ален Тестов'),('person:boyan','Боян Тестов');
+         INSERT INTO interest_links
+           (id, link_key, person_id, bidder_id, eik, entity_key, match_method, matcher_version, publish_tier, relation, interest_class, contemporaneous, own_institution, evidence_count, first_declared_year, last_declared_year, contract_count, contract_value_eur, first_contract_year, last_contract_year, status) VALUES
+           ('il:alen','person:alen|701','person:alen','eik:701','701','АЛЕН КО ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'none',1,'2020','2021',1,1000000,'2021','2021','published'),
+           ('il:boyan','person:boyan|702','person:boyan','eik:702','702','БОЯН КО ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',1,'none',1,'2020','2021',1,10000000,'2021','2021','published');
+         INSERT INTO tenders (id, source_id, title, authority_id, procedure_type) VALUES
+           ('t:71','unp71','Обект А','a:1','открита процедура'),('t:72','unp72','Обект Б','a:1','открита процедура');
+         INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, amount_eur) VALUES
+           ('c:71','t:71','eik:701',900000,'EUR','2021-05-01','Д-71',900000),
+           ('c:72','t:72','eik:702',100000,'EUR','2021-05-01','Д-72',100000);`,
+      );
+      const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      const order = board
+        .map((r) => r.official)
+        .filter((o) => o === 'Ален Тестов' || o === 'Боян Тестов');
+      // Ален (€900k in-window) outranks Боян (€100k in-window) despite Боян's 10× larger lifetime total.
+      expect(order).toEqual(['Ален Тестов', 'Боян Тестов']);
+    });
+  });
+
   it('a family (close-relative) link surfaces on the winner + official views, carrying relation=related', () => {
     withDb((dbPath) => {
       const byCompany = rows(dbPath, lit(COMPANY_SQL, '333'));

@@ -56,9 +56,12 @@ const IN_WINDOW = `il.first_declared_year IS NOT NULL AND il.last_declared_year 
 // Shared projection: published material-ownership links (self + family) + names + a representative
 // declaration URL (provenance, never fabricated). Callers append a scope predicate + ORDER BY.
 // NEXUS_ORDER ranks the strongest conflict signal first: a contract from the official's OWN institution,
-// then a stake held during a contract award, then value as a tiebreak — link_key last for stability.
+// then a stake held during a contract award, then value as a tiebreak — link_key last for stability. The
+// value tiebreak is the CONTEMPORANEOUS (in-window) sum, not the lifetime contract_value_eur, so the rank
+// order matches the headline € the card shows (LINK_SELECT.contemporaneous_value_eur, an output alias
+// ORDER BY resolves); ranking by lifetime would float an official above one with a larger actual conflict.
 export const NEXUS_ORDER = `(il.own_institution = 'exact') DESC, il.contemporaneous DESC,
-    il.contract_value_eur DESC, il.link_key`;
+    contemporaneous_value_eur DESC, il.link_key`;
 
 // The redundant-family collapse predicate (full rationale in the LINK_SELECT comment below): drop a family
 // link when the same official also holds a PUBLISHED self stake in the same winner. Shared so every surface —
