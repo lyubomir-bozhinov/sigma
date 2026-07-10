@@ -63,7 +63,9 @@ describe('rateLimitConflictsRoute', () => {
     expect(limit).not.toHaveBeenCalled();
   });
 
-  it('fails open when the binding is missing or throws', async () => {
+  // Non-prod (dev/preview, binding routinely absent) degrades to a no-op so local work isn't blocked —
+  // failClosed only engages in prod.
+  it('fails OPEN in non-prod when the binding is missing or throws', async () => {
     await expect(
       rateLimitConflictsRoute(new Request('http://local/conflicts'), {}, false),
     ).resolves.toBeNull();
@@ -78,5 +80,29 @@ describe('rateLimitConflictsRoute', () => {
         false,
       ),
     ).resolves.toBeNull();
+  });
+
+  // In prod the names surface fails CLOSED: a missing/erroring binding must 503, never serve the .data
+  // twins unthrottled (the sole anti-enumeration control on a names DB).
+  it('fails CLOSED with 503 in prod when the binding is missing', async () => {
+    const response = await rateLimitConflictsRoute(
+      new Request('http://local/conflicts/official/ivan-petrov.data'),
+      {},
+      true,
+    );
+    expect(response?.status).toBe(503);
+    expect(response?.headers.get('Retry-After')).toBe('60');
+  });
+
+  it('fails CLOSED with 503 in prod when the limiter throws', async () => {
+    const limit = vi.fn(async () => {
+      throw new Error('rate limit unavailable');
+    });
+    const response = await rateLimitConflictsRoute(
+      new Request('http://local/conflicts'),
+      { CONFLICTS_RATE_LIMITER: { limit } as RateLimit },
+      true,
+    );
+    expect(response?.status).toBe(503);
   });
 });

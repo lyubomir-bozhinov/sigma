@@ -1,8 +1,9 @@
 # ADR-0022: Public conflict surface shows ONLY declared private ownership
 
-- Status: Accepted
+- Status: Accepted — amended by [ADR-0023](0023-anonymized-family-ownership-surface.md)
 - Date: 2026-07-06
 - Deciders: lb, Claude
+- Amended by: [ADR-0023](0023-anonymized-family-ownership-surface.md) — the public surface also shows **anonymized family** ownership (the „private ownership only" scope below now means private + anonymized close-relative stakes, never ex-officio/management)
 - Supersedes (display only): [ADR-0019](0019-private-interest-vs-ex-officio-classification.md)
 - Related: [ADR-0007](0007-scope-and-certainty-bar.md), [ADR-0020](0020-conflict-explorer-surface-posture.md); `packages/db/src/queries/related-persons.ts`, `apps/web/app/routes/conflict*.tsx`
 
