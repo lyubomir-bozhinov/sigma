@@ -262,4 +262,22 @@ describe('свързани-лица SQL (real SQLite)', () => {
       expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:nobody|000'))).toHaveLength(0); // unknown
     });
   });
+
+  it('the /contracts route hides a family link the leaderboard collapsed away (de-anon oracle closed)', () => {
+    withDb((dbPath) => {
+      // Двоен's family link to П2АРХ (eik 555) is dropped from every surface because his published self stake
+      // exists for the same winner. Give eik 555 a real contract, so the ONLY reason the family key can return
+      // [] is the collapse predicate — not an empty contract set. Pre-fix, the family key leaked this contract,
+      // an existence-oracle confirming the suppressed relative stake (ADR-0023 de-anon vector).
+      sqlite(
+        dbPath,
+        `INSERT INTO tenders (id, source_id, title, authority_id, procedure_type) VALUES ('t:9','unp9','П2АРХ строеж','a:1','открита процедура');
+         INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, amount_eur) VALUES ('c:9','t:9','eik:555',79000,'EUR','2021-05-01','Д-9',79000);`,
+      );
+      // The surfaced self link returns its contract…
+      expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:dual|555'))).toHaveLength(1);
+      // …but the collapsed family link_key returns [] — no probe for the suppressed relative stake.
+      expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:dual|555|family'))).toHaveLength(0);
+    });
+  });
 });

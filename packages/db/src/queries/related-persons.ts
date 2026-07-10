@@ -59,6 +59,14 @@ const IN_WINDOW = `il.first_declared_year IS NOT NULL AND il.last_declared_year 
 // then a stake held during a contract award, then value as a tiebreak — link_key last for stability.
 export const NEXUS_ORDER = `(il.own_institution = 'exact') DESC, il.contemporaneous DESC,
     il.contract_value_eur DESC, il.link_key`;
+
+// The redundant-family collapse predicate (full rationale in the LINK_SELECT comment below): drop a family
+// link when the same official also holds a PUBLISHED self stake in the same winner. Shared so every surface —
+// the leaderboard/official/company projection AND the per-link contracts route — hides the EXACT same links;
+// a consumer that omitted it (LINK_CONTRACTS_SQL did) became an existence-oracle for the suppressed relative.
+export const NOT_REDUNDANT_FAMILY = `NOT (il.interest_class = 'family_ownership' AND EXISTS (
+    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+      AND s.status = 'published' AND s.interest_class = 'private_ownership'))`;
 export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official, b.name AS company, il.eik,
     il.relation, il.contemporaneous, il.own_institution,
     il.first_declared_year, il.last_declared_year, il.match_method,
@@ -86,9 +94,7 @@ export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official
     -- cross-reference names the "anonymous" relative). When an own-stake link exists, drop the redundant
     -- family link to the same winner. Standalone family links (a relative owns a firm the official does
     -- not) are untouched. (per (person,eik) there is at most one link per scope, so this is the only dup.)
-    AND NOT (il.interest_class = 'family_ownership' AND EXISTS (
-      SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
-        AND s.status = 'published' AND s.interest_class = 'private_ownership'))`;
+    AND ${NOT_REDUNDANT_FAMILY}`;
 
 // own_institution is a 4-value verdict; only the deterministic 'exact' surfaces as true (the
 // name_contains/locality heuristics are disclosed elsewhere, never asserted as fact).
@@ -168,8 +174,9 @@ interface ContractRow {
 }
 
 // One published link's contracts, each marked against the declared-stake window. The WHERE gate on
-// status/interest_class means a non-surfaced link_key returns [] — never a way to enumerate held/internal
-// links. Marking mirrors classify.temporalStatus (min/max declared-year span) so the 'contemporaneous'
+// status/interest_class + the redundant-family collapse means a non-surfaced link_key returns [] — never a
+// way to enumerate held/internal links OR to confirm a family link the leaderboard collapsed away.
+// Marking mirrors classify.temporalStatus (min/max declared-year span) so the 'contemporaneous'
 // rows here are exactly the subset counted by contemporaneous_contract_count in LINK_SELECT.
 export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS authority, aa.id AS authority_id,
     ath.spent_eur AS authority_total_eur, cc.contract_kind,
@@ -190,6 +197,10 @@ export const LINK_CONTRACTS_SQL = `SELECT cc.id, cc.signed_at, aa.name AS author
     LEFT JOIN authority_totals ath ON ath.authority_id = aa.id
   WHERE il.link_key = ?
     AND il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+    -- Same collapse as LINK_SELECT: a family link the surface hides (because a published self stake exists
+    -- for the same person+winner) must return [] here too, or this route is an existence-oracle that
+    -- confirms the suppressed relative's stake — the de-anonymisation vector ADR-0023 forbids.
+    AND ${NOT_REDUNDANT_FAMILY}
   ORDER BY (temporal = 'contemporaneous') DESC, cc.signed_at DESC, cc.amount_eur DESC`;
 
 /** The contracts of one published link, contemporaneous-first, each flagged in/out the declared window.
