@@ -72,9 +72,10 @@ export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official
     il.first_declared_year, il.last_declared_year, il.match_method,
     il.contract_count, il.contract_value_eur, il.first_contract_year, il.last_contract_year,
     -- The conflict-window subset of contract_count / contract_value_eur, derived at read time (no stored
-    -- column, so a correction ships without an ETL re-run). ponytail: two correlated subqueries per row;
-    -- the leaderboard is ≤1000 rows and hourly-cached, so the extra scans are immaterial — revisit only if
-    -- the eligible set grows or the cache TTL shrinks.
+    -- column, so a correction ships without an ETL re-run). ponytail: several correlated subqueries per row
+    -- (the two contemporaneous splits, the source_url, and the redundant-family EXISTS); the leaderboard is
+    -- ≤1000 rows and hourly-cached, so the extra scans are immaterial — revisit only if the eligible set
+    -- grows or the cache TTL shrinks.
     (SELECT COUNT(*) ${CONTRACT_JOIN} WHERE bb.eik_normalized = il.eik AND ${IN_WINDOW})
       AS contemporaneous_contract_count,
     (SELECT SUM(cc.amount_eur) ${CONTRACT_JOIN} WHERE bb.eik_normalized = il.eik AND ${IN_WINDOW})

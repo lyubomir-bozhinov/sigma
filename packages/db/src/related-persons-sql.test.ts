@@ -280,4 +280,19 @@ describe('свързани-лица SQL (real SQLite)', () => {
       expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:dual|555|family'))).toHaveLength(0);
     });
   });
+
+  it('a STANDALONE family link (no self sibling) is NOT over-collapsed — /contracts still serves it', () => {
+    withDb((dbPath) => {
+      // Кмет declared only a RELATIVE's stake in ЕВРОСТРОЙ (eik 333) — no own stake. The collapse predicate
+      // must NOT fire (it drops a family link only when a published SELF link exists for the same winner),
+      // so this legitimate family conflict's contract drill-down keeps working. Guards the over-collapse
+      // direction: the oracle fix must not blind a real relative-ownership conflict.
+      sqlite(
+        dbPath,
+        `INSERT INTO tenders (id, source_id, title, authority_id, procedure_type) VALUES ('t:8','unp8','Обект','a:1','открита процедура');
+         INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, amount_eur) VALUES ('c:8','t:8','eik:333',250000,'EUR','2019-05-01','Д-8',250000);`,
+      );
+      expect(rows(dbPath, lit(LINK_CONTRACTS_SQL, 'person:kmet|333|family'))).toHaveLength(1);
+    });
+  });
 });
