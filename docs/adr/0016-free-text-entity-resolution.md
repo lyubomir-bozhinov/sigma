@@ -18,9 +18,13 @@ The whole-string normalizer then keys the entire prose and misses a real winner 
 Extend the resolver with two deterministic fallbacks, tried after the clean-name match, strongest first:
 
 1. **`declared_eik`** — pull 9/13-digit ЕИК numbers from the text (a 10-digit run is an ЕГН/date shape,
-   excluded). Match against the winner ЕИК set **only if the winner's own name also appears in the text**
-   (name-key substring or an extracted candidate) — this cross-check blocks a typo'd ЕИК from pointing at
-   the wrong company. This is the *strongest* signal: the official stated the id directly.
+   excluded). Match against the winner ЕИК set **only if the winner's own name also appears in the text** as
+   an extracted „NAME"-ФОРМА candidate that normalizes (companyNameKey) exactly to that winner — this
+   cross-check blocks a typo'd ЕИК from pointing at the wrong company. The confirmation is boundary-safe by
+   construction: a bare `key.includes(winnerName)` substring leg was **removed**, because a winner name
+   embedded mid-token in an unrelated фирма („СТРОЙ 1" inside „МЕГАСТРОЙ 15") would falsely confirm it and
+   attach the wrong winner's contracts — a fabricated conflict. This is the *strongest* signal: the official
+   stated the id directly.
 2. **`extracted_name`** — pull „NAME"-ФОРМА company substrings from the prose; a candidate is accepted
    only if it normalizes (same companyNameKey, ADR-0008) to **exactly one** winner ЕИК.
 

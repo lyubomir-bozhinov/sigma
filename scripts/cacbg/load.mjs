@@ -117,13 +117,14 @@ function resolveEntity(entity) {
     const b = bidderByEik.get(de);
     if (!b) continue;
     const winnerKey = companyNameKey(b.name);
-    // An empty winner key would make `key.includes(winnerKey)` trivially true (every string includes '')
-    // → a name cross-check that never actually checks. Skip it; the ЕИК alone isn't enough here by design.
+    // An empty winner key can't be a meaningful cross-check (a degenerate candidate could spuriously equal
+    // it). Skip it; the ЕИК alone isn't enough here by design.
     if (!isMatchableKey(winnerKey)) continue;
-    if (
-      key.includes(winnerKey) ||
-      companyCandidates(entity).some((c) => companyNameKey(c) === winnerKey)
-    ) {
+    // Name cross-check: the winner's фирма must appear as a proper „NAME" ФОРМА candidate in the declared
+    // text (boundary-safe, exact key). A raw `key.includes(winnerKey)` was REMOVED — it matched a winner
+    // name embedded MID-TOKEN in an unrelated фирма („СТРОЙ 1" inside „МЕГАСТРОЙ 15"), which with a typo'd-
+    // but-valid ЕИК would attach the wrong winner's contracts to the official (a false conflict; ADR-0016).
+    if (companyCandidates(entity).some((c) => companyNameKey(c) === winnerKey)) {
       return { eik: de, method: 'declared_eik' };
     }
   }

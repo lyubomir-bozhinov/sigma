@@ -86,9 +86,10 @@ for (const l of nonExact) {
   const hit = rows.find((r) => {
     const t = r.entity_raw || '';
     const eikHit = declaredEiks(t).includes(l.eik);
-    const nameHit =
-      companyCandidates(t).some((c) => companyNameKey(c) === winnerKey) ||
-      companyNameKey(t).includes(winnerKey);
+    // Boundary-safe name confirmation (mirrors load.mjs resolveEntity): the winner фирма must appear as a
+    // „NAME" ФОРМА candidate. The raw `companyNameKey(t).includes(winnerKey)` leg was removed — it had the
+    // same mid-token over-merge risk as the resolver, so the audit gate would rubber-stamp it (ADR-0016).
+    const nameHit = companyCandidates(t).some((c) => companyNameKey(c) === winnerKey);
     return (
       (l.match_method === 'declared_eik' && eikHit && nameHit) ||
       (l.match_method === 'extracted_name' && nameHit)
