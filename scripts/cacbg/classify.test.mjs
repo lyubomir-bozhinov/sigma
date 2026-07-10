@@ -23,6 +23,13 @@ test('nameDistinctiveness: numbers / Latin / ≥3 words are distinctive; bare 1-
   assert.equal(nameDistinctiveness('СТРОЙ ИНВЕСТ ЕООД'), 'generic'); // 2 content words + form → withhold
   assert.equal(nameDistinctiveness('НИКАС КОМЕРС ООД'), 'generic'); // 2 content words + form → withhold
   assert.equal(nameDistinctiveness('ВОДОСНАБДЯВАНЕ И КАНАЛИЗАЦИЯ ЕООД'), 'generic'); // 2 content words (И dropped)
+  // companyNameKey keeps punctuation, so the form token must be dropped regardless of an abutting comma /
+  // period / hyphen / quote — the standard registry forms „X ООД, гр.Y" / „X.ИНВЕСТ-ЕООД". A boundary regex
+  // missed these and mis-published them as B_distinctive.
+  assert.equal(nameDistinctiveness('ИНВЕСТ ООД, СОФИЯ'), 'generic'); // comma after form; ИНВЕСТ+СОФИЯ = 2
+  assert.equal(nameDistinctiveness('СТРОЙ ИНВЕСТ, ЕООД'), 'generic'); // comma before form; СТРОЙ+ИНВЕСТ = 2
+  assert.equal(nameDistinctiveness('СТРОЙ.ИНВЕСТ-ЕООД'), 'generic'); // period+hyphen glued; still 2 content words
+  assert.equal(nameDistinctiveness('„ДОМИНО" ЕООД'), 'generic'); // quoted single word + form
 });
 
 test('seatConfirmed: equal non-empty seats confirm; empty or mismatched do not', () => {

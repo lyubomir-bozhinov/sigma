@@ -1,12 +1,14 @@
 // Pure classification helpers for the hardened matcher. Each is deterministic; the ONE heuristic
 // (name distinctiveness) is conservative — it only ever *withholds* a match, never fabricates one.
 
-// A legal-form token bounded by string edge, whitespace or quotes — NOT ASCII `\b`, whose word class is
-// [A-Za-z0-9_] even under /u, so it never finds a boundary beside a Cyrillic letter and would leave every
-// Cyrillic form token in place (inflating the content-word count → premature B_distinctive publish). Same
-// edge/space/quote boundary set as JOINT_STOCK below, so „АД-ХОК ЕООД" (hyphen-glued) keeps its АД token.
-const FORM =
-  /(?:^|[\s"„“”«»])(ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ|КООПЕРАЦИЯ|ФОНДАЦИЯ|СДРУЖЕНИЕ)(?=[\s"„“”«»]|$)/gu;
+// Legal-form abbreviations, matched as WHOLE tokens (not a boundary regex). companyNameKey keeps
+// punctuation (commas, periods, quotes, hyphens — e.g. „X ООД, гр.Y", the standard registry form), and a
+// boundary/lookaround regex can't cover every punctuation neighbour: any it misses leaves the form token
+// counted as a content word → inflated distinctiveness → premature B_distinctive publish. Splitting on
+// non-letter runs and dropping form tokens by exact membership is immune to whatever punctuation abuts them.
+const FORM_TOKENS = new Set([
+  'ЕООД', 'ЕАД', 'ООД', 'АД', 'ЕТ', 'ДЗЗД', 'КД', 'СД', 'АДСИЦ', 'КООПЕРАЦИЯ', 'ФОНДАЦИЯ', 'СДРУЖЕНИЕ',
+]);
 
 /**
  * Distinctiveness of a company name-key — a DISCLOSED heuristic used only to decide whether a
@@ -16,14 +18,12 @@ const FORM =
  * @returns {'distinctive'|'generic'}
  */
 export function nameDistinctiveness(key) {
-  const core = String(key)
-    .replace(FORM, '')
-    .replace(/[^A-Za-zА-Яа-яЁё0-9 ]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (/[0-9]/.test(core)) return 'distinctive'; // ordinals / registration numbers
-  if (/[A-Za-z]/.test(core)) return 'distinctive'; // Latin / brand token
-  const tokens = core.split(' ').filter((t) => t.length > 1);
+  const upper = String(key).toUpperCase();
+  if (/[0-9]/.test(upper)) return 'distinctive'; // ordinals / registration numbers
+  if (/[A-Z]/.test(upper)) return 'distinctive'; // Latin / brand token
+  // Split on any run of non-Cyrillic-letter chars → whole tokens; drop 1-char tokens and legal-form
+  // abbreviations; the remaining content words decide. Punctuation-agnostic (see FORM_TOKENS note).
+  const tokens = upper.split(/[^А-ЯЁ]+/).filter((t) => t.length > 1 && !FORM_TOKENS.has(t));
   return tokens.length >= 3 ? 'distinctive' : 'generic';
 }
 
