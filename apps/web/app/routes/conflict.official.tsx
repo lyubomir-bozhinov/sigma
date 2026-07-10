@@ -25,7 +25,9 @@ export function meta({ data, matches, params }: Route.MetaArgs) {
 }
 
 export function headers() {
-  return { 'Cache-Control': publicCache(3600) };
+  // noindex the RESPONSE, not just the HTML <meta>: the `.data` twin is JSON (no <head>) and names an
+  // individual, so this header is the only noindex signal a crawler sees when it fetches it directly.
+  return { 'Cache-Control': publicCache(3600), 'X-Robots-Tag': 'noindex' };
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

@@ -15,6 +15,7 @@ import {
   fundsMagnitude,
   hasContemporaneousContracts,
   isFamilyLink,
+  isHttpsUrl,
   linkContractsHref,
   officialHref,
   partitionContracts,
@@ -348,6 +349,22 @@ describe('contract list helpers', () => {
   });
   it('contractHref points at the contract detail page', () => {
     expect(contractHref(contract({ contractSlug: 'e:abc123' }))).toBe('/contracts/e:abc123');
+  });
+});
+
+describe('isHttpsUrl', () => {
+  it('accepts only absolute https URLs', () => {
+    expect(isHttpsUrl('https://register.cacbg.bg/2024/i.xml')).toBe(true);
+  });
+  it('rejects null, non-https schemes, and unparseable values (no href injection)', () => {
+    expect(isHttpsUrl(null)).toBe(false);
+    expect(isHttpsUrl(undefined)).toBe(false);
+    expect(isHttpsUrl('')).toBe(false);
+    expect(isHttpsUrl('http://register.cacbg.bg/x')).toBe(false); // plain http
+    expect(isHttpsUrl('javascript:alert(1)')).toBe(false);
+    expect(isHttpsUrl('data:text/html,<script>1</script>')).toBe(false);
+    expect(isHttpsUrl('/2024/i.xml')).toBe(false); // relative → unparseable as absolute
+    expect(isHttpsUrl('register.cacbg.bg/x')).toBe(false);
   });
 });
 

@@ -21,8 +21,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const contracts = await withDbRetry(() => getLinkContracts(context.cloudflare.env.DB, linkKey));
   // Only cache once there is data — an empty read just after a (re)ship should not be pinned for an hour
   // (mirrors the leaderboard loader). getLinkContracts returns [] for any non-surfaced/unknown key.
+  // This JSON names an individual's contracts → noindex the response (it has no HTML <head> to carry a meta).
   return data(
     { linkKey, contracts },
-    { headers: { 'Cache-Control': contracts.length ? publicCache(3600) : 'no-store' } },
+    {
+      headers: {
+        'Cache-Control': contracts.length ? publicCache(3600) : 'no-store',
+        'X-Robots-Tag': 'noindex',
+      },
+    },
   );
 }

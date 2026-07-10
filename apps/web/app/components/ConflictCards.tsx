@@ -15,6 +15,7 @@ import {
   fundsCellLabel,
   fundsMagnitude,
   hasContemporaneousContracts,
+  isHttpsUrl,
   linkContractsHref,
   officialHref,
   partitionContracts,
@@ -154,8 +155,8 @@ function ConflictCard({
           <div className="cc-stat">
             <dt>Източник</dt>
             <dd>
-              {l.sourceUrl ? (
-                <a href={l.sourceUrl} target="_blank" rel="noopener noreferrer">
+              {isHttpsUrl(l.sourceUrl) ? (
+                <a href={l.sourceUrl!} target="_blank" rel="noopener noreferrer">
                   декларация
                 </a>
               ) : (

@@ -216,6 +216,18 @@ export function contractHref(c: ConflictContract): string {
   return `/contracts/${c.contractSlug}`;
 }
 
+/** True only for an absolute https URL. The „декларация" source link opens in a new tab, so a non-https
+ *  (or `javascript:`/`data:`) value must never become an href — defence-in-depth, even though the value is
+ *  a hardcoded register.cacbg.bg URL today. */
+export function isHttpsUrl(u: string | null | undefined): boolean {
+  if (!u) return false;
+  try {
+    return new URL(u).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export interface AuthorityShare {
   authorityId: string;
   authority: string;

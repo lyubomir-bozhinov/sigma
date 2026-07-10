@@ -31,7 +31,12 @@ export function meta({ matches }: Route.MetaArgs) {
 }
 
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
-  return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? publicCache(3600) };
+  // noindex the RESPONSE, not just the HTML <meta>: the `.data` twin is JSON (no <head>) and names
+  // individuals, so this header is the only noindex signal a crawler sees when it fetches it directly.
+  return {
+    'Cache-Control': loaderHeaders.get('Cache-Control') ?? publicCache(3600),
+    'X-Robots-Tag': 'noindex',
+  };
 }
 
 // All eligible published links (private + family). ~292 today; small enough to load whole and paginate
