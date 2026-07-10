@@ -33,10 +33,29 @@ const FRESH = freshnessToken({ refreshedAt: '2026-06-24T00:00:00Z', buildId: 'ab
 const report = { reportId: 'rep_1', createdAt: '2026-06-24T01:02:03Z' };
 
 describe('freshnessToken', () => {
-  it('reuses the csv-export refreshed_at derivation and is composite', () => {
+  it('reuses the csv-export refreshed_at derivation and injective-encodes the build id', () => {
+    // data half: the csv-export strip-to-[a-z0-9] over the fixed ISO timestamp. code half:
+    // encodeURIComponent over the raw buildId, so a hyphen (a valid unreserved char) is preserved, not
+    // stripped — the code half no longer discards characters.
     expect(freshnessToken({ refreshedAt: '2026-06-24T00:00:00Z', buildId: 'abc-123' })).toBe(
-      'd:20260624T000000Z|c:abc123',
+      'd:20260624T000000Z|c:abc-123',
     );
+  });
+
+  it('is injective over buildId — distinct build ids never collapse to one code (review, ydimitrof)', () => {
+    // Old strip-to-[a-z0-9] mapped `1.2.3` and `12.3` both to `123` (and `a|bc`/`abc` both to `abc`),
+    // colliding the code so a stale report would survive a deploy. Encoding must distinguish them.
+    const r = '2026-06-24T00:00:00Z';
+    expect(freshnessToken({ refreshedAt: r, buildId: '1.2.3' })).not.toBe(
+      freshnessToken({ refreshedAt: r, buildId: '12.3' }),
+    );
+    expect(freshnessToken({ refreshedAt: r, buildId: 'a|bc' })).not.toBe(
+      freshnessToken({ refreshedAt: r, buildId: 'abc' }),
+    );
+    // the `|` / `:` composite delimiters stay uninjectable even when the build id contains them
+    const t = freshnessToken({ refreshedAt: r, buildId: 'a|b:c' });
+    expect(t.match(/\|/g)).toHaveLength(1);
+    expect(t.startsWith('d:')).toBe(true);
   });
 
   it('changes when either the data or the code half changes', () => {

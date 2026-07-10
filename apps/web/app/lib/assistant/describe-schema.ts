@@ -114,7 +114,11 @@ export const TABLES: TableDoc[] = [
       'contract_number (=contracts.contract_number — join ключ към договора), ' +
       'value_before, value_after, value_delta (стойностна промяна от анекса), currency, published_at, description',
   },
-  { name: 'parties', grain: 'роля по OCDS преписка', columns: 'ocid (≠ УНП!), role, …' },
+  {
+    name: 'parties',
+    grain: 'страна (организация) по OCDS преписка',
+    columns: 'party_key, eik, ocid (≠ УНП!), party_id, name, region_nuts',
+  },
   {
     name: 'authority_totals',
     grain: 'rollup на възложител',

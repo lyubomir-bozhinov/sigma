@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reportToMarkdown, safeFilename } from './report-export';
+import { reportToDocxBlob, reportToMarkdown, safeFilename } from './report-export';
 import type { ResolvedReport } from '~/lib/assistant-contract/report';
 
 function report(blocks: ResolvedReport['blocks']): ResolvedReport {
@@ -105,6 +105,59 @@ describe('reportToMarkdown', () => {
       report([{ type: 'totals', items: [{ label: 'A|B', value: '1', format: 'text' }] }]),
     );
     expect(md).toContain('A\\|B');
+  });
+
+  it('renders a facts block as a Поле/Стойност table with its sub-annotation', () => {
+    const md = reportToMarkdown(
+      report([
+        {
+          type: 'facts',
+          items: [
+            { term: 'ЕИК', value: '103267194' },
+            { term: 'Печалба', value: 1280000000, sub: 'за периода' },
+          ],
+        },
+      ]),
+    );
+    expect(md).toContain('| Поле | Стойност |');
+    expect(md).toContain('ЕИК');
+    expect(md).toContain('103267194');
+    expect(md).toContain('_(за периода)_'); // sub annotation appended to the value
+  });
+});
+
+describe('reportToDocxBlob', () => {
+  // One report exercising every block-type branch of the ~240-line DOCX builder in a single pass.
+  const everyBlock: ResolvedReport['blocks'] = [
+    { type: 'text', md: 'Увод.' },
+    { type: 'callout', title: 'Внимание', md: 'Бележка.' },
+    { type: 'totals', items: [{ label: 'Общо', value: 1234567, format: 'money' }] },
+    { type: 'facts', items: [{ term: 'ЕИК', value: '103267194', sub: 'регистър' }] },
+    {
+      type: 'table',
+      columns: [
+        { key: 'name', header: 'Фирма', format: 'text' },
+        { key: 'val', header: 'Сума', align: 'right', format: 'money' },
+      ],
+      rows: [{ cells: ['Фирма АД', 999999] }],
+    },
+    { type: 'bar', points: [{ label: 'Фирма А', value: 500000 }], format: 'money' },
+    { type: 'flows', edges: [{ from: 'МЗ', to: 'Фарма ООД', valueEur: 42000 }] },
+    { type: 'timeseries', points: [{ period: '2024-01', value: 1000 }] },
+  ];
+
+  it('produces a real, non-empty .docx (ZIP container) covering every block type', async () => {
+    const blob = await reportToDocxBlob(report(everyBlock));
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.size).toBeGreaterThan(0);
+    // OOXML is a ZIP — the container must start with the PK local-file-header magic bytes.
+    const head = new Uint8Array(await blob.arrayBuffer()).subarray(0, 2);
+    expect(Array.from(head)).toEqual([0x50, 0x4b]); // "PK"
+  });
+
+  it('produces a valid document for an empty report (no blocks)', async () => {
+    const blob = await reportToDocxBlob(report([]));
+    expect(blob.size).toBeGreaterThan(0);
   });
 });
 

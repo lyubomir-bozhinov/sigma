@@ -252,6 +252,35 @@ describe('entity links, cell sanitisation, prose gate (review #80)', () => {
     }
   });
 
+  it('drops an entity link whose id domain contradicts the declared kind (nedda review guard)', () => {
+    // `authority_id` holds `auth:` ids, but this column declares kind `company`. Emitting the id under a
+    // `company` link would render /companies/<authority-id> — a wrong citation on a transparency report.
+    // The binder drops the link (null) instead of trusting the model's kind.
+    const out = bindReport(
+      emit([
+        {
+          type: 'table',
+          resultId: 'R1',
+          columns: [
+            {
+              key: 'authority',
+              header: 'Институция',
+              format: 'text',
+              link: { kind: 'company', idCol: 'authority_id' },
+            },
+            { key: 'spent_eur', header: 'Похарчено (€)', align: 'right', format: 'money' },
+          ],
+        },
+      ]),
+      results,
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok && out.report.blocks[0]?.type === 'table') {
+      expect(out.report.blocks[0].rows[0]!.links).toEqual([null, null]);
+      expect(out.report.blocks[0].rows[1]!.links).toEqual([null, null]);
+    }
+  });
+
   it('rejects a table whose link idCol is absent from the result', () => {
     const out = bindReport(
       emit([
@@ -610,6 +639,14 @@ describe('findProseNumbers', () => {
     expect(findProseNumbers('над 12 млрд')).not.toHaveLength(0);
     expect(findProseNumbers('€4500 на договор')).not.toHaveLength(0);
     expect(findProseNumbers('сумата 1234567')).not.toHaveLength(0);
+  });
+
+  it('flags трилион/билион spelled magnitudes above милиард (nedda review guard)', () => {
+    // The spelled-magnitude stem list stopped at милиард, so "3 трилиона лева" matched no pattern and an
+    // unbound trillion-scale figure could land on a public report.
+    expect(findProseNumbers('усвоени 3 трилиона лева')).not.toHaveLength(0);
+    expect(findProseNumbers('оборот от 2 билиона евро')).not.toHaveLength(0);
+    expect(findProseNumbers('усвоиха квадрилион лева')).not.toHaveLength(0);
   });
 
   it('ignores years, small counts and ordinals', () => {

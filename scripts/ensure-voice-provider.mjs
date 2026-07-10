@@ -144,11 +144,20 @@ export async function ensureCustomProvider({
 
 // Dry-run decorator: GETs pass through (safe); every mutation is logged as WOULD … and answered with a
 // synthetic success so the full plan prints in one pass without touching the account.
-function dryRunFetch(real, log) {
+export function dryRunFetch(real, log) {
   return async (url, opts = {}) => {
     const method = opts.method ?? 'GET';
     if (method === 'GET') return real(url, opts);
-    log(`  WOULD ${method} ${url}${opts.body ? ` ${opts.body}` : ''}`);
+    // Mask any bearer secret in the logged body: dry-run is the DEFAULT mode, so a stored `Authorization`
+    // header (from VOICE_ASSISTANT_API_KEY) would otherwise print verbatim to stdout / the CI log. Mirrors
+    // ensure-worker-secret.mjs, which never lets a secret touch stdout (review, ydimitrof).
+    const rawBody = opts.body
+      ? typeof opts.body === 'string'
+        ? opts.body
+        : JSON.stringify(opts.body)
+      : '';
+    const safeBody = rawBody.replace(/("Authorization"\s*:\s*")Bearer\s+[^"]+/gi, '$1Bearer ***');
+    log(`  WOULD ${method} ${url}${safeBody ? ` ${safeBody}` : ''}`);
     return {
       ok: true,
       status: 200,

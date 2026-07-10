@@ -81,13 +81,17 @@ const KEY_PREFIX = 'dedup';
 
 /**
  * Composite token `d:<data>|c:<code>`. The data half reuses the exact derivation csv-export.ts
- * already applies to `home_totals.refreshed_at` so the two caches invalidate in lockstep. Stripping
- * to `[a-z0-9]` is injective over the fixed-format inputs it receives (ISO-8601 timestamp, alphanumeric
- * build id) and keeps the `|` / `d:` / `c:` delimiters uninjectable.
+ * already applies to `home_totals.refreshed_at` (fixed ISO-8601 format) so the two caches invalidate in
+ * lockstep. The code half is `buildId`, whose format is NOT guaranteed (semver, git-describe, tag): a
+ * strip-to-`[a-z0-9]` is non-injective — `1.2.3` and `12.3` both collapse to `123`, so two distinct
+ * builds would share a code and a stale report would survive a deploy (the exact cache invalidation the
+ * code half exists to force). `encodeURIComponent` is injective and escapes the `|` / `:` delimiters, so
+ * distinct build ids always map to distinct codes and the token delimiters stay uninjectable (review,
+ * ydimitrof). A plain SHA/alphanumeric build id is unchanged (no reserved chars to escape).
  */
 export function freshnessToken({ refreshedAt, buildId }: FreshnessInput): string {
   const data = refreshedAt.replace(/[^a-z0-9]/gi, '');
-  const code = buildId.replace(/[^a-z0-9]/gi, '');
+  const code = encodeURIComponent(buildId);
   return `d:${data}|c:${code}`;
 }
 

@@ -111,9 +111,11 @@ export function chooseToolChoice(input: ToolChoiceInput): StepToolChoice {
   // spending the last steps exploring and returning nothing. Checked before the failed-emit retry because
   // forcing the specific tool is strictly stronger than a bare 'required'.
   if (!reportEmitted && hasResults && stepNumber >= maxSteps - 2) {
-    // Gap 1: if results touched a rollup summary table but reconcile hasn't run yet, force it first.
-    // reconcile_rollup gets the penultimate forced step; emit_report gets the final one — so the model
-    // never presents a rollup-touching aggregate that hasn't been reconciled.
+    // Gap 1: if results touched a rollup summary table but reconcile hasn't run yet, force it first —
+    // reconcile_rollup takes this step and emit_report the next, so the model never presents a
+    // rollup-touching aggregate that hasn't been reconciled. Edge: when the window opens on the FINAL step
+    // (data first binds late), reconcile consumes the last step and no emit_report is forced — the server
+    // buildFallbackReport then composes the report, which is preferable to surfacing an unreconciled rollup.
     if (rollupTouched && !reconcileEmitted) {
       return { type: 'tool', toolName: 'reconcile_rollup' };
     }

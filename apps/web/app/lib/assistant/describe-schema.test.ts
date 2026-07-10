@@ -77,4 +77,37 @@ describe('describe-schema data dictionary', () => {
       }
     }
   });
+
+  it('parties dictionary lists only real columns — no phantom `role` (nedda review guard)', () => {
+    // Physical columns of `parties` (packages/db/migrations/0000_init.sql). The dictionary must not
+    // advertise a column the table lacks: the model would emit `SELECT role`, which passes all three SQL
+    // guards and then errors at D1 with "no such column: role".
+    const realColumns = new Set([
+      'party_key',
+      'eik',
+      'source',
+      'ocid',
+      'party_id',
+      'name',
+      'street_address',
+      'locality',
+      'region_nuts',
+      'contact_email',
+      'contact_phone',
+    ]);
+    const parties = TABLES.find((t) => t.name === 'parties');
+    expect(parties).toBeDefined();
+    const advertised = parties!.columns
+      .split(',')
+      .map((tok) => tok.trim().match(/^[a-z_]+/)?.[0])
+      .filter((c): c is string => Boolean(c));
+    expect(advertised.length).toBeGreaterThan(0);
+    expect(advertised).not.toContain('role');
+    for (const col of advertised) {
+      expect(
+        realColumns.has(col),
+        `parties dictionary advertises non-existent column \`${col}\``,
+      ).toBe(true);
+    }
+  });
 });
