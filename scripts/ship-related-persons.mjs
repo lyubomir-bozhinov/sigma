@@ -68,6 +68,22 @@ export function assertShipFloor(publishedCount, minLinks) {
   }
 }
 
+/**
+ * Parse the --min-links floor. Footgun guarded: `arg()` returns boolean `true` for a VALUELESS `--min-links`
+ * flag, and `Number(true) === 1` — which silently collapses the anti-wipe floor from 50 to 1 while passing a
+ * naive integer check. Reject the bare `true` explicitly, then require a positive integer. Pure — unit-tested.
+ */
+export function parseMinLinks(raw) {
+  if (raw === true)
+    throw new Error(
+      '--min-links requires a value, e.g. --min-links=25 — a bare flag would collapse the anti-wipe floor to 1.',
+    );
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Error(`--min-links must be a positive integer, got ${JSON.stringify(raw)}.`);
+  return n;
+}
+
 /** Batched multi-row INSERTs for one table, bounded by D1's statement size. Pure — unit-tested. */
 export function insertStatements(table, cols, rows) {
   if (!cols.length || !rows.length) return [];
@@ -98,7 +114,7 @@ function main() {
   const emit = arg('emit', '');
   const remote = Boolean(arg('remote', false));
   const d1Name = process.env.SIGMA_D1_NAME || 'sigma';
-  const minLinks = Number(arg('min-links', 50));
+  const minLinks = parseMinLinks(arg('min-links', 50));
   if (remote && !arg('yes', false))
     throw new Error('--remote requires --yes (guards against an accidental prod write)');
 

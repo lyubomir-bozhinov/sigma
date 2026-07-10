@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   assertShipFloor,
+  parseMinLinks,
   insertStatements,
   sqlLiteral,
   sqlIdent,
@@ -72,6 +73,17 @@ test('assertShipFloor refuses to wipe the live surface below the floor (empty/pa
   assert.doesNotThrow(() => assertShipFloor(256, 50)); // healthy count
   assert.doesNotThrow(() => assertShipFloor(3, 3)); // an intentional small set via --min-links=3
   assert.throws(() => assertShipFloor(2, 3)); // …but one below it still refuses
+});
+
+test('parseMinLinks rejects the valueless-flag footgun and non-positive-integers', () => {
+  // the footgun: a bare `--min-links` → arg() returns `true` → Number(true)=1 collapses the floor 50→1
+  assert.throws(() => parseMinLinks(true), /requires a value/);
+  assert.throws(() => parseMinLinks('abc'), /positive integer/); // non-numeric
+  assert.throws(() => parseMinLinks('0'), /positive integer/); // zero disables the floor
+  assert.throws(() => parseMinLinks('-5'), /positive integer/);
+  assert.throws(() => parseMinLinks('2.5'), /positive integer/); // non-integer
+  assert.equal(parseMinLinks(50), 50); // default (flag absent) passes through
+  assert.equal(parseMinLinks('25'), 25); // --min-links=25
 });
 
 test('related_persons_internal (relative-name PII) is NOT shipped to the served D1', () => {
