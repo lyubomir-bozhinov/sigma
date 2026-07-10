@@ -7,9 +7,12 @@
 -- internal-only table (ADR-0010) and are never joined into the published surface.
 
 -- Public officials who filed declarations. No national person id (ЕГН is stripped, ADR-0010), so a
--- person is keyed by normalized name; the rare namesake collision is documented, not silently merged.
+-- person is keyed by (normalized name, normalized institution) — NEVER a bare name (ADR-0026): two
+-- namesakes at different institutions stay distinct, so no homonym merge into one page. register_year and
+-- position are excluded so a person is stable across their filing years (the E11 divestment horizon keys
+-- on person_id and must span them). The residual same-name+same-institution collision is documented.
 CREATE TABLE IF NOT EXISTS persons (
-  id           TEXT PRIMARY KEY,            -- 'person:' || companyNameKey-style normalized full name
+  id           TEXT PRIMARY KEY,            -- 'person:' || key(name) || '|' || key(institution)
   name         TEXT NOT NULL,               -- declarant full name as filed
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );

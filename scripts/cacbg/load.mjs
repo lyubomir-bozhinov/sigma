@@ -171,7 +171,15 @@ const insDI = db.prepare(
 const insRP = db.prepare(
   'INSERT INTO related_persons_internal(id,declaration_id,related_name,related_kind,info,timing) VALUES(?,?,?,?,?,?)',
 );
-const personId = (name) => `person:${companyNameKey(name)}`;
+// Person grain is (name, institution) — NEVER a bare name (spec §4: „homonym merge is the failure to
+// avoid"). Two „Георги Иванов" at different institutions are different people; keying on the name alone
+// merges them into one /conflicts page carrying both their companies (false attribution). Institution is
+// normalized through the same key so a person's institution-string variants fold together, keeping identity
+// stable across their filing years — which the E11 divestment horizon (keyed on person_id) depends on.
+// register_year/position are deliberately EXCLUDED (ADR-0026): both would split one official across
+// years/promotions, fragmenting identity and blinding the cross-year divestment tracking.
+const personId = (name, institution) =>
+  `person:${companyNameKey(name)}|${companyNameKey(institution ?? '')}`;
 // Financial-interest kinds (a genuine stake), as opposed to management-only or listed securities.
 const OWN_KINDS = new Set(['shares', 'participation', 'sole_trader']);
 const agg = new Map();
@@ -192,7 +200,7 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
     namelessPerson++;
     continue;
   }
-  const pid = personId(h.person);
+  const pid = personId(h.person, h.institution);
   const did = `decl:${h.xmlFile}`;
   insPerson.run(pid, h.person);
   insDecl.run(
@@ -294,10 +302,10 @@ let rpN = 0;
 for (const r of readJsonl(path.join(STAGING, 'related.jsonl'))) {
   const did = `decl:${r.xmlFile}`;
   if (!db.prepare('SELECT 1 FROM declarations WHERE id=?').get(did)) {
-    insPerson.run(personId(r.person), r.person);
+    insPerson.run(personId(r.person, r.institution), r.person);
     insDecl.run(
       did,
-      personId(r.person),
+      personId(r.person, r.institution),
       r.xmlFile,
       null,
       r.folder,
