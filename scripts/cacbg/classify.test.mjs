@@ -12,10 +12,17 @@ import {
 test('nameDistinctiveness: numbers / Latin / ≥3 words are distinctive; bare 1-2 word Cyrillic is generic', () => {
   assert.equal(nameDistinctiveness('СТЕЛИТ 1 ЕООД'), 'distinctive'); // number
   assert.equal(nameDistinctiveness('HALEON'), 'distinctive'); // Latin
-  assert.equal(nameDistinctiveness('ПЪТНО СТРОИТЕЛСТВО ПЛОВДИВ АД'), 'distinctive'); // 3 words
+  assert.equal(nameDistinctiveness('ПЪТНО СТРОИТЕЛСТВО ПЛОВДИВ АД'), 'distinctive'); // 3 content words + form
+  assert.equal(nameDistinctiveness('ХИДРО СТРОЙ МОНТАЖ ЕООД'), 'distinctive'); // 3 content words + form
   assert.equal(nameDistinctiveness('В И К ООД'), 'generic'); // 1 core word after forms
   assert.equal(nameDistinctiveness('ДОМИНО ЕООД'), 'generic'); // single common word
-  assert.equal(nameDistinctiveness('ВОДОСНАБДЯВАНЕ И КАНАЛИЗАЦИЯ ЕООД'), 'distinctive'); // ≥3 content words
+  // The Cyrillic legal form MUST be stripped before counting content words. A 2-content-word closely-held
+  // name is generic → route to census, never auto-publish. Pre-fix the ASCII-only \b in FORM never matched
+  // a Cyrillic boundary, so the form token survived, inflated the count to 3, and mis-published these as
+  // B_distinctive — the exact premature-publish/libel hazard the tiering exists to prevent.
+  assert.equal(nameDistinctiveness('СТРОЙ ИНВЕСТ ЕООД'), 'generic'); // 2 content words + form → withhold
+  assert.equal(nameDistinctiveness('НИКАС КОМЕРС ООД'), 'generic'); // 2 content words + form → withhold
+  assert.equal(nameDistinctiveness('ВОДОСНАБДЯВАНЕ И КАНАЛИЗАЦИЯ ЕООД'), 'generic'); // 2 content words (И dropped)
 });
 
 test('seatConfirmed: equal non-empty seats confirm; empty or mismatched do not', () => {

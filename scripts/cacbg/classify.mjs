@@ -1,7 +1,12 @@
 // Pure classification helpers for the hardened matcher. Each is deterministic; the ONE heuristic
 // (name distinctiveness) is conservative — it only ever *withholds* a match, never fabricates one.
 
-const FORM = /\b(ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ|ЕАД|КООПЕРАЦИЯ|ФОНДАЦИЯ|СДРУЖЕНИЕ|АДСИЦ)\b/gu;
+// A legal-form token bounded by string edge, whitespace or quotes — NOT ASCII `\b`, whose word class is
+// [A-Za-z0-9_] even under /u, so it never finds a boundary beside a Cyrillic letter and would leave every
+// Cyrillic form token in place (inflating the content-word count → premature B_distinctive publish). Same
+// edge/space/quote boundary set as JOINT_STOCK below, so „АД-ХОК ЕООД" (hyphen-glued) keeps its АД token.
+const FORM =
+  /(?:^|[\s"„“”«»])(ЕООД|ЕАД|ООД|АД|ЕТ|ДЗЗД|КД|СД|АДСИЦ|КООПЕРАЦИЯ|ФОНДАЦИЯ|СДРУЖЕНИЕ)(?=[\s"„“”«»]|$)/gu;
 
 /**
  * Distinctiveness of a company name-key — a DISCLOSED heuristic used only to decide whether a
