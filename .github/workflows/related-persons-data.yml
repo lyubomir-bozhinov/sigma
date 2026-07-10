@@ -166,3 +166,20 @@ jobs:
           cp apps/web/wrangler.deploy.jsonc apps/web/wrangler.jsonc
           export PATH="$GITHUB_WORKSPACE/apps/web/node_modules/.bin:$GITHUB_WORKSPACE/node_modules/.bin:$PATH"
           node scripts/ship-related-persons.mjs --work-db data/work/backfill.sqlite --remote --yes
+
+      - name: Reindex search projection → officials searchable (same batch the cron runs)
+        # ship writes ONLY the свързани-лица domain tables (interest_links, persons, …), NOT search_index.
+        # search_index.official is derived from interest_links by refresh-slice's `entity-search-index`
+        # batch, which in steady state only the sigma-etl cron runs (0 */6). Without this step a dispatch
+        # seeds the data but leaves officials UNSEARCHABLE until the next cron — the workflow would not
+        # actually "ship into a served D1" as titled. Emit that batch from the SAME parser the Worker uses
+        # (scripts/emit-refresh-group.mjs → packages/ingest refreshSliceStatementGroups; no SQL duplicated)
+        # and run it against the target D1. Idempotent: each kind is DELETE+reINSERT, so re-runs converge.
+        run: |
+          set -euo pipefail
+          mkdir -p data/work
+          node --import ./scripts/cacbg/register-ts.mjs scripts/emit-refresh-group.mjs entity-search-index \
+            > "$GITHUB_WORKSPACE/data/work/reindex.sql"
+          pnpm --filter @sigma/web exec wrangler d1 execute "$SIGMA_D1_NAME" \
+            --config wrangler.deploy.jsonc --remote --yes \
+            --file "$GITHUB_WORKSPACE/data/work/reindex.sql"
