@@ -60,8 +60,8 @@ function run() {
     for (const file of fs.readdirSync(dir)) {
       if (file === 'list.xml' || !file.endsWith('.xml')) continue;
       // A single malformed/truncated XML must not abort the whole corpus crawl — skip it and keep going,
-      // counting the skip so a spike is visible. (The crawl is a long polite fetch; losing it to one bad
-      // file mid-run wastes hours.)
+      // counting the skip so a rise in skips is visible. (The crawl is a long polite fetch; losing it to
+      // one bad file mid-run wastes hours.)
       let d;
       try {
         d = parseDeclaration(fs.readFileSync(path.join(dir, file), 'utf8'));

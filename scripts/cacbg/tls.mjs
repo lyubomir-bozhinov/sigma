@@ -37,7 +37,7 @@ export function getPinned(url, { headers = {}, timeoutMs = 30000 } = {}) {
       {
         agent,
         headers: {
-          'user-agent': 'sigma-transparency-spike (+github.com/midt-bg/sigma)',
+          'user-agent': 'sigma-transparency (+github.com/midt-bg/sigma)',
           ...headers,
         },
       },

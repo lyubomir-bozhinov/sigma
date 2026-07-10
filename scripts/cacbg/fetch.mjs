@@ -1,11 +1,12 @@
-// CACBG crawler (Task 2). One-time polite crawl of the public declaration register into a LOCAL,
-// git-ignored raw cache. Pure I/O: it fetches list.xml + every declaration XML and writes them under
-// scratch/cacbg/raw/<year>/. Parsing/extraction is a separate re-runnable step (extract.mjs) so the
-// parser can evolve without re-fetching — and the raw cache mirrors the production R2 corpus.
+// CACBG crawler. The on-demand full-corpus crawl of the public declaration register into a LOCAL,
+// git-ignored raw cache — the `full_crawl` path of the related-persons-data workflow (steady-state
+// incremental refresh is the sigma-etl Worker's R2-backed job, ADR-0006). Pure I/O: it fetches list.xml
+// + every declaration XML and writes them under scratch/cacbg/raw/<year>/. Parsing/extraction is a
+// separate re-runnable step (extract.mjs) so the parser can evolve without re-fetching.
 //
 // Resumable + idempotent: a declaration already on disk is skipped (the source is immutable per year).
-// PII: raw XML lives ONLY in git-ignored scratch (deleted post-spike, Task 0). EGN is already stripped
-// upstream; addresses/family are dropped by extract.mjs, never persisted to the structured staging.
+// PII: raw XML lives ONLY in git-ignored scratch (workflow-cached across runs, never committed). EGN is
+// already stripped upstream; addresses/family are dropped by extract.mjs, never persisted to staging.
 //
 // Usage:
 //   node scripts/cacbg/fetch.mjs                        # all folders discovered from the register index

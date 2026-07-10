@@ -1,4 +1,4 @@
-// Refuse-to-run guard (spec §8, Task 0). CACBG declarations touch PII-adjacent data. The spike is
+// Refuse-to-run guard (spec §8). CACBG declarations touch PII-adjacent data. The crawl/extract steps are
 // only allowed to write under scratch/, and scratch/ MUST be git-ignored so nothing PII lands in a
 // commit. This asserts that invariant before any fetch — if scratch/ is not ignored, we stop hard.
 
