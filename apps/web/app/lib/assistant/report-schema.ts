@@ -212,16 +212,25 @@ export function sanitizeProse(md: string): string {
   return out.trim();
 }
 
-// Our synthetic entity-id scheme (`auth:`=authority, `eik:`/`name:`=company, `c:e:`/`c:o:`=contract — the
-// JOIN/link keys from identity.ts / entityKindOfId) is internal plumbing, never a user-facing value. When the
-// model SELECTs an id column as a *display* column (Q17/Q46: „Възложител = auth:000695089"), the raw scheme
-// prefix would surface in the public report. Strip a leading scheme token so a stray id renders as its
-// real-world value (name / ЕИК / УНП), not our internals. Entity LINKS are unaffected — bindReport binds them
-// from the raw row value on a separate path, before sanitizeCell. Longer contract forms precede `c:` so the
-// alternation strips the full token (`c:e:` before `c:`), not just the first two chars.
-const ENTITY_ID_PREFIX = /^(?:auth:|eik:|name:|c:o:|c:e:|c:)/;
+// Our synthetic entity-id scheme (identity.ts) is internal plumbing, never a user-facing value. Two shapes:
+//   • whole-cell id — `auth:ЕИК` (authority) / `eik:ЕИК` / `name:NAME` (company)
+//   • composite contract id — `c:e:<УНП>:<contract_number>:<date>` / `c:o:<ocid>:…`, which additionally
+//     EMBEDS the bidder token mid-string (live: `c:e:00042-2025-0016:237236:1:eik:175405647:1`)
+// When the model SELECTs an id column as a *display* column (Q17/Q46), the scheme would surface in the public
+// report. A whole-cell id → strip the scheme prefix, leaving its real-world value (ЕИК / name). A composite
+// contract id → show ONLY the head segment (the user-facing УНП/ocid); this drops the embedded `…:eik:…`
+// bidder token entirely — anchoring the strip at `^` alone would leave it. A plain text cell that merely
+// contains a colon (a subject line) is left intact. Entity LINKS are unaffected — bindReport binds them from
+// the raw row value on a separate path, before sanitizeCell.
 export function stripEntityIdPrefix(v: string): string {
-  return v.replace(ENTITY_ID_PREFIX, '');
+  const noContractPrefix = v.replace(/^(?:c:e:|c:o:|c:)/, '');
+  // A composite id: it carried a `c:*` prefix, OR it embeds a scheme token after a colon (`…:eik:ЕИК:…`).
+  const isComposite = noContractPrefix !== v || /:(?:auth|eik|name):/.test(v);
+  if (isComposite) {
+    const colon = noContractPrefix.indexOf(':');
+    return colon === -1 ? noContractPrefix : noContractPrefix.slice(0, colon);
+  }
+  return v.replace(/^(?:auth:|eik:|name:)/, '');
 }
 
 // Data cells carry submitter-influenceable text (company/authority names, contract subjects). Tag-strip

@@ -378,16 +378,31 @@ describe('entity links, cell sanitisation, prose gate (review #80)', () => {
 });
 
 describe('entity-id scheme never leaks as a display cell (Q17/Q46 follow-up)', () => {
-  it('strips each internal id prefix down to its real-world value', () => {
+  it('strips each whole-cell id prefix down to its real-world value', () => {
     expect(stripEntityIdPrefix('auth:000695089')).toBe('000695089'); // authority → bare ЕИК
     expect(stripEntityIdPrefix('eik:831915840')).toBe('831915840'); // company → bare ЕИК
     expect(stripEntityIdPrefix('name:СОФАРМА АД')).toBe('СОФАРМА АД'); // company fallback → name
-    expect(stripEntityIdPrefix('c:e:00123-2024-0001')).toBe('00123-2024-0001'); // contract → УНП
-    expect(stripEntityIdPrefix('c:o:ocds-abc-123')).toBe('ocds-abc-123'); // contract → ocid
+    expect(stripEntityIdPrefix('name:ACME: LTD')).toBe('ACME: LTD'); // name is free text — colon kept intact
   });
 
-  it('leaves ordinary values, NUTS codes and numbers untouched', () => {
+  it('collapses a composite contract id to its head УНП/ocid, dropping the embedded bidder token', () => {
+    // The composite embeds the bidder id mid-string; anchoring the strip at `^` would leave `…:eik:ЕИК:…`.
+    expect(stripEntityIdPrefix('c:e:00042-2025-0016:237236:1:eik:175405647:1')).toBe(
+      '00042-2025-0016',
+    );
+    expect(stripEntityIdPrefix('c:o:UNP-1:CONTRACT-1:2026-06-13')).toBe('UNP-1');
+    // The `c:e:` prefix may already be gone (a prior strip) — the embedded token alone still marks it composite.
+    expect(stripEntityIdPrefix('00080-2023-0001:84818:_:name:LEONARDO S.P.A.:1')).toBe(
+      '00080-2023-0001',
+    );
+    // Simple (no embedded token) contract id → head is the whole УНП/ocid.
+    expect(stripEntityIdPrefix('c:e:00123-2024-0001')).toBe('00123-2024-0001');
+    expect(stripEntityIdPrefix('c:o:ocds-abc-123')).toBe('ocds-abc-123');
+  });
+
+  it('leaves ordinary values, colon-bearing text, NUTS codes and numbers untouched', () => {
     expect(sanitizeCell('СОФАРМА АД')).toBe('СОФАРМА АД');
+    expect(sanitizeCell('Доставка: канцеларски материали')).toBe('Доставка: канцеларски материали');
     expect(sanitizeCell('BG411')).toBe('BG411'); // NUTS3 code is not our scheme — must survive
     expect(sanitizeCell('2024')).toBe('2024');
     expect(sanitizeCell(1234567)).toBe(1234567);
