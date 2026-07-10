@@ -3,6 +3,7 @@ import { baseSecurityHeaders, nonceLessSecurityHeaders } from '../app/lib/securi
 import { rateLimitAggregationRoute } from './aggregation-rate-limit';
 import { rateLimitAssistantRoute } from './assistant-rate-limit';
 import { rateLimitConflictsRoute } from './conflicts-rate-limit';
+import { normalizedPathname } from './rate-limit';
 import { cacheKey } from './cache-key';
 import { cspNonce, hashTrustedInlineScripts } from './csp';
 import { rateLimitCsvExport } from './csv-rate-limit';
@@ -56,6 +57,16 @@ function isAnonymous(request: Request, response: Response): boolean {
 
 function isHtml(response: Response): boolean {
   return (response.headers.get('Content-Type') ?? '').toLowerCase().includes('text/html');
+}
+
+// Every /conflicts response names individuals → noindex it. This is the ONE place that covers both the HTML
+// and its single-fetch `.data` twin: the twin is JSON with no <head>, so a route <meta robots> can't reach
+// it, and a resource route's loader `data(..., {headers})` doesn't propagate to the .data HTTP response.
+// normalizedPathname strips a trailing `.data` (and duplicate slashes), so the twin matches the same rule.
+// /conflicts/methodology is the deliberately-indexed public credibility anchor (ADR-0020/0021) — exclude it.
+function isNoindexConflictsPath(request: Request): boolean {
+  const p = normalizedPathname(request);
+  return (p === '/conflicts' || p.startsWith('/conflicts/')) && p !== '/conflicts/methodology';
 }
 
 // Apply the shared base headers, and for edge-cacheable HTML swap the per-request nonce CSP for a
@@ -156,6 +167,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     isAnonymous(request, response) &&
     /s-maxage=\d/.test(response.headers.get('Cache-Control') ?? '');
   const hardened = await hardenResponse(response, cacheable);
+  // Set BEFORE the cache put so the stored copy carries it — the HIT path (above) rebuilds headers from the
+  // cached response, so a noindex baked into the cached entry is preserved on every subsequent HIT.
+  if (isNoindexConflictsPath(request)) hardened.headers.set('X-Robots-Tag', 'noindex');
   if (cacheable) ctx.waitUntil(edgeCache.put(key, hardened.clone()));
   hardened.headers.set('X-Edge-Cache', cacheable ? 'MISS' : 'BYPASS');
   return hardened;
