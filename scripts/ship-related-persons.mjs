@@ -16,8 +16,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-// link_suppressions is loaded first so a re-import cannot briefly expose a contested link; the rest are
-// independent. Order is otherwise parents-before-children for readability (FKs are not enforced by D1).
+// INSERT order — parents before children. link_suppressions first so a re-import can't briefly expose a
+// contested link (it is back in place before interest_links reappears). D1 DOES enforce foreign keys, so a
+// re-seed of an already-populated D1 must DELETE in the reverse (children-first) order: deleting a parent
+// while children still reference it fails with SQLITE_CONSTRAINT_FOREIGNKEY (a re-seed then dies at persons).
 export const TABLES = [
   'link_suppressions',
   'persons',
@@ -26,6 +28,21 @@ export const TABLES = [
   'interest_links',
   'interest_link_authorities',
 ];
+// DELETE order for the pre-insert wipe — children before parents. related_persons_internal (PII, never
+// re-shipped) also REFERENCES declarations, so it is wiped before declarations; otherwise a populated D1
+// carrying internal rows would block DELETE FROM declarations.
+export const WIPE_ORDER = [
+  'interest_link_authorities',
+  'related_persons_internal',
+  'interest_links',
+  'declared_interests',
+  'declarations',
+  'persons',
+  'link_suppressions',
+];
+export function wipeSql() {
+  return WIPE_ORDER.map((t) => `DELETE FROM ${sqlIdent(t)};`).join('\n') + '\n';
+}
 const MAX_BATCH_BYTES = 90_000;
 const MAX_BATCH_ROWS = 400;
 
@@ -134,14 +151,15 @@ function main() {
     assertShipFloor(Number(published), minLinks);
   }
 
-  // Apply each table as ONE wrangler call over a temp .sql file: its DELETE + INSERTs reach D1 in a single
-  // batched request (D1 batches are atomic), so an interrupted ship (timeout/kill) can no longer leave a
-  // table half-wiped with no rollback — the failure mode of N separate --command calls. Suppressions still
-  // ship first so a contested link is never briefly re-exposed. ponytail: a table exceeding D1's per-batch
-  // size ceiling would need chunking; not a concern at current scale (hundreds–thousands of rows).
+  // D1 enforces foreign keys, so a re-seed cannot DELETE a parent while children still reference it. Wipe
+  // every table first, children-before-parents (WIPE_ORDER), as ONE atomic batched request; then re-insert
+  // parents-before-children (TABLES), each table its own batched request. Trade-off vs the old per-table
+  // DELETE+INSERT: the surface is briefly empty between the wipe and the interest_links re-insert. That is
+  // acceptable for a deliberate manual re-seed and is the only structure that both works on a populated D1
+  // AND stays FK-correct — a single-transaction full replace exceeds D1's per-batch size ceiling.
   const tmp = emit ? null : mkdtempSync(join(tmpdir(), 'sigma-ship-'));
-  const applyFile = (table, sql) => {
-    const f = join(tmp, `${table}.sql`);
+  const applyFile = (name, sql) => {
+    const f = join(tmp, `${name}.sql`);
     writeFileSync(f, sql);
     try {
       execFileSync(
@@ -155,6 +173,10 @@ function main() {
   };
 
   if (emit) mkdirSync(emit, { recursive: true });
+  // Children-first wipe. Emit as 0_wipe.sql so a manual apply runs it before the parent-first inserts.
+  if (emit) writeFileSync(resolve(emit, '0_wipe.sql'), wipeSql());
+  else applyFile('0_wipe', wipeSql());
+
   const summary = {};
   try {
     for (const table of TABLES) {
@@ -164,13 +186,10 @@ function main() {
         continue;
       }
       const rows = sqliteJson(`SELECT * FROM ${sqlIdent(table)}`);
-      const sql = [
-        `DELETE FROM ${sqlIdent(table)};\n`,
-        ...insertStatements(table, cols, rows),
-      ].join('');
+      const inserts = insertStatements(table, cols, rows).join('');
       summary[table] = rows.length;
-      if (emit) writeFileSync(resolve(emit, `${table}.sql`), sql);
-      else applyFile(table, sql);
+      if (emit) writeFileSync(resolve(emit, `${table}.sql`), inserts);
+      else if (inserts) applyFile(table, inserts); // wipe already cleared it; skip an empty INSERT batch
     }
   } finally {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
