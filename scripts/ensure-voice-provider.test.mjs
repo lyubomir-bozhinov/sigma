@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   ensureGateway,
   ensureCustomProvider,
+  dryRunFetch,
   GATEWAY_ID,
   PROVIDER_SLUG,
 } from './ensure-voice-provider.mjs';
@@ -100,5 +101,38 @@ describe('error surfacing', () => {
       json: async () => ({ success: false, error: 'Invalid provider' }),
     });
     await assert.rejects(() => ensureCustomProvider({ ...CREDS, fetchImpl }), /Invalid provider/);
+  });
+});
+
+describe('dryRunFetch — no secret in the plan output', () => {
+  it('masks the Authorization bearer token in the logged mutation body', async () => {
+    const logs = [];
+    const impl = dryRunFetch(
+      () => assert.fail('real fetch must not run for a mutation in dry-run'),
+      (m) => logs.push(m),
+    );
+    const res = await impl('https://api/custom-providers', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'x', headers: { Authorization: 'Bearer super-secret-123' } }),
+    });
+    assert.equal(res.ok, true); // synthetic dry-run success, no account touched
+    const out = logs.join('\n');
+    assert.ok(!out.includes('super-secret-123'), 'the secret must never appear in the dry-run log');
+    assert.match(out, /Bearer \*\*\*/);
+  });
+
+  it('passes GET through to the real fetch and logs nothing', async () => {
+    const logs = [];
+    let realCalled = false;
+    const impl = dryRunFetch(
+      async () => {
+        realCalled = true;
+        return okResult([]);
+      },
+      (m) => logs.push(m),
+    );
+    await impl('https://api/custom-providers', { method: 'GET' });
+    assert.equal(realCalled, true);
+    assert.equal(logs.length, 0);
   });
 });

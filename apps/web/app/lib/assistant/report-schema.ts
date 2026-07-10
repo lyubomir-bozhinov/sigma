@@ -245,11 +245,11 @@ const PROSE_NUMBER_PATTERNS: RegExp[] = [
   /\d(?:[.,]\d+)?[eE][+-]?\d+/gu, // scientific notation: 1.2e10, 12E9
   /\d{5,}/gu, // 10000+ (years are ≤4 digits)
   // Spelled-out magnitudes / percentages / ratios bypassed the digit-only patterns above — a model could
-  // write "12 милиарда", "два милиарда", "5 милиона", "95%", "деветдесет процента", "12 на сто",
+  // write "12 милиарда", "3 трилиона", "5 милиона", "95%", "деветдесет процента", "12 на сто",
   // "3,5 пъти" and land an unbound quantity on the public report (review #80). Flag the unit words too.
   // NB: no `\b` adjacent to Cyrillic — JS `\b` is ASCII-`\w`-only, so `\bмилиард` never matches after a
   // space. Match the distinctive stem (covers all inflections: милиард/милиарда/милиарди, …).
-  /милиард|милион|хиляд/giu, // spelled magnitudes (incl. word-only "два милиарда", "триста хиляди")
+  /милиард|милион|хиляд|трилион|билион|квадрилион/giu, // spelled magnitudes (incl. "два милиарда", "3 трилиона", "триста хиляди")
   // Percentages: %, процент-stem, or the idiom "на сто" (= per hundred). The trailing `(?!\p{L})` pins
   // "сто" as a STANDALONE word — without it "на сто" matched the whole "сто" word-family and rejected
   // ordinary procurement prose: "на стойност" (to the value of — ubiquitous), the entity "Столична
@@ -374,6 +374,18 @@ export const MAX_RATIO_MAGNITUDE = 100;
 export function isImplausibleRatio(v: string | number | null): boolean {
   const n = asNumber(v);
   return n !== null && Math.abs(n) > MAX_RATIO_MAGNITUDE;
+}
+
+// Map a raw domain id to its entity kind by prefix (the packages/db identity.ts id scheme: `auth:` →
+// authority, `eik:`/`name:` → company, `c:` → contract). Returns null for a prefixless id, which carries
+// no domain signal. Used by the table binder to reject a model-declared link.kind that contradicts the
+// id's own domain — a mismatched kind would render a wrong-collection href (e.g. /companies/<authority-id>)
+// on a citation-bearing report (review, nedda).
+function entityKindOfId(id: string): EntityKind | null {
+  if (id.startsWith('auth:')) return 'authority';
+  if (id.startsWith('eik:') || id.startsWith('name:')) return 'company';
+  if (id.startsWith('c:')) return 'contract';
+  return null;
 }
 
 /**
@@ -558,15 +570,24 @@ export function bindReport(
                 at,
               );
               const idx = b.columns.map((c) => r.columns.indexOf(c.key));
-              const linkIdx = b.columns.map((c) => (c.link ? r.columns.indexOf(c.link.idCol) : -1));
+              const linkMeta = b.columns.map((c) =>
+                c.link ? { idx: r.columns.indexOf(c.link.idCol), kind: c.link.kind } : null,
+              );
               blocks.push({
                 type: 'table',
                 columns,
                 rows: r.rows.map((row) => ({
                   cells: idx.map((i) => sanitizeCell(row[i] ?? null)),
-                  links: linkIdx.map((i) => {
-                    const v = i < 0 ? null : row[i];
-                    return v == null ? null : String(v);
+                  links: linkMeta.map((m) => {
+                    if (!m || m.idx < 0) return null;
+                    const v = row[m.idx];
+                    if (v == null) return null;
+                    const id = String(v);
+                    // Drop a link whose id domain contradicts the model-declared kind (a `company` kind on
+                    // an `auth:` id would render /companies/<authority-id> — a wrong citation on a
+                    // transparency report). A prefixless id carries no domain signal → trust the kind.
+                    const domain = entityKindOfId(id);
+                    return domain !== null && domain !== m.kind ? null : id;
                   }),
                 })),
                 truncated: r.truncated ?? false, // surfaced by the renderer; result hit the byte cap (#80)
