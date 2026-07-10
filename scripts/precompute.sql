@@ -177,6 +177,12 @@ SELECT 'official', il.person_id, p.name, NULL,
   SUM(il.contract_value_eur)
 FROM interest_links il JOIN persons p ON p.id = il.person_id
 WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+  -- Drop the redundant family link when a published self stake exists for the same official+winner, so an
+  -- official who declared BOTH their own and a relative's stake in one company isn't counted twice in the
+  -- „по договори" total (mirrors NOT_REDUNDANT_FAMILY in packages/db/src/queries/related-persons.ts).
+  AND NOT (il.interest_class = 'family_ownership' AND EXISTS (
+    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+      AND s.status = 'published' AND s.interest_class = 'private_ownership'))
 GROUP BY il.person_id, p.name;
 
 -- Summary (last result set printed by `wrangler d1 execute`)

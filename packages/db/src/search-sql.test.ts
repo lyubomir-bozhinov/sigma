@@ -43,16 +43,18 @@ INSERT INTO bidders (id, name, eik_normalized, eik_valid, kind) VALUES
   ('eik:222','БЕТА ООД','222222222',1,'company'),
   ('eik:333','ГАМА ООД','333333333',1,'company'),
   ('eik:444','ДЕЛТА ООД','444444444',1,'company'),
-  ('eik:555','ЕПСИЛОН ООД','555555555',1,'company');
+  ('eik:555','ЕПСИЛОН ООД','555555555',1,'company'),
+  ('eik:666','ЗЕТА ООД','666666666',1,'company');
 INSERT INTO company_totals (bidder_id, name, kind, eik, eik_valid, won_eur, contracts, authorities) VALUES
   ('eik:111','АЛФА ООД','company','111111111',1,1000000,1,1),
   ('eik:222','БЕТА ООД','company','222222222',1,500000,1,1),
   ('eik:333','ГАМА ООД','company','333333333',1,200000,1,1),
   ('eik:444','ДЕЛТА ООД','company','444444444',1,300000,1,1),
-  ('eik:555','ЕПСИЛОН ООД','company','555555555',1,700000,1,1);
+  ('eik:555','ЕПСИЛОН ООД','company','555555555',1,700000,1,1),
+  ('eik:666','ЗЕТА ООД','company','666666666',1,900000,1,1);
 INSERT INTO persons (id, name) VALUES
   ('person:ИВАН МИНЕВ','Иван Минев'),('person:ГЕОРГИ ПЕТРОВ','Георги Петров'),
-  ('person:ДАНА ФАМ','Дана Фам'),('person:БОРИС БОРД','Борис Борд');
+  ('person:ДАНА ФАМ','Дана Фам'),('person:БОРИС БОРД','Борис Борд'),('person:ДВОЕН ТЕСТ','Двоен Тест');
 INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, declared_year, template, category, institution, position, source_url) VALUES
   ('decl:i','person:ИВАН МИНЕВ','i.xml','H1','2024','2023','assets','','ОБЩИНА РУСЕ','', 'https://register.cacbg.bg/2024/i.xml'),
   ('decl:g','person:ГЕОРГИ ПЕТРОВ','g.xml','H2','2024','2023','assets','','МИНИСТЕРСТВО Х','', 'https://register.cacbg.bg/2024/g.xml'),
@@ -67,7 +69,11 @@ INSERT INTO interest_links
   ('il:df','person:ДАНА ФАМ|444','person:ДАНА ФАМ','eik:444','444444444','ДЕЛТА ООД','exact_name_key','v1','B_distinctive','related','family_ownership',0,'none',1,'2020','2023',1,300000,'2021','2021','published'),
   -- management_role, marked published (a hypothetical mis-status) → the interest_class gate must STILL exclude
   -- it: a statutory board/management role is never a declared conflict, so it can never reach search or a badge.
-  ('il:bm','person:БОРИС БОРД|555','person:БОРИС БОРД','eik:555','555555555','ЕПСИЛОН ООД','exact_name_key','v1','B_distinctive','manages','management_role',0,'none',1,'2020','2023',1,700000,'2021','2021','published');
+  ('il:bm','person:БОРИС БОРД|555','person:БОРИС БОРД','eik:555','555555555','ЕПСИЛОН ООД','exact_name_key','v1','B_distinctive','manages','management_role',0,'none',1,'2020','2023',1,700000,'2021','2021','published'),
+  -- Двоен declared BOTH his own and a relative's stake in ЗЕТА (eik 666): two published links, one winner,
+  -- €50k each. The officials index must count €50k ONCE (drop the redundant family row), not €100k.
+  ('il:ds','person:ДВОЕН ТЕСТ|666','person:ДВОЕН ТЕСТ','eik:666','666666666','ЗЕТА ООД','exact_name_key','v1','B_distinctive','owns','private_ownership',0,'none',1,'2020','2023',1,50000,'2021','2021','published'),
+  ('il:dfam','person:ДВОЕН ТЕСТ|666|family','person:ДВОЕН ТЕСТ','eik:666','666666666','ЗЕТА ООД','exact_name_key','v1','B_distinctive','related','family_ownership',0,'none',1,'2020','2023',1,50000,'2021','2021','published');
 `;
 
 // Search-index population — mirrors scripts/precompute.sql (company + officials). Kept here so the test
@@ -83,6 +89,9 @@ SELECT 'official', il.person_id, p.name, NULL,
   SUM(il.contract_value_eur)
 FROM interest_links il JOIN persons p ON p.id = il.person_id
 WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
+  AND NOT (il.interest_class = 'family_ownership' AND EXISTS (
+    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+      AND s.status = 'published' AND s.interest_class = 'private_ownership'))
 GROUP BY il.person_id, p.name;
 `;
 
@@ -155,6 +164,18 @@ describe('search свързани-лица SQL', () => {
       expect(hit).toHaveLength(1);
       expect(typeof hit[0]!.rank).toBe('number');
       expect(hit[0]!.has_conflict).toBe(1); // ГАМА is Иван's second stake
+    });
+  });
+
+  it('counts a winner ONCE for an official who declared both their own and a relative’s stake in it', () => {
+    withDb((dbPath) => {
+      // Двоен has a published self AND a published family link to ЗЕТА (eik 666), €50k each. The officials
+      // index must drop the redundant family row so „по договори" is €50k — a plain SUM would say €100k, an
+      // inflated public figure inconsistent with the /conflicts page (which collapses via LINK_SELECT).
+      const dvoen = rows(dbPath, lit(SEARCH_HITS_SQL, 'official', 'двоен*', 10));
+      expect(dvoen).toHaveLength(1);
+      expect(dvoen[0]!.ref).toBe('person:ДВОЕН ТЕСТ');
+      expect(dvoen[0]!.amount).toBe(50000); // NOT 100000 — the winner is not double-counted
     });
   });
 });
