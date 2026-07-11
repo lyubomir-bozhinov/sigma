@@ -13,7 +13,8 @@
 // collapsed assistant/tool message under the E1 key and against the target `conversationId`, and
 // silently excludes any that is unsigned, forged, or cross-conversation. A mis-ordered pipeline
 // therefore cannot bake injected text into the summary. User messages are folded verbatim but
-// role-labeled ("user:") and, like all user input, are never treated as authoritative.
+// role-labeled ("user:") and, like all user input, are never treated as authoritative — and their
+// report chips are excluded from the summary's `доклади:` list (client-controlled → not authentic).
 
 import {
   attachSignature,
@@ -58,9 +59,16 @@ function summaryContent(
     return `${m.turnIndex}.${m.position} ${m.role}: ${preview}`;
   });
 
+  // Collect report chips ONLY from verified server messages. `foldable` is user + HMAC-verified
+  // assistant/tool (see trimTranscript), so `role !== 'user'` == verified here. A user message's
+  // `reports` are re-derived from client-controlled parts (transcript-message.ts) and are never
+  // authoritative — folding them in would launder a fabricated `{id,title}` into the SIGNED summary's
+  // `доклади:` list. This mirrors the role-labeling that already guards the prose previews above: the
+  // report channel must not be the hole the labeled-prose defense closes everywhere else.
   const reports: ReportRef[] = [];
   const seenReports = new Set<string>();
   for (const m of ordered) {
+    if (m.role === 'user') continue;
     for (const ref of m.reports ?? []) {
       if (seenReports.has(ref.id)) continue;
       seenReports.add(ref.id);
