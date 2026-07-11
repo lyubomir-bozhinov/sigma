@@ -146,7 +146,8 @@ before(() => {
       controlHash: 'H4',
     },
     // Стефан writes a CERTAIN ЕИК (222222229) behind a COLLIDING name, no seat → declared_eik resolves the
-    // right company, but the name maps to 2 ЕИК → cannot be name-distinctive → HELD (the fix under test)
+    // right company; the declarant-provided ЕИК is the national unique identifier, so identity is
+    // deterministic and the link publishes on its own basis (A_eik), even though the name maps to 2 ЕИК
     {
       folder: '2024',
       xmlFile: 'E.xml',
@@ -163,7 +164,7 @@ before(() => {
       seat: '',
       controlHash: 'H5',
     },
-    // Радка writes the other certain ЕИК (333333338) AND its town Варна → seat disambiguates the collision → A_seat
+    // Радка writes the other certain ЕИК (333333338) AND its town Варна → declared_eik resolves the collision → A_eik
     {
       folder: '2024',
       xmlFile: 'F.xml',
@@ -366,15 +367,18 @@ test('resolves publish/held/quarantine tiers deterministically', () => {
   assert.equal(kept.status, 'published');
   assert.equal(kept.last_declared_year, '2022');
 
-  // certain ЕИК (declared_eik) but colliding name, no seat → HELD, never name-distinctive
+  // certain ЕИК (declared_eik) behind a colliding name, no seat → the declarant-provided ЕИК is the
+  // national unique identifier, so identity is deterministic → publishes as A_eik, NOT held for
+  // name-genericness (ADR-0016; the ЕИК is at least as certain as the seat that rescues Радка below).
   const stefan = link('222222229', 'Стефан Колев');
   assert.equal(stefan.match_method, 'declared_eik'); // ЕИК resolution IS certain
-  assert.equal(stefan.publish_tier, 'C_hold'); // …but the name maps to 2 ЕИК → not distinctive
-  assert.equal(stefan.status, 'held');
-  // seat disambiguates the same colliding name → publishable as A_seat
+  assert.equal(stefan.publish_tier, 'A_eik'); // ЕИК = unique identifier → deterministic, not name-gated
+  assert.equal(stefan.status, 'published'); // private_ownership (20% ООД share) → surfaces
+  // same colliding name, resolved by her declared ЕИК (with seat as extra corroboration) → the ЕИК is the
+  // identity, so A_eik (not A_seat); publishable. A_seat's own path stays covered by Петър above.
   const radka = link('333333338', 'Радка Илиева');
   assert.equal(radka.match_method, 'declared_eik');
-  assert.equal(radka.publish_tier, 'A_seat');
+  assert.equal(radka.publish_tier, 'A_eik');
   assert.equal(radka.status, 'published');
 
   // FAMILY: a close relative's declared stake in a winner that sold to the official's OWN institution.

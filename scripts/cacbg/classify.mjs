@@ -75,9 +75,12 @@ export function seatConfirmed(declSeat, winnerSettlement) {
 
 /**
  * Publish tier for a single-winner-ЕИК match:
+ *   'A_eik'         — a declarant-provided ЕИК resolved the winner: the national unique identifier,
+ *                     deterministic even behind a generic/colliding name. Assigned by the loader for
+ *                     declared_eik matches (not this function — it needs the match method); ADR-0016.
  *   'A_seat'        — seat-confirmed: deterministic, publishable even for generic names.
  *   'B_distinctive' — single-ЕИК + structurally distinctive name: publishable (disclosed heuristic).
- *   'C_hold'        — generic name, no seat proof: withhold pending TR name-census.
+ *   'C_hold'        — generic name, no seat/ЕИК proof: withhold pending TR name-census.
  */
 export function publishTier({ seatOk, distinctiveness }) {
   if (seatOk) return 'A_seat';
