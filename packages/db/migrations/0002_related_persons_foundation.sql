@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS interest_links (
   entity_key        TEXT NOT NULL,          -- the normalized declared name that resolved
   match_method      TEXT NOT NULL DEFAULT 'exact_name_key',
   matcher_version   TEXT NOT NULL,          -- companyNameKey/classify version — reproducibility
-  publish_tier      TEXT NOT NULL,          -- A_seat | B_distinctive | C_hold (ADR-0009/0015)
+  publish_tier      TEXT NOT NULL,          -- A_eik | A_seat | B_distinctive | C_hold (ADR-0009/0015/0016)
   relation          TEXT NOT NULL,          -- owns | manages | owns+manages | related — ADR-0014
   -- interpretation class for the published surface (ADR-0019/0022). Separates genuine PRIVATE financial
   -- interest from EX-OFFICIO public-board roles so the headline can't defame appointed civil servants:

@@ -44,9 +44,20 @@ const flag = (link, axis, detail) =>
 for (const l of published) {
   const rec = byKey.get(l.entity_key);
 
-  // A. Libel-critical: the published name key must resolve to EXACTLY ONE valid ЕИК, and it must be l.eik.
+  // A. Libel-critical identity. Name-resolved links: the name key must resolve to EXACTLY ONE valid ЕИК,
+  //    and it must be l.eik. A_eik links (ADR-0028): identity is the declarant-provided ЕИК, not the name —
+  //    a name shared by >1 winner is legitimate because the ЕИК picks exactly one — so instead require that
+  //    l.eik is a valid winner BEARING this name key (a stray/mis-attached ЕИК is still caught). The ЕИК+name
+  //    double-lock itself is re-proven in the provenance pass below (A_eik_no_provenance).
   if (!rec) flag(l, 'A_key_missing', `entity_key ${l.entity_key} not found in live bidder set`);
-  else if (rec.valid.size !== 1)
+  else if (l.publish_tier === 'A_eik') {
+    if (!rec.valid.has(l.eik))
+      flag(
+        l,
+        'A_eik_not_winner',
+        `A_eik published ${l.eik}, not among key ${l.entity_key}'s valid winners {${[...rec.valid].join(',')}}`,
+      );
+  } else if (rec.valid.size !== 1)
     flag(
       l,
       'A_multi_eik',
@@ -95,6 +106,15 @@ for (const l of nonExact) {
       (l.match_method === 'extracted_name' && nameHit)
     );
   });
+  // A_eik's identity rests on the declarant-provided ЕИК, so the double-lock MUST be independently re-provable:
+  // if no declaration by this person carries that ЕИК together with the winner фирма, it is a hard finding
+  // (an extracted_name link is name-only — surfaced below for eyeballing, but not hard-gated here).
+  if (!hit && l.match_method === 'declared_eik')
+    flag(
+      l,
+      'A_eik_no_provenance',
+      `no declaration carries ЕИК ${l.eik} + фирма "${l.bidder_name}"`,
+    );
   provenance.push({
     link_key: l.link_key,
     eik: l.eik,

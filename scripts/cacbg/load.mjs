@@ -412,15 +412,21 @@ for (const rec of agg.values()) {
     if (r.eur != null) a.value += r.eur;
   }
   const seatOk = [...rec.seats].some((s) => seatConfirmed(s, rec.bidder.settlement));
-  // A globally non-unique winner name (e.g. „Водоснабдяване и канализация ЕАД" → 2 valid ЕИК in
-  // different towns) can NEVER ride the name-distinctive tier, even when the ЕИК itself is certain
-  // (declared_eik). B_distinctive's premise is "the name alone identifies the company"; a colliding
-  // name violates it. Such a link publishes only if the declared SEAT disambiguates (A_seat), else held.
+  // A declarant-provided ЕИК is the national unique identifier (ЗТРРЮЛНЦ) — it resolves the winner
+  // deterministically even behind a generic or winner-colliding name, so a declared_eik match publishes
+  // on its own basis (A_eik), never held for name-genericness. This is at least as certain as the seat
+  // proof that rescues an otherwise-generic name (A_seat) — the ЕИК IS the identity, not a heuristic.
+  // Name-only methods (exact_name_key / extracted_name) still ride the distinctiveness/seat gate below:
+  // a globally non-unique winner name (e.g. „Водоснабдяване и канализация ЕАД" → 2 valid ЕИК in different
+  // towns) can never be name-distinctive, so it publishes only if the declared SEAT disambiguates, else held.
   const nameUnique = nameGloballyUnique(rec.key);
-  const tier = publishTier({
-    seatOk,
-    distinctiveness: nameUnique ? nameDistinctiveness(rec.key) : 'generic',
-  });
+  const tier =
+    rec.method === 'declared_eik'
+      ? 'A_eik'
+      : publishTier({
+          seatOk,
+          distinctiveness: nameUnique ? nameDistinctiveness(rec.key) : 'generic',
+        });
   const contemporaneous = [...years].some(
     (cy) => temporalStatus(declYears, cy) === 'contemporaneous',
   )

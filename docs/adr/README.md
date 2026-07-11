@@ -35,5 +35,6 @@
 | [0025](0025-xml-parser-supply-chain.md) | Верига на доставки за XML парсера (fast-xml-parser): одит на транзитивното дърво + заключен lockfile | Прието |
 | [0026](0026-person-grain-name-institution.md) | Идентичност на лицето: (име, ведомство), не голо име — без сливане на съименници, стабилно за E11 divestment | Прието |
 | [0027](0027-overmerge-gate-is-telemetry-not-a-gate.md) | Load-time гейтът за over-merge е телеметрия, не порта (strictKey беше структурна фалшива нула); доказателството е етикетираният тест | Прието |
+| [0028](0028-declared-eik-is-a-determining-identifier.md) | Деклариран ЕИК е определящ идентификатор — ниво `A_eik`, освободено от ТР-преброяването (ЕИК-ът е самоличността, не името) | Прието |
 
 Свързан проектен документ: [spec/related-persons-foundation.md](../spec/related-persons-foundation.md).
