@@ -7,7 +7,18 @@
 // counted as a content word → inflated distinctiveness → premature B_distinctive publish. Splitting on
 // non-letter runs and dropping form tokens by exact membership is immune to whatever punctuation abuts them.
 const FORM_TOKENS = new Set([
-  'ЕООД', 'ЕАД', 'ООД', 'АД', 'ЕТ', 'ДЗЗД', 'КД', 'СД', 'АДСИЦ', 'КООПЕРАЦИЯ', 'ФОНДАЦИЯ', 'СДРУЖЕНИЕ',
+  'ЕООД',
+  'ЕАД',
+  'ООД',
+  'АД',
+  'ЕТ',
+  'ДЗЗД',
+  'КД',
+  'СД',
+  'АДСИЦ',
+  'КООПЕРАЦИЯ',
+  'ФОНДАЦИЯ',
+  'СДРУЖЕНИЕ',
 ]);
 
 /**
