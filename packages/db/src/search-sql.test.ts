@@ -90,7 +90,7 @@ SELECT 'official', il.person_id, p.name, NULL,
 FROM interest_links il JOIN persons p ON p.id = il.person_id
 WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'family_ownership')
   AND NOT (il.interest_class = 'family_ownership' AND EXISTS (
-    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.eik = il.eik
       AND s.status = 'published' AND s.interest_class = 'private_ownership'))
 GROUP BY il.person_id, p.name;
 `;
