@@ -1333,7 +1333,7 @@ WHERE il.status = 'published' AND il.interest_class IN ('private_ownership', 'fa
   -- official who declared BOTH their own and a relative's stake in one company isn't counted twice in the
   -- „по договори" total (mirrors NOT_REDUNDANT_FAMILY in packages/db/src/queries/related-persons.ts).
   AND NOT (il.interest_class = 'family_ownership' AND EXISTS (
-    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.eik = il.eik
       AND s.status = 'published' AND s.interest_class = 'private_ownership'))
 GROUP BY il.person_id, p.name;
 

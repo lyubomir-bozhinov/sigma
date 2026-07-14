@@ -67,8 +67,11 @@ export const NEXUS_ORDER = `(il.own_institution = 'exact') DESC, il.contemporane
 // link when the same official also holds a PUBLISHED self stake in the same winner. Shared so every surface —
 // the leaderboard/official/company projection AND the per-link contracts route — hides the EXACT same links;
 // a consumer that omitted it (LINK_CONTRACTS_SQL did) became an existence-oracle for the suppressed relative.
+// Keyed on `eik` (the company identity), NOT `bidder_id`: a self + family stake in one company share the same
+// eik but would resolve to different bidder rows if an eik ever mapped to >1 winner row — keying on eik keeps
+// this libel-critical collapse (ADR-0023) correct-by-construction, not reliant on the bidders-id scheme.
 export const NOT_REDUNDANT_FAMILY = `NOT (il.interest_class = 'family_ownership' AND EXISTS (
-    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.bidder_id = il.bidder_id
+    SELECT 1 FROM interest_links s WHERE s.person_id = il.person_id AND s.eik = il.eik
       AND s.status = 'published' AND s.interest_class = 'private_ownership'))`;
 export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official, b.name AS company, il.eik,
     il.relation, il.contemporaneous, il.own_institution,

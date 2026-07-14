@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_declared_interests_decl ON declared_interests(dec
 -- entity_key. `link_key` is the stable natural key the suppression list and re-imports key on.
 CREATE TABLE IF NOT EXISTS interest_links (
   id                TEXT PRIMARY KEY,       -- 'il:' || link_key
-  link_key          TEXT NOT NULL UNIQUE,   -- person_id || '|' || eik  (suppression + idempotent re-import)
+  link_key          TEXT NOT NULL UNIQUE,   -- self: pid|eik ; family: pid|eik|family (asymmetric; suppression + re-import key on this EXACT string — a family takedown MUST carry the |family suffix)
   person_id         TEXT NOT NULL REFERENCES persons(id),
   bidder_id         TEXT NOT NULL REFERENCES bidders(id),
   eik               TEXT NOT NULL,          -- eik_normalized of the matched winner

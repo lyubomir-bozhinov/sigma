@@ -219,6 +219,36 @@ describe('свързани-лица SQL (real SQLite)', () => {
     });
   });
 
+  it('collapses by eik, not bidder_id — a family link is dropped even when its self sibling resolves to a DIFFERENT bidder row (correct-by-construction)', () => {
+    withDb((dbPath) => {
+      // The loader keys every valid winner as id='eik:'||eik (INSERT OR IGNORE), so eik→bidder_id is 1:1 today
+      // and the collapse fires on either key. This forces the shape the loader forbids but a future bidders-id
+      // scheme could allow: ONE eik ('800') carried by TWO bidder rows. Дубъл's own stake resolves to 'eik:800',
+      // his relative's stake to the variant row 'eik:800b' — SAME company, DIFFERENT bidder_id. Keyed on
+      // bidder_id the EXISTS misses (rows differ) and BOTH surface → the exact ADR-0023 de-anon vector. Keyed on
+      // eik (the fix) the family link collapses. This test is RED on the old `s.bidder_id = il.bidder_id`.
+      sqlite(
+        dbPath,
+        `INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, kind) VALUES
+           ('eik:800','ДУБЪЛ ЕООД','800','800',1,'company'),
+           ('eik:800b','ДУБЪЛ ЕООД (вариант на име)',NULL,'800',1,'company');
+         INSERT INTO persons (id, name) VALUES ('person:dubl','Дубъл Тестов');
+         INSERT INTO interest_links
+           (id, link_key, person_id, bidder_id, eik, entity_key, match_method, matcher_version, publish_tier, relation, interest_class, contemporaneous, own_institution, evidence_count, first_declared_year, last_declared_year, contract_count, contract_value_eur, first_contract_year, last_contract_year, status) VALUES
+           ('il:dubl-self','person:dubl|800','person:dubl','eik:800','800','ДУБЪЛ ЕООД','exact_name_key','v1','B_distinctive','owns','private_ownership',0,'none',1,'2020','2022',2,60000,'2021','2022','published'),
+           ('il:dubl-fam','person:dubl|800|family','person:dubl','eik:800b','800','ДУБЪЛ ЕООД','exact_name_key','v1','B_distinctive','related','family_ownership',0,'none',1,'2020','2022',2,60000,'2021','2022','published');`,
+      );
+      // COMPANY view for eik 800: both links match il.eik='800'; the family one must collapse → one 'owns' row.
+      const company = rows(dbPath, lit(COMPANY_SQL, '800'));
+      expect(company).toHaveLength(1);
+      expect(company[0]!.relation).toBe('owns');
+      // …and the official view collapses too — Дубъл is never shown twice for the one company (no de-anon).
+      const official = rows(dbPath, lit(OFFICIAL_SQL, 'person:dubl'));
+      expect(official).toHaveLength(1);
+      expect(official[0]!.relation).toBe('owns');
+    });
+  });
+
   it('splits contracts into the contemporaneous (in-declared-window) subset — read-time, no stored column', () => {
     withDb((dbPath) => {
       const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));

@@ -431,3 +431,32 @@ test('re-run is idempotent and honors link_suppressions (contested link stays re
   assert.equal(db.prepare('SELECT COUNT(*) n FROM persons').get().n, 11);
   db.close();
 });
+
+test('a FAMILY-scope suppression (…|family key) survives re-import — the takedown keys on the exact link_key', () => {
+  // The self key is `pid|eik`; a family link's key carries the `|family` suffix (load.mjs). A takedown filed on
+  // the family key MUST keep matching after a rebuild — else a family (defamation-sensitive) сваляне silently
+  // no-ops. Assert the key form, suppress by it, rebuild, confirm it stays removed.
+  let db = new DatabaseSync(DB);
+  const key = db
+    .prepare("SELECT link_key FROM interest_links WHERE interest_class='family_ownership'")
+    .get().link_key;
+  assert.match(
+    key,
+    /\|family$/,
+    'a family link_key must carry the |family suffix (asymmetric key)',
+  );
+  db.prepare(
+    'INSERT OR IGNORE INTO link_suppressions(link_key,reason,suppressed_by) VALUES(?,?,?)',
+  ).run(key, 'family takedown', 'test');
+  db.close();
+
+  runLoad(); // rebuild — human-curated suppressions are preserved and re-applied
+
+  db = open();
+  assert.equal(
+    db.prepare('SELECT status FROM interest_links WHERE link_key=?').get(key).status,
+    'suppressed',
+    'a family link keyed pid|eik|family must be suppressed after re-import',
+  );
+  db.close();
+});
