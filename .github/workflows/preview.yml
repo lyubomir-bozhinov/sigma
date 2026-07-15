@@ -41,8 +41,22 @@ jobs:
       SIGMA_D1_ID: ${{ secrets.SIGMA_D1_ID }}
       SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
-      # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
-      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+      # Assistant resources are shared with dev (one Vectorize index + one reports bucket, no per-preview
+      # seed). When dev/preview live on a Cloudflare account whose committed defaults don't exist (the
+      # b2abee… account names them `sigma-*-dev`), these MUST be set so the REPORTS/VECTORIZE bindings
+      # resolve to real resources; unset → committed defaults (docs/dev-preview-account-split.md).
+      SIGMA_REPORTS_NAME: ${{ vars.SIGMA_REPORTS_NAME }}
+      SIGMA_VECTORIZE_NAME: ${{ vars.SIGMA_VECTORIZE_NAME }}
+      # AI-Gateway account id override — same story as SIGMA_REPORTS_NAME: set on the `preview` Environment
+      # when it lives on a different account than the committed gateway URLs (docs/dev-preview-account-split.md).
+      SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
+      # Public Turnstile site key for the preview account's widget (pairs with the TURNSTILE_SECRET
+      # provisioned below). Unset → committed default (docs/dev-preview-account-split.md).
+      SIGMA_TURNSTILE_SITE_KEY: ${{ vars.SIGMA_TURNSTILE_SITE_KEY }}
+      # Per-PR worker name = `<prefix>-<PR number>`. The prefix is configurable per repo via the
+      # PREVIEW_WORKER_PREFIX variable (default `sigma-pr`); teardown/reaper read the SAME prefix so a
+      # renamed preview is still cleaned up. wrangler-render.mjs writes this into wrangler.deploy.json.
+      SIGMA_WEB_NAME: ${{ vars.PREVIEW_WORKER_PREFIX || 'sigma-pr' }}-${{ github.event.pull_request.number }}
       # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the
       # dev D1 (identical data version), so the build id is the ONLY discriminator — stamping the head sha
       # keeps each preview's (and the dev env's) dedup keys distinct, so no preview can cross-serve reports.
@@ -242,7 +256,10 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+      # Same prefix as the deploy job (default `sigma-pr`). PREVIEW_WORKER_PREFIX is also passed to
+      # teardown-remote.mjs so its `<prefix>-<digits>` deletion allowlist matches this exact name.
+      PREVIEW_WORKER_PREFIX: ${{ vars.PREVIEW_WORKER_PREFIX }}
+      SIGMA_WEB_NAME: ${{ vars.PREVIEW_WORKER_PREFIX || 'sigma-pr' }}-${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

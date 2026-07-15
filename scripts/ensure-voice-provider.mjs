@@ -24,7 +24,8 @@
 //
 // usage:  node scripts/ensure-voice-provider.mjs [--apply]
 //   env:  CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN  (token needs AI Gateway:Edit)
-//         VOICE_ASSISTANT_API_KEY                       (optional — see ensureCustomProvider)
+//   NOTE: the provider is created key-less (per-request auth) — no VOICE_ASSISTANT_API_KEY is needed here;
+//         that key lives as a WORKER secret and is forwarded by the app on each STT call.
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -86,28 +87,38 @@ export async function ensureGateway({
   );
   // ponytail: single page — the account holds ~1 gateway. Paginate if that ever grows past 50.
   if ((list.result ?? []).some((g) => g.id === gatewayId)) return gatewayId;
+  // The current AI Gateway create API requires the full settings schema — a bare `{ id }` is rejected
+  // with `7001 Expected number, received nan / Required`. Send neutral defaults (no caching, no gateway
+  // rate limit; the app enforces its own limits). We only create when ABSENT, so this never clobbers an
+  // existing gateway's tuned settings.
   await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/gateways`, {
     method: 'POST',
     token,
-    body: { id: gatewayId },
+    body: {
+      id: gatewayId,
+      cache_invalidate_on_update: false,
+      cache_ttl: 0,
+      collect_logs: true,
+      rate_limiting_interval: 0,
+      rate_limiting_limit: 0,
+      rate_limiting_technique: 'fixed',
+    },
   });
   return gatewayId;
 }
 
 // --- custom provider -------------------------------------------------------------------------------
-// GET /accounts/{a}/ai-gateway/custom-providers -> { result: [{ id, slug, base_url, headers, ... }] }
-// (verified — custom providers are ACCOUNT-scoped, not under a gateway). Auth model: if
-// VOICE_ASSISTANT_API_KEY is supplied we store it as the provider's Authorization header; if absent, the
-// provider is created key-less (per-request-auth model — the app passes the key, like the chat `bggpt`
-// provider) and we warn. Idempotent: when the provider already exists we do NOT re-PUT the secret every
-// run (GET masks it, so drift is undetectable) — existence + base_url are enough.
+// GET /accounts/{a}/ai-gateway/custom-providers -> { result: [{ id, slug, base_url, ... }] }
+// (verified — custom providers are ACCOUNT-scoped, not under a gateway). Auth model: PER-REQUEST — the
+// provider stores NO key; the app forwards VOICE_ASSISTANT_API_KEY (or ASSISTANT_API_KEY) as the upstream
+// Authorization on each call, exactly like the chat `bggpt` provider. Idempotent: when the provider
+// already exists we leave it untouched — existence + base_url are enough.
 export async function ensureCustomProvider({
   accountId,
   token,
   slug = PROVIDER_SLUG,
   name = PROVIDER_NAME,
   baseUrl = PROVIDER_BASE_URL,
-  apiKey,
   fetchImpl = fetch,
   warn = () => {},
 }) {
@@ -124,20 +135,12 @@ export async function ensureCustomProvider({
     }
     return existing.id ?? slug;
   }
-  if (!apiKey) {
-    warn(
-      `VOICE_ASSISTANT_API_KEY not set — creating provider "${slug}" without stored auth (per-request-auth model)`,
-    );
-  }
+  // Create key-less: OMIT `headers` entirely. The current AI Gateway API rejects a `headers: null` field
+  // (`7001 Expected string, received null`), and a stored key is unnecessary under the per-request model.
   const created = await req(fetchImpl, `${API}/accounts/${accountId}/ai-gateway/custom-providers`, {
     method: 'POST',
     token,
-    body: {
-      name,
-      slug,
-      base_url: baseUrl,
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : null,
-    },
+    body: { name, slug, base_url: baseUrl },
   });
   return created.result?.id ?? slug;
 }
@@ -170,7 +173,6 @@ async function main(argv) {
   const apply = argv.includes('--apply');
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const token = process.env.CLOUDFLARE_API_TOKEN;
-  const apiKey = process.env.VOICE_ASSISTANT_API_KEY;
   const log = (m) => process.stdout.write(`${m}\n`);
   const warn = (m) => process.stderr.write(`!! ${m}\n`);
   const fetchImpl = apply ? fetch : dryRunFetch(fetch, log);
@@ -182,7 +184,7 @@ async function main(argv) {
     await ensureGateway({ accountId, token, fetchImpl });
     log(`  gateway    ${GATEWAY_ID} ok`);
 
-    await ensureCustomProvider({ accountId, token, apiKey, fetchImpl, warn });
+    await ensureCustomProvider({ accountId, token, fetchImpl, warn });
     log(`  provider   ${PROVIDER_SLUG} ok`);
   } catch (err) {
     warn(err.message);

@@ -115,6 +115,15 @@ jobs:
       # fails open. wrangler-render stamps this into ENVIRONMENT. Not derived from import.meta.env.PROD,
       # which Vite inlines true for the staging build too (it would misclassify staging as production).
       SIGMA_ENVIRONMENT: ${{ vars.SIGMA_ENVIRONMENT }}
+      # AI-Gateway account id override (docs/dev-preview-account-split.md). Set this GitHub Environment
+      # *variable* only on targets on a DIFFERENT Cloudflare account than the committed default (dev +
+      # preview → the b2abee… account). wrangler-render swaps it into AI_GATEWAY_BASE_URL /
+      # BGGPT_STT_BASE_URL. Unset (production/staging) → the committed URLs stay byte-identical.
+      SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
+      # Public Turnstile site key for this env's widget (account-bound). Set on envs whose widget differs
+      # from the committed default (dev + preview → the b2abee… account's widget); pairs with the
+      # TURNSTILE_SECRET this env provisions. Unset (production/staging) → committed site key.
+      SIGMA_TURNSTILE_SITE_KEY: ${{ vars.SIGMA_TURNSTILE_SITE_KEY }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -249,6 +258,30 @@ jobs:
       - name: Initialize ASSISTANT_HMAC_KEY secret if absent
         if: steps.guard.outputs.ok == 'true' && success()
         run: node scripts/ensure-worker-secret.mjs ASSISTANT_HMAC_KEY
+
+      # Provision the assistant's EXTERNAL secrets (provider key, voice key, Turnstile) on the worker from
+      # this Environment's secrets — the deploy token already has Workers Scripts:Edit. Mirrors preview.yml,
+      # which does the same per-PR. Without ASSISTANT_API_KEY the chat route 503s ("unprovisioned"); the
+      # voice key + TURNSTILE_SECRET are optional (unset ⇒ that feature degrades, not a hard failure). Each
+      # is skipped when its Environment secret is unset, so this is a no-op on envs that don't set them.
+      # Streamed to wrangler over stdin — the value never appears in a log line.
+      - name: Provision assistant secrets on the worker
+        if: steps.guard.outputs.ok == 'true' && success()
+        env:
+          ASSISTANT_API_KEY: ${{ secrets.ASSISTANT_API_KEY }}
+          VOICE_ASSISTANT_API_KEY: ${{ secrets.VOICE_ASSISTANT_API_KEY }}
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
+        run: |
+          put() {  # $1 = secret name, $2 = value
+            if [ -z "$2" ]; then
+              echo "::notice::$1 is not set on this Environment — skipping (feature degrades to 503/no-op)."
+              return 0
+            fi
+            printf '%s' "$2" | pnpm --filter @sigma/web exec wrangler secret put "$1" --name "$SIGMA_WEB_NAME"
+          }
+          put ASSISTANT_API_KEY "${ASSISTANT_API_KEY}"
+          put VOICE_ASSISTANT_API_KEY "${VOICE_ASSISTANT_API_KEY}"
+          put TURNSTILE_SECRET "${TURNSTILE_SECRET}"
 
       - name: Deploy refresh Workflow (sigma-etl)
         if: steps.guard.outputs.ok == 'true' && success()

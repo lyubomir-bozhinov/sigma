@@ -27,9 +27,28 @@ export const PROTECTED = new Set([
   'sigma-etl-dev',
 ]);
 
-// Ephemeral previews are the ONLY workers this script may delete. An allowlist beats the denylist:
-// any future long-lived worker is protected automatically without anyone remembering to add it.
-export const EPHEMERAL_PREVIEW_RE = /^sigma-pr-\d+$/;
+// The ephemeral-preview worker name prefix. preview.yml deploys `<prefix>-<PR number>`; teardown +
+// reaper only ever delete workers matching `<prefix>-<digits>`. Configurable per repo via the
+// PREVIEW_WORKER_PREFIX env/var (default `sigma-pr`) so the same pipeline can run in another repo under
+// a different app name — the workflow's SIGMA_WEB_NAME and this guard read the SAME value, so a renamed
+// preview is still matched for cleanup. An empty/whitespace value falls back to the default.
+export const DEFAULT_PREVIEW_PREFIX = 'sigma-pr';
+
+export function previewPrefix() {
+  const raw = (process.env.PREVIEW_WORKER_PREFIX || '').trim();
+  return raw || DEFAULT_PREVIEW_PREFIX;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Ephemeral previews are the ONLY workers this script may delete. An allowlist beats the denylist: any
+// long-lived worker is protected automatically. The mandatory trailing `-<digits>` is what keeps the
+// app's own workers (e.g. `<prefix>`, `<prefix>-etl`) from ever matching, whatever the prefix.
+export function ephemeralPreviewRe(prefix = previewPrefix()) {
+  return new RegExp(`^${escapeRegExp(prefix)}-\\d+$`);
+}
 
 // Cloudflare returns code 10007 / "workers.api.error.script_not_found" when the script is already
 // gone. Match the error name, or 10007 only in its `[code: 10007]` shape — a bare `\b10007\b` could
@@ -41,7 +60,7 @@ export function isProtected(name) {
 }
 
 export function isEphemeralPreviewName(name) {
-  return typeof name === 'string' && EPHEMERAL_PREVIEW_RE.test(name);
+  return typeof name === 'string' && ephemeralPreviewRe().test(name);
 }
 
 // Throws unless `name` is a deletable ephemeral preview worker. Pure — no side effects.
@@ -56,7 +75,7 @@ export function assertDeletable(name) {
   }
   if (!isEphemeralPreviewName(name)) {
     throw new Error(
-      `teardown-remote: "${name}" is not an ephemeral preview worker (expected sigma-pr-<number>) — refusing to delete.`,
+      `teardown-remote: "${name}" is not an ephemeral preview worker (expected ${previewPrefix()}-<number>) — refusing to delete.`,
     );
   }
 }
