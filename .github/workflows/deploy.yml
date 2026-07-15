@@ -255,6 +255,30 @@ jobs:
         if: steps.guard.outputs.ok == 'true' && success()
         run: node scripts/ensure-worker-secret.mjs ASSISTANT_HMAC_KEY
 
+      # Provision the assistant's EXTERNAL secrets (provider key, voice key, Turnstile) on the worker from
+      # this Environment's secrets — the deploy token already has Workers Scripts:Edit. Mirrors preview.yml,
+      # which does the same per-PR. Without ASSISTANT_API_KEY the chat route 503s ("unprovisioned"); the
+      # voice key + TURNSTILE_SECRET are optional (unset ⇒ that feature degrades, not a hard failure). Each
+      # is skipped when its Environment secret is unset, so this is a no-op on envs that don't set them.
+      # Streamed to wrangler over stdin — the value never appears in a log line.
+      - name: Provision assistant secrets on the worker
+        if: steps.guard.outputs.ok == 'true' && success()
+        env:
+          ASSISTANT_API_KEY: ${{ secrets.ASSISTANT_API_KEY }}
+          VOICE_ASSISTANT_API_KEY: ${{ secrets.VOICE_ASSISTANT_API_KEY }}
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
+        run: |
+          put() {  # $1 = secret name, $2 = value
+            if [ -z "$2" ]; then
+              echo "::notice::$1 is not set on this Environment — skipping (feature degrades to 503/no-op)."
+              return 0
+            fi
+            printf '%s' "$2" | pnpm --filter @sigma/web exec wrangler secret put "$1" --name "$SIGMA_WEB_NAME"
+          }
+          put ASSISTANT_API_KEY "${ASSISTANT_API_KEY}"
+          put VOICE_ASSISTANT_API_KEY "${VOICE_ASSISTANT_API_KEY}"
+          put TURNSTILE_SECRET "${TURNSTILE_SECRET}"
+
       - name: Deploy refresh Workflow (sigma-etl)
         if: steps.guard.outputs.ok == 'true' && success()
         run: pnpm --filter @sigma/etl run deploy
