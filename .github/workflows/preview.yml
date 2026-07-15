@@ -50,8 +50,10 @@ jobs:
       # AI-Gateway account id override — same story as SIGMA_REPORTS_NAME: set on the `preview` Environment
       # when it lives on a different account than the committed gateway URLs (docs/dev-preview-account-split.md).
       SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
-      # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
-      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+      # Per-PR worker name = `<prefix>-<PR number>`. The prefix is configurable per repo via the
+      # PREVIEW_WORKER_PREFIX variable (default `sigma-pr`); teardown/reaper read the SAME prefix so a
+      # renamed preview is still cleaned up. wrangler-render.mjs writes this into wrangler.deploy.json.
+      SIGMA_WEB_NAME: ${{ vars.PREVIEW_WORKER_PREFIX || 'sigma-pr' }}-${{ github.event.pull_request.number }}
       # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the
       # dev D1 (identical data version), so the build id is the ONLY discriminator — stamping the head sha
       # keeps each preview's (and the dev env's) dedup keys distinct, so no preview can cross-serve reports.
@@ -251,7 +253,10 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
+      # Same prefix as the deploy job (default `sigma-pr`). PREVIEW_WORKER_PREFIX is also passed to
+      # teardown-remote.mjs so its `<prefix>-<digits>` deletion allowlist matches this exact name.
+      PREVIEW_WORKER_PREFIX: ${{ vars.PREVIEW_WORKER_PREFIX }}
+      SIGMA_WEB_NAME: ${{ vars.PREVIEW_WORKER_PREFIX || 'sigma-pr' }}-${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

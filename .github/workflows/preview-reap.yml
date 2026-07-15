@@ -41,6 +41,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       PREVIEW_MAX_AGE_DAYS: ${{ github.event.inputs.max_age_days || '5' }}
+      # Must match the deploy prefix (preview.yml) so the reaper's `<prefix>-<digits>` matcher finds the
+      # renamed previews to reap. Default `sigma-pr` when unset (teardown-remote.mjs).
+      PREVIEW_WORKER_PREFIX: ${{ vars.PREVIEW_WORKER_PREFIX }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

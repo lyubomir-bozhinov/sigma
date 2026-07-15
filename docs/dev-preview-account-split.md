@@ -155,3 +155,18 @@ Previews се деплойват автоматично при отваряне 
 `sigma-reports-dev` / `sigma-assistant-dev` Vectorize / `sigma-dedup-dev` KV и всякакви остатъчни
 `sigma-pr-*`. **Само с изрично потвърждение** и след като верифицирате, че името се резолвва към стария
 ресурс (никога production). Production/staging остават непокътнати.
+
+## 6. Портируемост между repo-та — `PREVIEW_WORKER_PREFIX`
+
+Preview worker-ите се именуват `<префикс>-<PR номер>` (по подразбиране `sigma-pr-<n>`). За да върви
+същият pipeline в друго repo под различно име на приложението, задайте repo/environment променливата
+**`PREVIEW_WORKER_PREFIX`** (напр. `midt-pr`). Един източник на истина: `preview.yml` (deploy + teardown)
+и reaper-ът четат **същия** префикс, а deletion allowlist-ът в
+[`scripts/teardown-remote.mjs`](../scripts/teardown-remote.mjs) (`^<префикс>-\d+$`, с escape на regex
+метасимволи) гарантира, че teardown/reaper трият само тези preview-и и никога дълготраен worker. Unset →
+`sigma-pr` (байт-идентично поведение).
+
+> **workers.dev subdomain.** URL-ите излизат на account-широкия `*.workers.dev` subdomain (напр.
+> `midt-platforms.workers.dev`). Той е **account-level и еднократно регистрируем** — не се сменя през
+> API (`error 10036`), а през dashboard-а; за различен subdomain per-repo трябва custom домейн/зона.
+> Workflow-ите го парсват динамично от изхода на `wrangler`, така че кодът е subdomain-агностичен.

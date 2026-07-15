@@ -2,12 +2,29 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DEFAULT_PREVIEW_PREFIX,
   PROTECTED,
   assertDeletable,
   deleteWorker,
+  ephemeralPreviewRe,
   isEphemeralPreviewName,
   isProtected,
+  previewPrefix,
 } from './teardown-remote.mjs';
+
+// Run `fn` with PREVIEW_WORKER_PREFIX set to `value` (or unset when undefined), always restoring the
+// prior env so test order can't leak the prefix into the default-behaviour suites above.
+function withPrefix(value, fn) {
+  const prior = process.env.PREVIEW_WORKER_PREFIX;
+  if (value === undefined) delete process.env.PREVIEW_WORKER_PREFIX;
+  else process.env.PREVIEW_WORKER_PREFIX = value;
+  try {
+    fn();
+  } finally {
+    if (prior === undefined) delete process.env.PREVIEW_WORKER_PREFIX;
+    else process.env.PREVIEW_WORKER_PREFIX = prior;
+  }
+}
 
 describe('isProtected', () => {
   it('flags every long-lived worker', () => {
@@ -115,5 +132,39 @@ describe('deleteWorker', () => {
       /refusing to delete protected long-lived worker/,
     );
     assert.equal(called, false);
+  });
+});
+
+describe('configurable preview prefix (PREVIEW_WORKER_PREFIX)', () => {
+  it('defaults to sigma-pr when unset or blank', () => {
+    withPrefix(undefined, () => assert.equal(previewPrefix(), DEFAULT_PREVIEW_PREFIX));
+    withPrefix('   ', () => assert.equal(previewPrefix(), DEFAULT_PREVIEW_PREFIX));
+  });
+
+  it('uses the configured prefix for the deletion allowlist', () => {
+    withPrefix('midt-pr', () => {
+      assert.equal(isEphemeralPreviewName('midt-pr-5'), true);
+      assert.equal(isEphemeralPreviewName('midt-pr-99999'), true);
+      // Still requires the trailing -<digits>, so the app's own workers never match.
+      assert.equal(isEphemeralPreviewName('midt-pr'), false);
+      assert.equal(isEphemeralPreviewName('midt'), false);
+      // The old default no longer matches once a different prefix is configured.
+      assert.equal(isEphemeralPreviewName('sigma-pr-5'), false);
+    });
+  });
+
+  it('lets assertDeletable accept a renamed preview and name the prefix on rejection', () => {
+    withPrefix('midt-pr', () => {
+      assert.doesNotThrow(() => assertDeletable('midt-pr-42'));
+      assert.throws(() => assertDeletable('sigma-pr-42'), /expected midt-pr-<number>/);
+    });
+  });
+
+  it('escapes regex metacharacters in the prefix (no accidental wildcards)', () => {
+    withPrefix('a.b', () => {
+      assert.equal(ephemeralPreviewRe().source, '^a\\.b-\\d+$');
+      assert.equal(isEphemeralPreviewName('a.b-1'), true);
+      assert.equal(isEphemeralPreviewName('axb-1'), false); // `.` must not act as a wildcard
+    });
   });
 });
