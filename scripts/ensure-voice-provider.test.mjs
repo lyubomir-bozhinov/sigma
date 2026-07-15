@@ -42,36 +42,31 @@ describe('ensureGateway', () => {
     await ensureGateway({ ...CREDS, fetchImpl });
     assert.equal(posts(calls).length, 1);
     assert.equal(posts(calls)[0].body.id, GATEWAY_ID);
+    // The current create API requires the full settings schema, not a bare { id }.
+    assert.equal(posts(calls)[0].body.rate_limiting_technique, 'fixed');
+    assert.equal(typeof posts(calls)[0].body.cache_ttl, 'number');
   });
 });
 
 describe('ensureCustomProvider', () => {
-  it('reuses an existing provider and never re-writes the secret', async () => {
+  it('reuses an existing provider without re-creating it', async () => {
     const { fetchImpl, calls } = recorder(() =>
       okResult([{ id: 'p1', slug: PROVIDER_SLUG, base_url: 'https://api.bggpt.ai' }]),
     );
-    const id = await ensureCustomProvider({ ...CREDS, apiKey: 'k', fetchImpl });
+    const id = await ensureCustomProvider({ ...CREDS, fetchImpl });
     assert.equal(id, 'p1');
     assert.equal(posts(calls).length, 0);
   });
-  it('creates with a stored Authorization header when a key is supplied', async () => {
+  it('creates the provider key-less — omits the headers field (per-request auth)', async () => {
     const { fetchImpl, calls } = recorder(({ method }) =>
       method === 'GET' ? okResult([]) : okResult({ id: 'new' }),
     );
-    await ensureCustomProvider({ ...CREDS, apiKey: 'secret', fetchImpl });
+    await ensureCustomProvider({ ...CREDS, fetchImpl });
     const body = posts(calls)[0].body;
     assert.equal(body.slug, PROVIDER_SLUG);
     assert.equal(body.base_url, 'https://api.bggpt.ai');
-    assert.equal(body.headers.Authorization, 'Bearer secret');
-  });
-  it('creates key-less and warns when no key is supplied', async () => {
-    let warned = '';
-    const { fetchImpl, calls } = recorder(({ method }) =>
-      method === 'GET' ? okResult([]) : okResult({ id: 'new' }),
-    );
-    await ensureCustomProvider({ ...CREDS, fetchImpl, warn: (m) => (warned = m) });
-    assert.equal(posts(calls)[0].body.headers, null);
-    assert.match(warned, /per-request-auth/);
+    // No `headers` key at all — the API rejects `headers: null`, and auth is per-request.
+    assert.equal('headers' in body, false);
   });
 });
 

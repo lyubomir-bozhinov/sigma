@@ -36,14 +36,15 @@
 
 ## 2. AI Gateway (задължителен — целият моделен трафик минава оттук)
 
-Gateway `sigma-assistant`, споделен между чат и глас, с два custom провайдъра към BgGPT
-(`https://api.bggpt.ai`). `wrangler` не го докосва — provisioning-ът е през account-scoped REST API
-(token с **AI Gateway:Edit**):
+Gateway `sigma-assistant`, споделен между чат и глас, с два custom провайдъра към BgGPT — с **различни
+upstream-и** (сверено с оригиналния акаунт): чат → `https://api.mamay.ai`, глас → `https://api.bggpt.ai`.
+`wrangler` не го докосва — provisioning-ът е през account-scoped REST API (token с **AI Gateway:Edit**):
 
 1. **Gateway** `sigma-assistant` — създай веднъж (dashboard или REST). Скриптовете само проверяват, че
    съществува; никога не пипат настройките му, за да не се клобърне чатът.
-2. **Чат провайдър** `bggpt` → URL сегмент `custom-bggpt` — upstream `https://api.bggpt.ai`.
-   Пълният път е `.../{gateway}/custom-bggpt/v1` (виж `AI_GATEWAY_BASE_URL`).
+2. **Чат провайдър** `bggpt` → URL сегмент `custom-bggpt` — upstream **`https://api.mamay.ai`** (НЕ
+   `api.bggpt.ai` — това връща 404 за чат). Пълният път е `.../{gateway}/custom-bggpt/v1` →
+   `api.mamay.ai/v1/chat/completions` (виж `AI_GATEWAY_BASE_URL`).
 3. **Гласов провайдър** `bggpt-voice` → URL сегмент `custom-bggpt-voice`:
    `node scripts/ensure-voice-provider.mjs --apply` (dry-run без `--apply`). Виж
    [ADR-0013](adr/0013-voice-via-ai-gateway.md) защо провайдър-endpoint, а не dynamic route.

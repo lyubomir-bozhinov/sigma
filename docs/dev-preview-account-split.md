@@ -62,18 +62,17 @@ node scripts/ensure-voice-provider.mjs --apply
 > сверено; committ-ната бележка в `wrangler.jsonc` го потвърждава.) С грешен chat upstream (`api.bggpt.ai`)
 > чат заявките връщат **404**, докато embeddings-ите минават (те са Workers AI, не BgGPT).
 >
-> **Follow-up-и:**
-> - **`deploy-assistant.md` §2 е неточен** — казва че *двата* провайдъра сочат `api.bggpt.ai`; chat-ът
->   всъщност е `api.mamay.ai`. `ensure-voice-provider.mjs` (само voice → `api.bggpt.ai`) е **коректен**.
-> - **`ensure-voice-provider.mjs` е остарял спрямо AI Gateway API:** gateway create-ът иска числовите
->   `cache_ttl` / `rate_limiting_*` полета, а custom-provider-ът отхвърля `headers: null` (ключът да е
->   **пропуснат**). При вече съществуващи обекти скриптът no-op-ва, но на чист акаунт create пътят гърми —
->   затова провизирайте през REST по-долу и **фикснете скрипта отделно**.
+> **Бележки:**
+> - `deploy-assistant.md` §2 и `ensure-voice-provider.mjs` са коригирани в тази промяна: чат upstream-ът
+>   вече е `api.mamay.ai`, а скриптът праща пълната gateway схема и създава провайдъра **key-less** (без
+>   `headers`) — коректно и на съвсем чист акаунт.
+> - `ensure-voice-provider.mjs` създава САМО voice провайдъра (`bggpt-voice` → `api.bggpt.ai`); chat
+>   провайдърът `bggpt` (→ `api.mamay.ai`) и самият gateway се провизират през REST по-долу (или dashboard).
 >
 > **Turnstile домейни.** Widget-ът трябва да изброява **точния** хост (`sigma-dev.midt-platforms.workers.dev`
 > и всеки `sigma-pr-<n>.…`), не само apex-а — иначе challenge платформата връща 400 и чатът дава 403.
 
-Chat провайдър + gateway през REST (докато скриптът се фиксне):
+Chat провайдър + gateway през REST (скриптът провизира само voice провайдъра):
 
 ```bash
 A=$CLOUDFLARE_ACCOUNT_ID; T=$CLOUDFLARE_API_TOKEN; API=https://api.cloudflare.com/client/v4
