@@ -92,6 +92,10 @@ if (ext === '.json' || ext === '.jsonc') {
     // see docs/dev-preview-account-split.md) stamps its own id here. Unset → the committed URLs are left
     // byte-identical, so production/staging on the original account are unchanged.
     aiGatewayAccount: process.env.SIGMA_AI_GATEWAY_ACCOUNT || '',
+    // Public Turnstile site key. Account-bound (the widget lives in one Cloudflare account), so a target
+    // on a different account (dev/preview → b2abee…) stamps its own widget's key here. Unset → committed
+    // key stays (prod/staging invariant). Pairs with the TURNSTILE_SECRET worker secret for that widget.
+    turnstileSiteKey: process.env.SIGMA_TURNSTILE_SITE_KEY || '',
   };
   if (
     names.webName ||
@@ -102,7 +106,8 @@ if (ext === '.json' || ext === '.jsonc') {
     names.buildId ||
     names.assistantEnabled ||
     names.environment ||
-    names.aiGatewayAccount
+    names.aiGatewayAccount ||
+    names.turnstileSiteKey
   ) {
     out = renderJson(out, names);
   }
@@ -212,6 +217,9 @@ function renderJson(text, names) {
       }
     }
   }
+  // Stamp the per-account Turnstile site key over the committed one (account-bound widget).
+  if (names.turnstileSiteKey && obj.vars && typeof obj.vars === 'object')
+    obj.vars.TURNSTILE_SITE_KEY = names.turnstileSiteKey;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 

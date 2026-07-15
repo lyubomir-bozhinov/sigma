@@ -20,6 +20,7 @@ const FIXTURE = {
   vars: {
     AI_GATEWAY_BASE_URL: `https://gateway.ai.cloudflare.com/v1/${OLD_ACCT}/sigma-assistant/custom-bggpt/v1`,
     BGGPT_STT_BASE_URL: `https://gateway.ai.cloudflare.com/v1/${OLD_ACCT}/sigma-assistant/custom-bggpt-voice`,
+    TURNSTILE_SITE_KEY: 'OLD-SITE-KEY',
   },
   unsafe: {
     bindings: [
@@ -91,5 +92,13 @@ describe('wrangler-render: SIGMA_AI_GATEWAY_ACCOUNT', () => {
     assert.equal(out.vars.BGGPT_STT_BASE_URL, FIXTURE.vars.BGGPT_STT_BASE_URL);
     // The D1 sentinel is still substituted regardless of the gateway override.
     assert.equal(out.d1_databases[0].database_id, 'test-d1-id');
+  });
+
+  it('stamps TURNSTILE_SITE_KEY only when SIGMA_TURNSTILE_SITE_KEY is set', () => {
+    assert.equal(
+      render({ SIGMA_TURNSTILE_SITE_KEY: 'NEW-SITE-KEY' }).vars.TURNSTILE_SITE_KEY,
+      'NEW-SITE-KEY',
+    );
+    assert.equal(render({}).vars.TURNSTILE_SITE_KEY, 'OLD-SITE-KEY');
   });
 });

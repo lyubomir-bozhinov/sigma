@@ -50,6 +50,9 @@ jobs:
       # AI-Gateway account id override — same story as SIGMA_REPORTS_NAME: set on the `preview` Environment
       # when it lives on a different account than the committed gateway URLs (docs/dev-preview-account-split.md).
       SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
+      # Public Turnstile site key for the preview account's widget (pairs with the TURNSTILE_SECRET
+      # provisioned below). Unset → committed default (docs/dev-preview-account-split.md).
+      SIGMA_TURNSTILE_SITE_KEY: ${{ vars.SIGMA_TURNSTILE_SITE_KEY }}
       # Per-PR worker name = `<prefix>-<PR number>`. The prefix is configurable per repo via the
       # PREVIEW_WORKER_PREFIX variable (default `sigma-pr`); teardown/reaper read the SAME prefix so a
       # renamed preview is still cleaned up. wrangler-render.mjs writes this into wrangler.deploy.json.

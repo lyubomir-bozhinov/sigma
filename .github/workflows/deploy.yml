@@ -120,6 +120,10 @@ jobs:
       # preview → the b2abee… account). wrangler-render swaps it into AI_GATEWAY_BASE_URL /
       # BGGPT_STT_BASE_URL. Unset (production/staging) → the committed URLs stay byte-identical.
       SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
+      # Public Turnstile site key for this env's widget (account-bound). Set on envs whose widget differs
+      # from the committed default (dev + preview → the b2abee… account's widget); pairs with the
+      # TURNSTILE_SECRET this env provisions. Unset (production/staging) → committed site key.
+      SIGMA_TURNSTILE_SITE_KEY: ${{ vars.SIGMA_TURNSTILE_SITE_KEY }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
