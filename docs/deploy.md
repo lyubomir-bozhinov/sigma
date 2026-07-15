@@ -19,8 +19,16 @@ Committ-натите `wrangler.*` файлове държат нулеви (zero
 | ETL worker | `sigma-etl` (cron) | `sigma-etl-stage` (cron) | — |
 | Workflow (глобален за акаунта) | `sigma-refresh` | `sigma-refresh-stage` | — |
 | D1 база | `sigma` | `sigma-stage` (**отделна** база) | собствена база |
-| CF акаунт | obecto | obecto (засега споделен) | **отделен** акаунт |
+| CF акаунт | **акаунт A** (prod/staging) | акаунт A (същият) | **отделен** акаунт |
 | GitHub Environment | `production` | `staging` | `production` (пренасочен) |
+
+> **Двуакаунтен модел (в сила).** Ресурсите на СИГМА живеят на **два** Cloudflare акаунта:
+> **Production + Staging** → **акаунт A** (committ-натите `wrangler.*` defaults сочат него; днес това е
+> оригиналният акаунт), а **Dev + Preview** → **отделен акаунт B** (`Info@midt-crew.eu`), към който
+> средите `dev`/`preview` се пренасочват изцяло през `SIGMA_*` env override-и (имена/id-та,
+> `SIGMA_AI_GATEWAY_ACCOUNT`, `SIGMA_TURNSTILE_SITE_KEY`). Границата между акаунтите + scoped API token-ът
+> на всяка GitHub среда гарантират, че non-prod деплой не може да докосне prod акаунта и обратно. Пълен
+> setup/provisioning: [`dev-preview-account-split.md`](dev-preview-account-split.md).
 
 Staging/dev разчитат на автоматичния `workers.dev` хост — наричането на worker-а `sigma-stage` е
 достатъчно, за да обслужва `sigma-stage.cf-midt.workers.dev` (без конфигуриране на routes).
@@ -392,8 +400,13 @@ gate-а. Това е стъпката, която хората забравят.
    по име чрез `SIGMA_D1_NAME` — без него по подразбиране е `sigma`, така че тази променлива е
    guard-ът, който пази production от seed.
 3. **Различни credentials / lane.** Staging използва секретите на средата `staging` и concurrency
-   групата `deploy-staging`. Когато production-v2 премине на собствен акаунт, акаунтската граница става
-   четвърта стена: staging token няма достъп до prod акаунта изобщо.
+   групата `deploy-staging`.
+
+За **dev/preview** има и **четвърта, най-силна стена — акаунтската граница**: те са на **отделен
+Cloudflare акаунт** (акаунт B) със **свой scoped token**, така че dev/preview деплой изобщо няма достъп
+до акаунт A (prod/staging) — и обратно. (Prod и staging днес споделят акаунт A, затова между тях важат
+само стени 1–3; ако някога prod премине на собствен акаунт по модела „Production-v2“ по-долу,
+акаунтската граница ще ги раздели и тях.)
 
 ## Данни и cron-ът на ETL
 
