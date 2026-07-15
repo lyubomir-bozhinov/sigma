@@ -52,17 +52,26 @@ wrangler vectorize create sigma-assistant-dev --dimensions=1024 --metric=cosine
 node scripts/ensure-kv-namespace.mjs sigma-dedup-dev            # отпечатва id
 
 # AI Gateway `sigma-assistant` + провайдъри `bggpt` (custom-bggpt) и `bggpt-voice` (custom-bggpt-voice),
-# двата към https://api.bggpt.ai, per-request auth (без съхранен ключ).
+# двата към https://api.mamay.ai, per-request auth (без съхранен ключ).
 node scripts/ensure-voice-provider.mjs --apply
 ```
 
-> **⚠ Известен follow-up.** [`scripts/ensure-voice-provider.mjs`](../scripts/ensure-voice-provider.mjs) е
-> остарял спрямо текущия AI Gateway API: create-ът на gateway вече изисква числовите
-> `cache_ttl` / `rate_limiting_*` полета, а custom-provider-ът отхвърля `headers: null` (иска ключа
-> **пропуснат**, не `null`). При **вече съществуващи** gateway/провайдъри скриптът no-op-ва (нашия
-> случай), но на съвсем чист акаунт create пътят гърми. Chat провайдърът `bggpt` изобщо не се създава от
-> скрипт. При първоначален provisioning създайте трите обекта през REST (вж. по-долу) и **фикснете
-> скрипта отделно**.
+> **⚠ Известни follow-up-и по `ensure-voice-provider.mjs`** ([`scripts/ensure-voice-provider.mjs`](../scripts/ensure-voice-provider.mjs)):
+>
+> 1. **Грешен upstream.** Скриптът (и `deploy-assistant.md`) сочат `https://api.bggpt.ai`, но **проверено
+>    end-to-end**, работещият BgGPT upstream е **`https://api.mamay.ai`** (`custom-bggpt/v1` →
+>    `api.mamay.ai/v1/chat/completions`, съгласно committ-ната бележка в `wrangler.jsonc`). С `api.bggpt.ai`
+>    чат заявките връщат **404** (embeddings-ите минават — те са Workers AI, не BgGPT). Създайте провайдърите
+>    с `api.mamay.ai`.
+> 2. **Остарял API.** Gateway create-ът вече изисква числовите `cache_ttl` / `rate_limiting_*` полета, а
+>    custom-provider-ът отхвърля `headers: null` (иска ключа **пропуснат**, не `null`). Chat провайдърът
+>    `bggpt` изобщо не се създава от скрипта.
+>
+> При **вече съществуващи** обекти скриптът no-op-ва, но на чист акаунт create пътят гърми. За първоначален
+> provisioning създайте трите обекта през REST (по-долу) и **фикснете скрипта отделно**.
+>
+> **Turnstile домейни.** Widget-ът трябва да изброява **точния** хост (`sigma-dev.midt-platforms.workers.dev`
+> и всеки `sigma-pr-<n>.…`), не само apex-а — иначе challenge платформата връща 400 и чатът дава 403.
 
 Chat провайдър + gateway през REST (докато скриптът се фиксне):
 
@@ -74,7 +83,7 @@ curl -s -X POST "$API/accounts/$A/ai-gateway/gateways" -H "Authorization: Bearer
 # провайдъри (headers ПРОПУСНАТ = per-request auth)
 for s in bggpt bggpt-voice; do
   curl -s -X POST "$API/accounts/$A/ai-gateway/custom-providers" -H "Authorization: Bearer $T" -H 'content-type: application/json' \
-    -d "{\"name\":\"$s\",\"slug\":\"$s\",\"base_url\":\"https://api.bggpt.ai\"}"; done
+    -d "{\"name\":\"$s\",\"slug\":\"$s\",\"base_url\":\"https://api.mamay.ai\"}"; done
 ```
 
 ## 2. Зареждане на `sigma-dev` D1 (веднъж)
