@@ -15,6 +15,7 @@
 - [`deploy-assistant.md`](deploy-assistant.md) — пускане на AI асистента: Vectorize/R2/KV/AI Gateway ресурсите, тайните и променливите, seed-ът и `ASSISTANT_ENABLED` над базовия деплой.
 - [`dev-environments.md`](dev-environments.md) — дълготрайната **dev** среда и ephemeral preview-та за всеки PR: как се деплойва произволен branch.
 - [`dev-environments-setup.md`](dev-environments-setup.md) — точните стъпки за provisioning на dev + preview (wrangler auth, D1/R2, secrets).
+- [`dev-preview-account-split.md`](dev-preview-account-split.md) — dev + preview на **отделен Cloudflare акаунт** от prod/staging: `SIGMA_AI_GATEWAY_ACCOUNT`, provisioning на новия акаунт и GitHub Environment-ите.
 - [`api.md`](api.md) — публичните данни и машинно четими endpoint-и (CSV/JSON/sitemap), query грамата на филтрите и лицензът — за разработчици, които строят върху данните.
 - [`accessibility.md`](accessibility.md) — достъпност (WCAG 2.1 AA / EN 301 549): какво покрива платформата и наблюденията за вградената приставка за достъпност.
 - [`spec/ai-assistant.md`](spec/ai-assistant.md) — спецификация на разговорния аналитичен слой над СИГМА (BgGPT, текст и глас).

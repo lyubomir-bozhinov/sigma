@@ -76,6 +76,7 @@ Gateway `sigma-assistant`, споделен между чат и глас, с д
 | `SIGMA_ENVIRONMENT` | `ENVIRONMENT` | `production` / `staging` / `preview` / `development` — управлява fail-closed на HMAC (§6). |
 | `SIGMA_ASSISTANT_ENABLED` | `ASSISTANT_ENABLED` | `"false"` до go-live, после `"true"`. |
 | `SIGMA_VECTORIZE_NAME`, `SIGMA_REPORTS_NAME`, `SIGMA_DEDUP_KV_ID`, `SIGMA_D1_ID` | имена/id на ресурсите | от §1. |
+| `SIGMA_AI_GATEWAY_ACCOUNT` | акаунт-id в `AI_GATEWAY_BASE_URL` / `BGGPT_STT_BASE_URL` | Задава се **само** когато средата е на друг Cloudflare акаунт от committ-натия default (dev + preview → акаунтът `b2abee…`). `wrangler-render` подменя 32-hex акаунт сегмента в двата gateway URL-а. Unset (production/staging) → URL-ите остават байт-идентични. Виж [`dev-preview-account-split.md`](dev-preview-account-split.md). |
 
 **Б. Директни `vars` в `wrangler.jsonc`** (операторът ги задава — **не** са `SIGMA_`-рендерирани;
 committ-нати празни в upstream):

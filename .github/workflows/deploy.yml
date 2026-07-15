@@ -115,6 +115,11 @@ jobs:
       # fails open. wrangler-render stamps this into ENVIRONMENT. Not derived from import.meta.env.PROD,
       # which Vite inlines true for the staging build too (it would misclassify staging as production).
       SIGMA_ENVIRONMENT: ${{ vars.SIGMA_ENVIRONMENT }}
+      # AI-Gateway account id override (docs/dev-preview-account-split.md). Set this GitHub Environment
+      # *variable* only on targets on a DIFFERENT Cloudflare account than the committed default (dev +
+      # preview → the b2abee… account). wrangler-render swaps it into AI_GATEWAY_BASE_URL /
+      # BGGPT_STT_BASE_URL. Unset (production/staging) → the committed URLs stay byte-identical.
+      SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

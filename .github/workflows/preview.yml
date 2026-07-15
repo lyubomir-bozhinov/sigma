@@ -41,6 +41,15 @@ jobs:
       SIGMA_D1_ID: ${{ secrets.SIGMA_D1_ID }}
       SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
+      # Assistant resources are shared with dev (one Vectorize index + one reports bucket, no per-preview
+      # seed). When dev/preview live on a Cloudflare account whose committed defaults don't exist (the
+      # b2abee… account names them `sigma-*-dev`), these MUST be set so the REPORTS/VECTORIZE bindings
+      # resolve to real resources; unset → committed defaults (docs/dev-preview-account-split.md).
+      SIGMA_REPORTS_NAME: ${{ vars.SIGMA_REPORTS_NAME }}
+      SIGMA_VECTORIZE_NAME: ${{ vars.SIGMA_VECTORIZE_NAME }}
+      # AI-Gateway account id override — same story as SIGMA_REPORTS_NAME: set on the `preview` Environment
+      # when it lives on a different account than the committed gateway URLs (docs/dev-preview-account-split.md).
+      SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
       # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
       SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
       # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the
