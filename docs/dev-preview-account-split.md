@@ -51,24 +51,24 @@ wrangler vectorize create sigma-assistant-dev --dimensions=1024 --metric=cosine
 # KV (dedup) — CI го пресъздава идемпотентно; ръчно:
 node scripts/ensure-kv-namespace.mjs sigma-dedup-dev            # отпечатва id
 
-# AI Gateway `sigma-assistant` + провайдъри `bggpt` (custom-bggpt) и `bggpt-voice` (custom-bggpt-voice),
-# двата към https://api.mamay.ai, per-request auth (без съхранен ключ).
+# AI Gateway `sigma-assistant` + voice провайдър `bggpt-voice` (custom-bggpt-voice) → https://api.bggpt.ai.
+# Скриптът създава САМО voice провайдъра; chat провайдърът `bggpt` се създава отделно (по-долу).
 node scripts/ensure-voice-provider.mjs --apply
 ```
 
-> **⚠ Известни follow-up-и по `ensure-voice-provider.mjs`** ([`scripts/ensure-voice-provider.mjs`](../scripts/ensure-voice-provider.mjs)):
+> **⚠ Два различни upstream-а — сверено с оригиналния акаунт (source of truth):**
+> `bggpt` (chat, `custom-bggpt`) → **`https://api.mamay.ai`** · `bggpt-voice` (STT, `custom-bggpt-voice`) →
+> **`https://api.bggpt.ai`**. Не са еднакви! (`custom-bggpt/v1` → `api.mamay.ai/v1/chat/completions` —
+> сверено; committ-ната бележка в `wrangler.jsonc` го потвърждава.) С грешен chat upstream (`api.bggpt.ai`)
+> чат заявките връщат **404**, докато embeddings-ите минават (те са Workers AI, не BgGPT).
 >
-> 1. **Грешен upstream.** Скриптът (и `deploy-assistant.md`) сочат `https://api.bggpt.ai`, но **проверено
->    end-to-end**, работещият BgGPT upstream е **`https://api.mamay.ai`** (`custom-bggpt/v1` →
->    `api.mamay.ai/v1/chat/completions`, съгласно committ-ната бележка в `wrangler.jsonc`). С `api.bggpt.ai`
->    чат заявките връщат **404** (embeddings-ите минават — те са Workers AI, не BgGPT). Създайте провайдърите
->    с `api.mamay.ai`.
-> 2. **Остарял API.** Gateway create-ът вече изисква числовите `cache_ttl` / `rate_limiting_*` полета, а
->    custom-provider-ът отхвърля `headers: null` (иска ключа **пропуснат**, не `null`). Chat провайдърът
->    `bggpt` изобщо не се създава от скрипта.
->
-> При **вече съществуващи** обекти скриптът no-op-ва, но на чист акаунт create пътят гърми. За първоначален
-> provisioning създайте трите обекта през REST (по-долу) и **фикснете скрипта отделно**.
+> **Follow-up-и:**
+> - **`deploy-assistant.md` §2 е неточен** — казва че *двата* провайдъра сочат `api.bggpt.ai`; chat-ът
+>   всъщност е `api.mamay.ai`. `ensure-voice-provider.mjs` (само voice → `api.bggpt.ai`) е **коректен**.
+> - **`ensure-voice-provider.mjs` е остарял спрямо AI Gateway API:** gateway create-ът иска числовите
+>   `cache_ttl` / `rate_limiting_*` полета, а custom-provider-ът отхвърля `headers: null` (ключът да е
+>   **пропуснат**). При вече съществуващи обекти скриптът no-op-ва, но на чист акаунт create пътят гърми —
+>   затова провизирайте през REST по-долу и **фикснете скрипта отделно**.
 >
 > **Turnstile домейни.** Widget-ът трябва да изброява **точния** хост (`sigma-dev.midt-platforms.workers.dev`
 > и всеки `sigma-pr-<n>.…`), не само apex-а — иначе challenge платформата връща 400 и чатът дава 403.
@@ -80,10 +80,11 @@ A=$CLOUDFLARE_ACCOUNT_ID; T=$CLOUDFLARE_API_TOKEN; API=https://api.cloudflare.co
 # gateway (пълна текуща схема)
 curl -s -X POST "$API/accounts/$A/ai-gateway/gateways" -H "Authorization: Bearer $T" -H 'content-type: application/json' \
   -d '{"id":"sigma-assistant","cache_invalidate_on_update":false,"cache_ttl":0,"collect_logs":true,"rate_limiting_interval":0,"rate_limiting_limit":0,"rate_limiting_technique":"fixed"}'
-# провайдъри (headers ПРОПУСНАТ = per-request auth)
-for s in bggpt bggpt-voice; do
-  curl -s -X POST "$API/accounts/$A/ai-gateway/custom-providers" -H "Authorization: Bearer $T" -H 'content-type: application/json' \
-    -d "{\"name\":\"$s\",\"slug\":\"$s\",\"base_url\":\"https://api.mamay.ai\"}"; done
+# провайдъри (headers ПРОПУСНАТ = per-request auth) — РАЗЛИЧНИ upstream-и:
+mkprov() { curl -s -X POST "$API/accounts/$A/ai-gateway/custom-providers" -H "Authorization: Bearer $T" \
+  -H 'content-type: application/json' -d "{\"name\":\"$1\",\"slug\":\"$1\",\"base_url\":\"$2\"}"; }
+mkprov bggpt       https://api.mamay.ai   # chat
+mkprov bggpt-voice https://api.bggpt.ai   # STT
 ```
 
 ## 2. Зареждане на `sigma-dev` D1 (веднъж)
