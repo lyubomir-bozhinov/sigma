@@ -386,7 +386,17 @@ export async function getWeeklyDigestData(
       getWeeklySectorBreakdown(db, isoWeek),
       getWeeklyAuthorityBreakdown(db, isoWeek),
     ]);
-  return { isoWeek, total, counts, largest, singleBidRate, delta, topContracts, sectors, authorities };
+  return {
+    isoWeek,
+    total,
+    counts,
+    largest,
+    singleBidRate,
+    delta,
+    topContracts,
+    sectors,
+    authorities,
+  };
 }
 
 export interface WeeklyReconciliation {
