@@ -1,11 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import fixtureData from '../lib/assistant/fixtures/r2-report-object.fixture.json';
+import type { StoredReport } from '@sigma/report';
 import { loader } from './weeks.$iso';
 
-const fixtureJson = JSON.stringify(fixtureData);
+// A minimal StoredReport in the canonical @sigma/report shape (provenance carries freshness/model/sql).
+const STORED = {
+  schemaVersion: 1,
+  id: 'r_test',
+  createdAt: '2026-06-22T07:00:00.000Z',
+  report: {
+    title: 'Седмицата в пари: 15–21 юни 2026',
+    question: 'Какво се случи през седмицата?',
+    watermark: 'ai-generated',
+    blocks: [{ type: 'totals', items: [{ label: 'Общо', value: 1000, format: 'money' }] }],
+  },
+  provenance: {
+    question: 'Какво се случи през седмицата?',
+    sources: [],
+    snapshot: [],
+    freshness: [{ source: 'd1', asOf: '2026-06-21' }],
+    model: 'bggpt-gemma-3-27b-fp8',
+    promptVersion: 'v1',
+  },
+} as unknown as StoredReport;
 
-// A context whose D1 binding THROWS on any access — proving the serve path never touches D1 (spec §6).
-// REPORTS returns the fixture text (hit) or null (miss). `getCalls` records the key requested.
+// D1 THROWS on any access → proves the serve path is R2-only. REPORTS returns the artifact text or null.
 function makeContext(objectText: string | null) {
   const getCalls: string[] = [];
   const DB = new Proxy(
@@ -22,8 +40,7 @@ function makeContext(objectText: string | null) {
       return objectText === null ? null : { text: async () => objectText };
     },
   };
-  const context = { cloudflare: { env: { DB, REPORTS } } };
-  return { context, getCalls };
+  return { context: { cloudflare: { env: { DB, REPORTS } } }, getCalls };
 }
 
 function callLoader(iso: string, objectText: string | null) {
@@ -37,21 +54,25 @@ function callLoader(iso: string, objectText: string | null) {
 }
 
 describe('weeks.$iso loader', () => {
-  it('reads the artifact from R2 and returns it — without touching D1', async () => {
-    const { promise, getCalls } = callLoader('2026-W25', fixtureJson);
-    const result = (await promise) as unknown as {
-      data: { iso: string; stored: { schemaVersion: number } };
-      init: { headers: Record<string, string> };
+  it('reads the artifact from R2 and returns client-safe data without touching D1', async () => {
+    const { promise, getCalls } = callLoader('2026-W25', JSON.stringify(STORED));
+    const result = (await promise) as {
+      iso: string;
+      report: { title: string };
+      asOf: string | null;
+      generatedAt: string;
     };
-    expect(result.data.iso).toBe('2026-W25');
-    expect(result.data.stored.schemaVersion).toBe(1);
+    expect(result.iso).toBe('2026-W25');
+    expect(result.report.title).toBe('Седмицата в пари: 15–21 юни 2026');
+    expect(result.asOf).toBe('2026-06-21');
+    expect(result.generatedAt).toBe('2026-06-22T07:00:00.000Z');
     expect(getCalls).toEqual(['weeks/2026-W25.json']);
   });
 
-  it('sets an immutable Cache-Control for a clean (not re-issued) week', async () => {
-    const { promise } = callLoader('2026-W25', fixtureJson);
-    const result = (await promise) as unknown as { init: { headers: Record<string, string> } };
-    expect(result.init.headers['Cache-Control']).toBe('public, s-maxage=31536000, immutable');
+  it('does not leak provenance into the client payload', async () => {
+    const { promise } = callLoader('2026-W25', JSON.stringify(STORED));
+    const result = (await promise) as Record<string, unknown>;
+    expect('provenance' in result).toBe(false);
   });
 
   it('throws 404 when the week has no artifact', async () => {

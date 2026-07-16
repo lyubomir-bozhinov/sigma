@@ -5,7 +5,7 @@ import { PageHeader } from '../components/PageHeader';
 import { DataTable, type Column } from '../components/DataTable';
 import { publicCache } from '../lib/cache';
 import { seoMeta } from '../lib/meta';
-import { listStoredWeeks, type WeekIndexEntry } from '../lib/assistant/stored-report';
+import { listStoredWeeks, type WeekIndexEntry } from '../lib/weeks';
 
 export function meta({ matches }: Route.MetaArgs) {
   return seoMeta({
@@ -23,7 +23,9 @@ export function headers() {
 
 export async function loader({ context }: Route.LoaderArgs) {
   // Only weeks WITH an artifact appear (spec §11). No D1 at serve time — the list comes from R2.
-  const weeks = await listStoredWeeks(context.cloudflare.env.REPORTS);
+  // Before REPORTS is provisioned the archive is simply empty.
+  const bucket = context.cloudflare.env.REPORTS;
+  const weeks = bucket ? await listStoredWeeks(bucket) : [];
   return { weeks };
 }
 

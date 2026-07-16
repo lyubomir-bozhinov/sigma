@@ -19,6 +19,15 @@ port = 8789
 
 [vars]
 EOP_OPEN_DATA_BASE_URL = "https://storage.eop.bg"
+# AI Gateway (mirrors apps/web/wrangler.jsonc's assistant vars — BgGPT via the same Custom Provider).
+# BGGPT_API_KEY is a SECRET (`wrangler secret put BGGPT_API_KEY`), never committed. Empty
+# AI_GATEWAY_BASE_URL fails closed in weekly-digest.ts's model builder, same posture as apps/web's
+# buildModel.
+AI_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/custom-bggpt/v1"
+ASSISTANT_MODEL = "bggpt-gemma4-31b-it-bg-gptq-w4a16"
+# Master kill switch (mirrors ASSISTANT_ENABLED's fail-dark posture): committed "false" so a deploy
+# never starts publishing weekly digests until an operator deliberately opts an environment in.
+DIGEST_ENABLED = "false"
 
 # `database_id` is a zero-UUID placeholder for local dev (miniflare). `pnpm --filter @sigma/etl run
 # deploy` substitutes SIGMA_D1_ID into wrangler.deploy.toml via scripts/wrangler-render.mjs.
@@ -33,8 +42,19 @@ binding = "REFRESH"
 name = "sigma-refresh"
 class_name = "RefreshWorkflow"
 
+# Weekly Digest producer (#167A T3): immutable StoredReport snapshots at weeks/{ISO}.json. Shares the
+# `sigma-reports` bucket apps/web already binds as REPORTS — same bucket_name, no SIGMA_REPORTS_NAME
+# rename hook in wrangler-render.mjs's TOML path (that renamer only exists for etl's own worker `name`
+# + D1/Workflow names; extending it for R2 risked the two workers' REPORTS bindings drifting to
+# different bucket names across environments, which would silently break weeks/{ISO}.json publish/read.
+# Lower-risk choice: commit the literal name here, matching apps/web/wrangler.jsonc's committed REPORTS
+# binding verbatim.
+[[r2_buckets]]
+binding = "REPORTS"
+bucket_name = "sigma-reports"
+
 [triggers]
-crons = ["0 */6 * * *"]
+crons = ["0 */6 * * *", "0 6 * * 1", "0 7 * * 1"]
 
 [observability]
 enabled = true

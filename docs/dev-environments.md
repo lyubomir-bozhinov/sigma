@@ -138,11 +138,12 @@ gh workflow run deploy.yml --ref <branch> -f environment=dev
 Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, и `SIGMA_D1_ID` **= id-то на dev базата**
 (`sigma-dev`) — така preview-тата споделят dev данните.
 
-Опционално: `BGGPT_API_KEY` — ключът на AI асистента. Тъй като secret-ите са **per-worker-script**,
-ефемерният `sigma-pr-<номер>` НЕ наследява ключа от dev worker-а; затова `preview.yml` го `wrangler secret
-put`-ва на preview worker-а след deploy. Ако не е зададен тук, deploy-ът минава, но `/assistant/chat`
-връща контролирано **503** (preview само с UI). Vectorize индексът + R2 кофата на асистента са глобални за
-акаунта и се споделят с dev (без per-preview seed).
+Опционално: `ASSISTANT_API_KEY` — ключът на доставчика на AI асистента (BgGPT/mamay). Тъй като secret-ите
+са **per-worker-script**, ефемерният `sigma-pr-<номер>` НЕ наследява ключа от dev worker-а; затова
+`preview.yml` го `wrangler secret put`-ва на preview worker-а след deploy. Ако не е зададен тук, deploy-ът
+минава, но `/assistant/chat` връща контролирано **503** (preview само с UI). Моделът се достига през
+Cloudflare AI Gateway (var-овете `AI_GATEWAY_BASE_URL`/`AI_GATEWAY_ID` в `wrangler.jsonc`). Vectorize
+индексът + R2 кофата на асистента са глобални за акаунта и се споделят с dev (без per-preview seed).
 
 Variables: `SIGMA_D1_NAME` = `sigma-dev`, `SIGMA_CSV_CACHE_NAME` = `sigma-csv-cache-dev`.
 

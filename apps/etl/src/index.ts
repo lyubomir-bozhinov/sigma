@@ -8,12 +8,21 @@ import {
 } from '@sigma/ingest';
 import refreshSliceSql from '../../../scripts/refresh-slice.sql';
 import workStagingSchemaSql from '../../../scripts/work-staging-schema.sql';
+import { DIGEST_CRON, PROMPTS_CRON, REFRESH_CRON } from './crons';
 import { computeWorkerCatchupPlan, ingestBucketWindow, type CatchupPlan } from './eop';
+import { generateSuggestedPrompts } from './suggested-prompts';
+import { digestEnabled, generateWeeklyDigest } from './weekly-digest';
 
 export interface Env {
   DB: D1Database;
   REFRESH: Workflow;
+  REPORTS: R2Bucket;
   EOP_OPEN_DATA_BASE_URL?: string;
+  AI_GATEWAY_BASE_URL?: string;
+  ASSISTANT_MODEL?: string;
+  BGGPT_API_KEY?: string;
+  /** Master kill switch (mirrors apps/web's ASSISTANT_ENABLED): fail-dark unless explicitly "true". */
+  DIGEST_ENABLED?: string;
 }
 
 interface RefreshParams {
@@ -128,6 +137,27 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
         refreshDerivedContractCount(this.env.DB),
       );
 
+      // Keep the dock's starter chips in step with the freshly-derived slice. The weekly PROMPTS_CRON is a
+      // coarse fallback; regenerating here means the chip numbers track each 6-hourly refresh instead of
+      // lagging up to a week behind the data the assistant recomputes live. That skew is the S3 defect: a
+      // chip computed on partial data showed „140 договора за 21,6 млн €" while the live query returned
+      // 278 / 61,5 млн for the SAME window once late-arriving contracts backfilled. Best-effort — the slice
+      // is already committed, so a prompts failure is logged, not fatal to the refresh.
+      await step.do('refresh-suggested-prompts', async () => {
+        try {
+          await generateSuggestedPrompts(this.env.DB);
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_prompts_failed',
+              phase: 'refresh',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      });
+
       return { ...plan, days: results.length, staged, derived };
     } finally {
       await step.do('drop-transient-staging', async () => dropTransientStaging(this.env.DB));
@@ -136,9 +166,55 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
 }
 
 export default {
-  // Cron entrypoint: kick one durable refresh run. No public route or HTTP trigger is configured.
-  async scheduled(_controller, env): Promise<void> {
-    const instance = await env.REFRESH.create();
-    console.log(JSON.stringify({ level: 'info', event: 'etl_scheduled_refresh', id: instance.id }));
+  // Cron entrypoint. Two triggers share this worker: the 6-hourly data refresh kicks a durable
+  // Workflow run; the weekly cron rebuilds the assistant starter prompts. Branch on the cron string
+  // (named constants above) — an unrecognised cron logs `etl_unknown_cron` rather than misrouting.
+  async scheduled(controller, env, ctx): Promise<void> {
+    if (controller.cron === PROMPTS_CRON) {
+      // Surface a failure as a structured event rather than an anonymous unhandled rejection. The job
+      // degrades safely (the prior rows stay served), so this is observability, not a fatal path.
+      ctx.waitUntil(
+        generateSuggestedPrompts(env.DB).catch((error) =>
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_prompts_failed',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        ),
+      );
+      return;
+    }
+    if (controller.cron === REFRESH_CRON) {
+      const instance = await env.REFRESH.create();
+      console.log(
+        JSON.stringify({ level: 'info', event: 'etl_scheduled_refresh', id: instance.id }),
+      );
+      return;
+    }
+    if (controller.cron === DIGEST_CRON) {
+      if (!digestEnabled(env.DIGEST_ENABLED)) {
+        console.log(JSON.stringify({ level: 'info', event: 'etl_digest_disabled' }));
+        return;
+      }
+      // Same degrade-safe posture as PROMPTS_CRON: a failure is a structured event, not an unhandled
+      // rejection — the prior week's artifact (if any) stays served.
+      ctx.waitUntil(
+        generateWeeklyDigest(env).catch((error) =>
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_digest_failed',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        ),
+      );
+      return;
+    }
+    console.log(
+      JSON.stringify({ level: 'warn', event: 'etl_unknown_cron', cron: controller.cron }),
+    );
   },
 } satisfies ExportedHandler<Env>;

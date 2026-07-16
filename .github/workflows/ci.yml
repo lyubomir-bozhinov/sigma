@@ -34,11 +34,30 @@ jobs:
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 22
+          # Pinned to an exact minor: node:sqlite bundles SQLite, whose version (and thus the EXPLAIN
+          # opcode universe the assistant opcode-guard test pins) changes with the Node minor. 22.23.0
+          # ships SQLite 3.51.3, which READ_ONLY_OPCODES/KNOWN_SQLITE_VERSIONS cover. Bump deliberately
+          # and re-harvest the allowlist (see sql-opcode-guard.test.ts) rather than letting 22.x float.
+          node-version: 22.23.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Dependency audit
-        run: pnpm audit --audit-level=high
+        # `pnpm audit` is broken upstream: npm retired its audit endpoints (HTTP 410 as of
+        # 2026-07-15) and pnpm - including 11.x - still calls them. Scan the lockfile against
+        # OSV.dev instead (covers GHSA, which includes the npm advisory database). Stricter than
+        # the previous `--audit-level=high`: ANY known vulnerability fails the build; intentional
+        # exceptions are recorded in an osv-scanner.toml config, per the OSV-Scanner docs.
+        env:
+          # https://github.com/google/osv-scanner/releases/tag/v2.4.0
+          OSV_SCANNER_VERSION: '2.4.0'
+          # sha256 of osv-scanner_linux_amd64 from the upstream release osv-scanner_SHA256SUMS
+          OSV_SCANNER_SHA256: '15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          "$RUNNER_TEMP/osv-scanner" scan source -L pnpm-lock.yaml
       - name: Lint
         # Blocking: the repo-wide `pnpm format` pass cleared the pre-existing prettier debt, so
         # `pnpm lint` (prettier --check .) now gates merges and keeps the tree formatted (#88).
@@ -48,9 +67,19 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() }}
         run: pnpm typecheck
+      # `pnpm test` also runs the assistant adversarial suites — the two-layer SQL guard
+      # (sql-guard-adversarial), the EXPLAIN-opcode allowlist (sql-opcode-guard), and the
+      # prompt-injection boundary tests (system-prompt / tool-results / chat-input) — so a regression in
+      # any read-only / injection defence blocks merge (launch gate §9.9, issue #83).
       - name: Test
         if: ${{ !cancelled() }}
         run: pnpm test
+      # Launch gate §9.9 (issue #83): replays the golden report fixtures through the real bind/reconcile
+      # pipeline and asserts A–E2 (canonical amount_eur, default filters, rollup reconciliation, no prose
+      # figures). Blocking, so a model / schema / prompt change can't silently regress a published report.
+      - name: Golden reports
+        if: ${{ !cancelled() }}
+        run: pnpm test:golden
       # Docs integrity (#102): fail on a dangling docs reference in source or an
       # unindexed doc. The checker self-tests first, so the gate is itself gated.
       - name: Docs integrity
@@ -58,3 +87,9 @@ jobs:
         run: |
           pnpm check:docs:test
           pnpm check:docs
+      # Root-level tooling (scripts/*.mjs) lives outside the turbo/vitest workspaces, so `pnpm test` never
+      # ran its node:test suites. Gate them here — the CI-provisioning + teardown tools (ensure-kv-namespace,
+      # ensure-voice-provider, teardown-remote, reap-previews, load-eop) are deploy-critical and must stay covered.
+      - name: Script tests
+        if: ${{ !cancelled() }}
+        run: node --test scripts/*.test.mjs
