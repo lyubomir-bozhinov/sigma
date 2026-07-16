@@ -41,6 +41,13 @@ jobs:
       SIGMA_D1_ID: ${{ secrets.SIGMA_D1_ID }}
       SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
       SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
+      # Retarget the shared REPORTS (R2) + VECTORIZE bindings by name. When dev/preview live on a
+      # Cloudflare account whose committed defaults (`sigma-reports`, `sigma-assistant`) don't exist —
+      # e.g. the b2abee… account names them `sigma-*-dev` — these MUST be set on the `preview`
+      # Environment so wrangler-render.mjs rewrites the binding names to real resources; unset → the
+      # committed defaults stay (original-account invariant). wrangler-render already supports the swap.
+      SIGMA_REPORTS_NAME: ${{ vars.SIGMA_REPORTS_NAME }}
+      SIGMA_VECTORIZE_NAME: ${{ vars.SIGMA_VECTORIZE_NAME }}
       # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
       SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
       # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the
