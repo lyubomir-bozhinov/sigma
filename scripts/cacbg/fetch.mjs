@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getPinned, CACBG_HOST } from './tls.mjs';
 import { parseList } from './parse.mjs';
@@ -27,6 +28,37 @@ const arg = (name, def) => {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
 };
+
+// Parse + VALIDATE crawl options. An unvalidated Number() lets `--concurrency abc/0` become NaN/0 →
+// `Array.from({length})` spawns zero workers → the crawl fetches nothing and exits 0 (a silent no-op),
+// and a bad `--limit` (NaN, non-finite) silently skips the slice and fetches the whole register. Both
+// must fail LOUD instead. Pure — takes argv, returns {limit, concurrency, folders} or throws.
+export function parseCrawlOptions(argv) {
+  const get = (name, def) => {
+    const i = argv.indexOf(`--${name}`);
+    return i >= 0 && argv[i + 1] ? argv[i + 1] : def;
+  };
+  const posInt = (raw, name) => {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1)
+      throw new Error(`--${name} must be a positive integer, got ${JSON.stringify(raw)}`);
+    return n;
+  };
+  const limitRaw = get('limit', '');
+  return {
+    limit: limitRaw ? posInt(limitRaw, 'limit') : Infinity,
+    concurrency: posInt(get('concurrency', '6'), 'concurrency'),
+    folders: get('folders', ''),
+  };
+}
+
+// Circuit-breaker accumulator. A resilient HTTP wall (403/429/5xx) must count toward the breaker just
+// like a network throw — else a sustained non-200 wall crawls on forever, hammering the register. A 404
+// is a source gap (listed-but-unpublished), not a failure, so it resets alongside a 200. Pure.
+export const BREAKER_TRIP = 25;
+export function nextBreaker(consecutive, outcome) {
+  return outcome === 'ok' || outcome === 'missing' ? 0 : consecutive + 1;
+}
 
 async function politeGet(url, { tries = 5 } = {}) {
   let wait = 500;
@@ -86,11 +118,9 @@ async function pool(items, concurrency, worker) {
 
 async function run() {
   assertScratchIgnored();
-  const limit = arg('limit', '') ? Number(arg('limit', '')) : Infinity;
-  const concurrency = Number(arg('concurrency', '6'));
+  const { limit, concurrency, folders: override } = parseCrawlOptions(process.argv);
 
   // Default: discover every folder from the register index. --folders 2021_nc,2025y restricts to a subset.
-  const override = arg('folders', '');
   const folders = override
     ? override.split(',').map((f) => safeFolder(f.trim()))
     : (console.log('Discovering folders from register index …'), await discoverFolders());
@@ -130,19 +160,26 @@ async function run() {
         res = await politeGet(`${BASE}/${folder}/${xmlFile}`);
       } catch {
         stats.errors++;
-        if (++consecutive > 25) throw new Error(`circuit breaker near ${folder}/${xmlFile}`);
+        consecutive = nextBreaker(consecutive, 'fail');
+        if (consecutive > BREAKER_TRIP)
+          throw new Error(`circuit breaker near ${folder}/${xmlFile}`);
         return;
       }
       if (res.status === 404) {
         stats.missing++;
-        consecutive = 0;
+        consecutive = nextBreaker(consecutive, 'missing');
         return;
       } // listed-but-unpublished (source gap)
       if (res.status !== 200) {
+        // A sustained 403/429/5xx wall (politeGet already retried) counts toward the breaker too — not
+        // just network throws — so the crawl stops instead of hammering the register indefinitely.
         stats.errors++;
+        consecutive = nextBreaker(consecutive, 'fail');
+        if (consecutive > BREAKER_TRIP)
+          throw new Error(`circuit breaker near ${folder}/${xmlFile}`);
         return;
       }
-      consecutive = 0;
+      consecutive = nextBreaker(consecutive, 'ok');
       atomicWrite(dest, res.body);
       stats.fetched++;
       await sleep(15);
@@ -153,7 +190,11 @@ async function run() {
   console.log(`raw cache → ${RAW}`);
 }
 
-run().catch((err) => {
-  console.error('FATAL:', err.message);
-  process.exit(1);
-});
+// Only crawl when invoked directly (`node fetch.mjs`). Importing the module — e.g. the unit test of the
+// pure helpers above — must NOT kick off a live network crawl of the register.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run().catch((err) => {
+    console.error('FATAL:', err.message);
+    process.exit(1);
+  });
+}
