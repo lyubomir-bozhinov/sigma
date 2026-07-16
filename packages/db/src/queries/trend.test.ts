@@ -211,3 +211,44 @@ describe('getSpendingTrend — zero-spend prior year and empty coverage', () => 
     expect(coverage).toEqual({ dated: 0, total: 0, pct: 0 }); // total 0 → pct 0, no divide-by-zero
   });
 });
+
+describe('getSpendingTrend — funding scope, sectors toggle, empty inputs', () => {
+  it('scopes the series by EU funding', async () => {
+    const cap: string[] = [];
+    await getSpendingTrend(fakeDb(cap), { funding: 'eu' });
+    expect(cap.some((s) => s.includes('c.eu_funded = 1'))).toBe(true);
+  });
+
+  it('scopes the series by national funding', async () => {
+    const cap: string[] = [];
+    await getSpendingTrend(fakeDb(cap), { funding: 'national' });
+    expect(cap.some((s) => s.includes('c.eu_funded IS NULL OR c.eu_funded = 0'))).toBe(true);
+  });
+
+  it('skips the sector options when includeSectors is false', async () => {
+    const data = await getSpendingTrend(fakeDb(), {}, { includeSectors: false });
+    expect(data.sectors).toEqual([]);
+  });
+
+  it('returns empty points and zero coverage when the series and coverage rows are absent', async () => {
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async all<T>() {
+            return { results: [] as T[] }; // no series rows → the points loop is skipped
+          },
+          async first<T>() {
+            if (sql.includes('as_of')) return { as_of: null } as T;
+            return null as T; // coverageRow null → dated/total fall back to 0
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const data = await getSpendingTrend(db, {});
+    expect(data.points).toEqual([]);
+    expect(data.coverage).toEqual({ dated: 0, total: 0, pct: 0 });
+  });
+});

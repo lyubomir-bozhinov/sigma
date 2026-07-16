@@ -144,6 +144,35 @@ describe('getFlows', () => {
   });
 });
 
+describe('getFlows — funding scope and label truncation', () => {
+  it('scopes the base aggregation by EU funding', async () => {
+    const { db, sql } = spyDb();
+    await getFlows(db, { funding: 'eu' });
+    expect(sql.some((s) => s.includes('c.eu_funded = 1'))).toBe(true);
+  });
+
+  it('scopes the base aggregation by national funding', async () => {
+    const { db, sql } = spyDb();
+    await getFlows(db, { funding: 'national' });
+    expect(sql.some((s) => s.includes('c.eu_funded IS NULL OR c.eu_funded = 0'))).toBe(true);
+  });
+
+  it('reads the rollup (not a scoped aggregation) when funding is explicitly „all"', async () => {
+    const { db, sql } = spyDb();
+    await getFlows(db, { funding: 'all' });
+    expect(sql.some(usesFlowPairsRollup)).toBe(true);
+    expect(sql.every((s) => !usesBaseAggregation(s))).toBe(true);
+  });
+
+  it('truncates a sankey node label longer than 30 chars with an ellipsis', async () => {
+    const longName = 'Министерство на регионалното развитие и благоустройството';
+    const data = await getFlows(fakeDb([{ ...pairRow, authority_name: longName }]), {});
+    const node = data.sankey.nodes.find((n) => n.side === 'authority')!;
+    expect(node.label.length).toBeLessThanOrEqual(30);
+    expect(node.label.endsWith('…')).toBe(true);
+  });
+});
+
 describe('getFlows — sankey ordering', () => {
   it('orders ribbons by company rank when two pairs share an authority (sort tiebreak)', async () => {
     const pairs = [
