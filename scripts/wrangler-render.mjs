@@ -87,6 +87,15 @@ if (ext === '.json' || ext === '.jsonc') {
     // own name (preview="preview", staging="staging", production="production"). Unset → committed
     // "development" stays, so local `wrangler dev` (no render step) is fail-open by construction.
     environment: process.env.SIGMA_ENVIRONMENT || '',
+    // AI-Gateway account id (account-scoped). The committed AI_GATEWAY_BASE_URL / BGGPT_STT_BASE_URL
+    // embed one account's id; a target on a DIFFERENT Cloudflare account (e.g. the dev/preview account,
+    // see docs/dev-preview-account-split.md) stamps its own id here. Unset → the committed URLs are left
+    // byte-identical, so production/staging on the original account are unchanged.
+    aiGatewayAccount: process.env.SIGMA_AI_GATEWAY_ACCOUNT || '',
+    // Public Turnstile site key. Account-bound (the widget lives in one Cloudflare account), so a target
+    // on a different account (dev/preview → b2abee…) stamps its own widget's key here. Unset → committed
+    // key stays (prod/staging invariant). Pairs with the TURNSTILE_SECRET worker secret for that widget.
+    turnstileSiteKey: process.env.SIGMA_TURNSTILE_SITE_KEY || '',
   };
   if (
     names.webName ||
@@ -96,7 +105,9 @@ if (ext === '.json' || ext === '.jsonc') {
     names.vectorizeName ||
     names.buildId ||
     names.assistantEnabled ||
-    names.environment
+    names.environment ||
+    names.aiGatewayAccount ||
+    names.turnstileSiteKey
   ) {
     out = renderJson(out, names);
   }
@@ -193,6 +204,22 @@ function renderJson(text, names) {
   // env (production/staging → key required) from an ephemeral one (preview/dev → fail-open).
   if (names.environment && obj.vars && typeof obj.vars === 'object')
     obj.vars.ENVIRONMENT = names.environment;
+  // Re-point the AI-Gateway account id in the gateway URLs when deploying to a different account.
+  // Swaps only the 32-hex account segment after `.../v1/`, leaving the gateway slug + path intact, so
+  // it is agnostic to which account id is committed. Unset → URLs untouched (prod/staging byte-identity).
+  if (names.aiGatewayAccount && obj.vars && typeof obj.vars === 'object') {
+    for (const key of ['AI_GATEWAY_BASE_URL', 'BGGPT_STT_BASE_URL']) {
+      if (typeof obj.vars[key] === 'string') {
+        obj.vars[key] = obj.vars[key].replace(
+          /(gateway\.ai\.cloudflare\.com\/v1\/)[0-9a-f]{32}/,
+          `$1${names.aiGatewayAccount}`,
+        );
+      }
+    }
+  }
+  // Stamp the per-account Turnstile site key over the committed one (account-bound widget).
+  if (names.turnstileSiteKey && obj.vars && typeof obj.vars === 'object')
+    obj.vars.TURNSTILE_SITE_KEY = names.turnstileSiteKey;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 
