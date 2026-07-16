@@ -426,7 +426,12 @@ export async function generateWeeklyDigest(
       continue;
     }
     const candidate = raw.trim();
-    if (!candidate) continue;
+    if (!candidate) {
+      // Distinct from the throw/reject branches: an empty-after-trim response must not be silent, or
+      // it reads in the logs as "the LLM step never ran". Fail loud, then fall through to the retry.
+      log('etl_digest_narrative_empty', { isoWeek: target.iso, attempt });
+      continue;
+    }
     const trial = bindReport(buildEmitInput(data, candidate), results, {
       question: DIGEST_QUESTION,
     });

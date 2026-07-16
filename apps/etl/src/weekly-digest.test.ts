@@ -1,6 +1,6 @@
 import { priorIsoWeek as priorIsoWeekOfWeek } from '@sigma/db';
 import { priorIsoWeek as priorIsoWeekFromNow } from '@sigma/report';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { digestEnabled, generateWeeklyDigest, type WeeklyDigestEnv } from './weekly-digest';
 
 // Fixed clock: a Monday, so `priorIsoWeek(now)` resolves to the FULL Mon–Sun week immediately before
@@ -435,5 +435,45 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(puts).toHaveLength(1);
     const stored = JSON.parse(puts[0]!.body);
     expect(stored.report.blocks.some((b: { type: string }) => b.type === 'text')).toBe(false);
+  });
+
+  it('narrative trimming to empty every attempt: logs a distinct event and falls back (not silent)', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+        now: NOW,
+        generate: async ({ system }: { system: string; prompt: string }) => {
+          if (system.includes('verification critic')) {
+            return JSON.stringify({ verdicts: [{ id: 'C0', verdict: 'supported' }] });
+          }
+          return '   \n  '; // whitespace-only — trims to empty, must not be silently indistinguishable
+        },
+      });
+
+      const events = logSpy.mock.calls
+        .map((c) => {
+          try {
+            return JSON.parse(String(c[0])).event as string;
+          } catch {
+            return '';
+          }
+        })
+        .filter(Boolean);
+      // The empty-after-trim branch fires its own event (once per attempt), never the throw/reject ones.
+      expect(events.filter((e) => e === 'etl_digest_narrative_empty')).toHaveLength(2);
+      expect(events).not.toContain('etl_digest_narrative_call_failed');
+      expect(events).not.toContain('etl_digest_narrative_rejected');
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    // Still fails safe: AI-free fallback persisted, no model prose.
+    expect(puts).toHaveLength(1);
+    const stored = JSON.parse(puts[0]!.body);
+    expect(stored.report.blocks.some((b: { type: string }) => b.type === 'text')).toBe(false);
+    expect(stored.provenance.model).toBe('none (ai-free fallback)');
   });
 });
