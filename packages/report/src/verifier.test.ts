@@ -183,7 +183,7 @@ describe('extractClaims', () => {
   it('data blocks contribute no claims', () => {
     const claims = extractClaims(report([totals(), bar(), table('x')]));
     expect(claims).toHaveLength(1); // title only
-    expect(claims[0].blockIndex).toBe(-1);
+    expect(claims[0]?.blockIndex).toBe(-1);
   });
 });
 

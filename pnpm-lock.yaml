@@ -67,6 +67,9 @@ importers:
       '@sigma/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@sigma/report':
+        specifier: workspace:*
+        version: link:../../packages/report
       '@sigma/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -163,6 +166,12 @@ importers:
         version: link:../shared
 
   packages/ingest: {}
+
+  packages/report:
+    dependencies:
+      '@sigma/config':
+        specifier: workspace:*
+        version: link:../config
 
   packages/shared: {}
 

@@ -38,7 +38,7 @@ describe('validateEmitShape', () => {
       ],
     });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.blocks[0].type).toBe('totals');
+    if (r.ok) expect(r.value.blocks[0]?.type).toBe('totals');
   });
 
   it('accepts content/text as aliases for md on text/callout (ported from #9)', () => {
