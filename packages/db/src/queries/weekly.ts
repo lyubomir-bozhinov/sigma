@@ -34,21 +34,35 @@ export async function getWeeklyTotal(db: D1Database, isoWeek: string): Promise<W
 // ── b) Volume ────────────────────────────────────────────────────────────────────────────────────
 
 export interface WeeklyCounts {
+  /** Raw activity volume: every signed contract in the week, clean or not. Do NOT render this beside a
+   *  money sum — it counts rows the sum excludes. The zero-row publish gate keys on this. */
   contracts: number;
+  /** COUNT of the rows behind `getWeeklyTotal` (`amount_eur IS NOT NULL`). Pair a money figure with
+   *  THIS, never with `contracts` — see precompute.sql's COUNT/SUM CONSISTENCY rule. */
+  contractsWithAmount: number;
   tenders: number;
 }
 
-/** Indicator b: raw activity volume for the week — every signed contract counts, clean or not. */
+/** Indicator b: raw activity volume for the week — every signed contract counts, clean or not —
+ *  plus the clean-basis count that pairs with the week's money total. */
 export async function getWeeklyCounts(db: D1Database, isoWeek: string): Promise<WeeklyCounts> {
   const row = await db
     .prepare(
-      `SELECT COUNT(*) AS contracts, COUNT(DISTINCT c.tender_id) AS tenders
+      `SELECT
+         COUNT(*) AS contracts,
+         SUM(CASE WHEN c.amount_eur IS NOT NULL THEN 1 ELSE 0 END) AS contracts_with_amount,
+         COUNT(DISTINCT c.tender_id) AS tenders
        FROM contracts c
        WHERE ${WEEK_FILTER}`,
     )
     .bind(isoWeek)
-    .first<{ contracts: number; tenders: number }>();
-  return { contracts: row?.contracts ?? 0, tenders: row?.tenders ?? 0 };
+    .first<{ contracts: number; contracts_with_amount: number | null; tenders: number }>();
+  return {
+    contracts: row?.contracts ?? 0,
+    // SUM() over zero rows is NULL, not 0.
+    contractsWithAmount: row?.contracts_with_amount ?? 0,
+    tenders: row?.tenders ?? 0,
+  };
 }
 
 // ── c) Largest contract ─────────────────────────────────────────────────────────────────────────

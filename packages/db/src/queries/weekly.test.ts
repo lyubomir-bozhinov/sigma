@@ -158,10 +158,20 @@ describe('getWeeklyCounts (indicator b, #167)', () => {
     expect(counts.tenders).toBe(2); // distinct tender_id: t:A (MON, NULLAMT), t:B (SUN)
   });
 
+  // The digest's totals strip renders `contractsWithAmount` NEXT TO the week's SUM(amount_eur), so the
+  // two must cover ONE row set (precompute.sql's COUNT/SUM CONSISTENCY rule). `contracts` stays the
+  // raw activity volume (COUNT(*)) that the zero-row gate keys on — deliberately a different number.
+  it('counts the clean-amount rows separately, so a count paired with a money sum covers one row set', async () => {
+    const db = realDb();
+    const counts = await getWeeklyCounts(db, TARGET_WEEK);
+    expect(counts.contractsWithAmount).toBe(2); // c:MON, c:SUN — c:NULLAMT is excluded
+    expect(counts.contracts).toBe(3); // volume still counts it
+  });
+
   it('is empty for a week with no rows', async () => {
     const db = realDb();
     const counts = await getWeeklyCounts(db, EMPTY_WEEK);
-    expect(counts).toEqual({ contracts: 0, tenders: 0 });
+    expect(counts).toEqual({ contracts: 0, contractsWithAmount: 0, tenders: 0 });
   });
 });
 
