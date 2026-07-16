@@ -370,6 +370,63 @@ export async function getWeeklyAuthorityBreakdown(
   }));
 }
 
+// ── Daily spend (for the weekly bar chart, spec §3.4) ────────────────────────────────────────────
+
+export interface WeeklyDaySpend {
+  dateIso: string; // 'YYYY-MM-DD' (the day within the week)
+  label: string; // Bulgarian short day name, Пн..Нд
+  valueEur: number; // clean-basis spend signed that day (0 for a day with no clean contracts)
+}
+
+export interface WeeklyDailySpend {
+  current: WeeklyDaySpend[]; // 7 slots, Monday..Sunday of `isoWeek`
+  previous: WeeklyDaySpend[]; // 7 slots, Monday..Sunday of the prior week (the „ghost" bars)
+}
+
+const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'] as const;
+
+/** The 7 ISO dates (Mon..Sun) of an ISO week — reuses isoWeekMonday so year-boundary weeks are correct. */
+function weekDates(isoWeek: string): string[] {
+  const m = /^(\d{4})-W(\d{2})$/.exec(isoWeek);
+  if (!m) throw new Error(`weekDates: not an ISO week ('${isoWeek}')`);
+  const monday = isoWeekMonday(Number(m[1]), Number(m[2]));
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday.getTime());
+    d.setUTCDate(monday.getUTCDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+/** Per-day clean-basis spend for one week, projected onto a fixed Mon..Sun 7-slot array (zero-filled). */
+async function daySpendFor(db: D1Database, isoWeek: string): Promise<WeeklyDaySpend[]> {
+  const dates = weekDates(isoWeek);
+  const { results } = await db
+    .prepare(
+      `SELECT substr(c.signed_at, 1, 10) AS day, SUM(c.amount_eur) AS value_eur
+       FROM contracts c
+       WHERE ${WEEK_FILTER} AND c.amount_eur IS NOT NULL
+       GROUP BY day`,
+    )
+    .bind(isoWeek)
+    .all<{ day: string; value_eur: number }>();
+  const byDay = new Map(results.map((r) => [r.day, r.value_eur]));
+  return dates.map((dateIso, i) => ({
+    dateIso,
+    label: DAY_LABELS[i]!,
+    valueEur: byDay.get(dateIso) ?? 0,
+  }));
+}
+
+/** Daily spend for the week and the prior week, day-of-week aligned — feeds the ghost-bar chart (§3.4). */
+export async function getWeeklyDailySpend(
+  db: D1Database,
+  isoWeek: string,
+): Promise<WeeklyDailySpend> {
+  const prior = priorIsoWeek(isoWeek);
+  const [current, previous] = await Promise.all([daySpendFor(db, isoWeek), daySpendFor(db, prior)]);
+  return { current, previous };
+}
+
 // ── Aggregate + reconciliation ──────────────────────────────────────────────────────────────────
 
 export interface WeeklyDigestData {
@@ -382,24 +439,35 @@ export interface WeeklyDigestData {
   topContracts: WeeklyTopContract[];
   sectors: WeeklySectorSlice[];
   authorities: WeeklyAuthoritySlice[];
+  dailySpend: WeeklyDailySpend;
 }
 
-/** All eight indicators for one ISO week, fetched concurrently. */
+/** All indicators for one ISO week, fetched concurrently. */
 export async function getWeeklyDigestData(
   db: D1Database,
   isoWeek: string,
 ): Promise<WeeklyDigestData> {
-  const [total, counts, largest, singleBidRate, delta, topContracts, sectors, authorities] =
-    await Promise.all([
-      getWeeklyTotal(db, isoWeek),
-      getWeeklyCounts(db, isoWeek),
-      getWeeklyLargestContract(db, isoWeek),
-      getWeeklySingleBidRate(db, isoWeek),
-      getWeeklyTotalDelta(db, isoWeek),
-      getWeeklyTopContracts(db, isoWeek),
-      getWeeklySectorBreakdown(db, isoWeek),
-      getWeeklyAuthorityBreakdown(db, isoWeek),
-    ]);
+  const [
+    total,
+    counts,
+    largest,
+    singleBidRate,
+    delta,
+    topContracts,
+    sectors,
+    authorities,
+    dailySpend,
+  ] = await Promise.all([
+    getWeeklyTotal(db, isoWeek),
+    getWeeklyCounts(db, isoWeek),
+    getWeeklyLargestContract(db, isoWeek),
+    getWeeklySingleBidRate(db, isoWeek),
+    getWeeklyTotalDelta(db, isoWeek),
+    getWeeklyTopContracts(db, isoWeek),
+    getWeeklySectorBreakdown(db, isoWeek),
+    getWeeklyAuthorityBreakdown(db, isoWeek),
+    getWeeklyDailySpend(db, isoWeek),
+  ]);
   return {
     isoWeek,
     total,
@@ -410,6 +478,7 @@ export async function getWeeklyDigestData(
     topContracts,
     sectors,
     authorities,
+    dailySpend,
   };
 }
 

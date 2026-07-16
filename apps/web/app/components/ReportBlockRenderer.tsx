@@ -19,6 +19,7 @@ import { FactsList } from '~/components/FactsList';
 import { DataTable } from '~/components/DataTable';
 import { MarkdownBlock } from '~/components/MarkdownBlock';
 import { TimeseriesBlock } from '~/components/TimeseriesBlock';
+import { WeeklyGhostBars } from '~/components/WeeklyGhostBars';
 
 // ── Callout ──────────────────────────────────────────────────────────────────
 
@@ -215,6 +216,16 @@ function Block({ block }: { block: ResolvedBlock }) {
           />
         </div>
       );
+
+    case 'weekbars': {
+      const toDays = (series: { label: string | number | null; value: number }[]) =>
+        series.map((d) => ({ label: d.label == null ? '' : String(d.label), value: d.value }));
+      return (
+        <div className="report-block report-block--weekbars">
+          <WeeklyGhostBars current={toDays(block.current)} previous={toDays(block.previous)} />
+        </div>
+      );
+    }
 
     default:
       return null;

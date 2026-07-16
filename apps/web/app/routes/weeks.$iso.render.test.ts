@@ -27,6 +27,17 @@ const loaderData = {
         ],
         rows: [{ cells: ['Министерство на финансите'], links: ['auth:000695089'] }],
       },
+      {
+        type: 'weekbars' as const,
+        current: [
+          { label: 'Пн', value: 1000 },
+          { label: 'Вт', value: 0 },
+        ],
+        previous: [
+          { label: 'Пн', value: 800 },
+          { label: 'Вт', value: 200 },
+        ],
+      },
     ],
   },
 };
@@ -56,5 +67,16 @@ describe('/weeks/:iso page (golden)', () => {
   it('renders the provenance footer with a link back to the archive', () => {
     expect(html).toContain('генерирано автоматично');
     expect(html).toContain('href="/weeks"');
+  });
+
+  it('renders the weekly ghost-bar chart (§3.4)', () => {
+    expect(html).toContain('ghost-bars-svg');
+    expect(html).toContain('gb-ghost'); // the prior-week ghost series
+  });
+
+  it('renders the code-generated „Разгледай сам" deep-links (§3.10)', () => {
+    expect(html).toContain('Разгледай сам');
+    expect(html).toContain('href="/flows"');
+    expect(html).toContain('href="/companies"');
   });
 });

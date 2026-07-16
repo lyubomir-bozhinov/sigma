@@ -242,6 +242,31 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
     ]),
   });
 
+  // R6 (this week) + R7 (prior week) — the two 7-day series behind the ghost-bar chart (§3.4).
+  results.push({
+    handle: 'R6',
+    columns: ['day', 'value_eur'],
+    rows: data.dailySpend.current.map((d) => [d.label, d.valueEur]),
+  });
+  results.push({
+    handle: 'R7',
+    columns: ['day', 'value_eur'],
+    rows: data.dailySpend.previous.map((d) => [d.label, d.valueEur]),
+  });
+
+  // R8 — competition concentration (§3.8): single-bid vs multi-bid contract counts over the reported
+  // sample. Only meaningful at/above the reporting floor (rate !== null); emitted regardless, the block
+  // is gated in buildEmitInput.
+  const { singleBid, sample } = data.singleBidRate;
+  results.push({
+    handle: 'R8',
+    columns: ['label', 'count'],
+    rows: [
+      ['С една оферта', singleBid],
+      ['С няколко оферти', Math.max(0, sample - singleBid)],
+    ],
+  });
+
   return results;
 }
 
@@ -284,6 +309,16 @@ function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): Emi
     });
   }
   blocks.push({ type: 'totals', items: totalsItems });
+
+  // Daily spend, this week vs the prior week's ghost bars (§3.4). Always emitted (7 zero-filled slots),
+  // so the digest carries a temporal view even on a quiet week.
+  blocks.push({
+    type: 'weekbars',
+    currentId: 'R6',
+    previousId: 'R7',
+    labelCol: 'day',
+    valueCol: 'value_eur',
+  });
 
   if (data.topContracts.length > 0) {
     blocks.push({
@@ -333,6 +368,18 @@ function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): Emi
         { key: 'contracts', header: 'Договори', format: 'number' },
         { key: 'value_eur', header: 'Стойност', format: 'money' },
       ],
+    });
+  }
+
+  // Competition concentration (§3.8): single-bid vs multi-bid contract counts. Only shown when the
+  // reported-bid sample clears the floor (rate !== null) — below it the split would swing on a few rows.
+  if (data.singleBidRate.rate !== null) {
+    blocks.push({
+      type: 'bar',
+      resultId: 'R8',
+      labelCol: 'label',
+      valueCol: 'count',
+      format: 'number',
     });
   }
 

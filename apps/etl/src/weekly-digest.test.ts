@@ -55,6 +55,8 @@ interface FakeWeekData {
   topContracts: TopContractRawRow[];
   sectors: SectorRawRow[];
   authorities: AuthorityRawRow[];
+  /** Raw daily-spend rows (§3.4). The same set answers both the current and prior week query. */
+  dailyRows?: { day: string; value_eur: number }[];
   existingDigestRow: boolean;
 }
 
@@ -109,6 +111,10 @@ function happyPathData(): FakeWeekData {
         value_eur: 45_000,
       },
     ],
+    // Answers the daily-spend query for both weeks (the query dates are 2024 Mon..Sun; the exact date
+    // key is irrelevant here — getWeeklyDailySpend zero-fills unmatched days, and one matched day is
+    // enough to prove a non-zero bar binds through the weekbars block).
+    dailyRows: [{ day: '2024-01-08', value_eur: 12_000 }],
     existingDigestRow: false,
   };
 }
@@ -145,6 +151,12 @@ function fakeWeeklyDb(data: FakeWeekData, upserts: UpsertRow[]): D1Database {
       if (sql.includes('FROM home_totals')) {
         // reconcileWeeklyTotal's plain value_eur lookup (no bind — direct .first()).
         return { first: async () => ({ value_eur: data.homeTotalEur }) };
+      }
+      if (sql.includes('GROUP BY day')) {
+        // Daily-spend series (§3.4). Empty rows → getWeeklyDailySpend zero-fills all 7 Mon..Sun slots.
+        return {
+          bind: (_iso: string) => ({ all: async () => ({ results: data.dailyRows ?? [] }) }),
+        };
       }
       if (sql.trim().endsWith('LIMIT 1')) {
         return { bind: (_iso: string) => ({ first: async () => data.largest }) };
@@ -355,6 +367,12 @@ describe('generateWeeklyDigest — gate matrix', () => {
     const totalsBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'totals');
     expect(totalsBlock).toBeTruthy();
     expect(totalsBlock.items[0].value).toBe(data.totalsByWeek[TARGET.iso]);
+    // §3.4: the daily ghost-bar chart is emitted with both series bound from the daily queries.
+    const weekbars = stored.report.blocks.find((b: { type: string }) => b.type === 'weekbars');
+    expect(weekbars).toBeTruthy();
+    expect(weekbars.current).toHaveLength(7);
+    expect(weekbars.previous).toHaveLength(7);
+    expect(weekbars.current.some((d: { value: number }) => d.value === 12_000)).toBe(true);
     expect(upserts).toHaveLength(1);
     expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
     expect(upserts[0]!.status).toBe('ok');

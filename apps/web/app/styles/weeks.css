@@ -96,3 +96,20 @@
 .digest-footer p {
   margin: 0.25rem 0;
 }
+
+/* „Разгледай сам" deep-links section (spec §3.10). */
+.digest-explore {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.digest-explore h2 {
+  margin: 0 0 0.25rem;
+}
+.digest-explore-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}

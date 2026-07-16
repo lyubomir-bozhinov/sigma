@@ -5,6 +5,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ReportBlockRenderer } from '../components/ReportBlockRenderer';
 import { ReportAiWatermark } from '../components/ReportAiWatermark';
 import { DigestFooter } from '../components/DigestFooter';
+import { DigestExplore } from '../components/DigestExplore';
 import { seoMeta } from '../lib/meta';
 import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 
@@ -56,6 +57,7 @@ export default function WeekDigest({ loaderData }: Route.ComponentProps) {
         <PageHeader kicker="Седмицата в пари" title={report.title} />
         <ReportAiWatermark />
         <ReportBlockRenderer blocks={report.blocks} />
+        <DigestExplore iso={iso} />
         <DigestFooter asOf={asOf} generatedAt={generatedAt} />
       </main>
     </>
