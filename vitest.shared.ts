@@ -18,6 +18,12 @@ export function sharedCoverage(include: string[]): NonNullable<ViteUserConfig['t
       '**/dist/**',
       '**/build/**',
       '**/.react-router/**',
+      // Test data and type-only declarations are not executable code — instrumenting them reports a
+      // permanent 0% that drags the workspace total without any coverable statement (e.g. the
+      // assistant JSON fixtures).
+      '**/fixtures/**',
+      '**/*.json',
+      '**/*.d.ts',
     ],
     reporter: ['text', 'json-summary'],
     reportsDirectory: './coverage',
