@@ -1,0 +1,508 @@
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText } from 'ai';
+import {
+  getWeeklyDigestData,
+  reconcileWeeklyTotal,
+  type WeeklyAuthoritySlice,
+  type WeeklyDigestData,
+  type WeeklySectorSlice,
+  type WeeklyTopContract,
+} from '@sigma/db';
+import {
+  bindReport,
+  buildStoredReport,
+  cpvReference,
+  MAX_RATIO_MAGNITUDE,
+  persistReport,
+  priorIsoWeek,
+  verifyReport,
+  type CellFormat,
+  type CellRef,
+  type EmitBlock,
+  type EmitReportInput,
+  type GenerateFn,
+  type QueryResult,
+} from '@sigma/report';
+
+// Weekly Digest producer (#167A T3) — the Monday cron that turns the prior ISO week's `@sigma/db`
+// weekly queries into an immutable `StoredReport` at `weeks/{ISO}.json`. Mirrors suggested-prompts.ts's
+// shape (`home_totals.as_of` anchor, reconciliation tripwire, UPSERT, structured `log()`), plus the one
+// genuinely net-new lift: a single BgGPT/AI-Gateway `generateText` call for the digest's lead
+// narrative. The narrative is the ONLY model-authored surface — every figure in the report is a
+// server-bound reference into the deterministic result sets built below (spec §4's "model never writes
+// data values", inherited unchanged from the chat pipeline's `bindReport`).
+
+export interface WeeklyDigestEnv {
+  DB: D1Database;
+  REPORTS: R2Bucket;
+  AI_GATEWAY_BASE_URL?: string;
+  ASSISTANT_MODEL?: string;
+  BGGPT_API_KEY?: string;
+}
+
+export interface GenerateWeeklyDigestDeps {
+  /** Injectable clock — stamps `refreshed_at`/`createdAt` and resolves "prior ISO week". Defaults to `new Date()`. */
+  now?: Date;
+  /** Injectable LLM call (verifier.ts's `GenerateFn`) — tests pass a mock; production builds one from
+   *  `env` lazily (never constructed on a skip/zero-row path, so a test that never reaches the LLM step
+   *  can omit both `AI_GATEWAY_BASE_URL` and this override without ever touching the network). */
+  generate?: GenerateFn;
+}
+
+const DEFAULT_MODEL = 'google/gemma-4-31b-it';
+const DIGEST_PROMPT_VERSION = 'weekly-digest-v1';
+// The fixed, server-owned "question" shown on the digest report (§4/§9.1: passing it via
+// `BindOptions.question` means bindReport does NOT gate it for material numbers — there is no
+// model-authored question here to gate).
+const DIGEST_QUESTION = 'Седмичен дайджест на обществените поръчки в България';
+// Narrative regeneration budget: one initial attempt + one retry. A risk-scaled, tool-less prose call
+// (like the verifier) does not warrant an unbounded retry loop — if the model cannot produce a
+// number-free lead paragraph twice, the AI-free fallback (data blocks only) is strictly safer than a
+// third attempt at the same cost.
+const MAX_NARRATIVE_ATTEMPTS = 2;
+const METHODOLOGY_CALLOUT_TITLE = 'Как е изчислено';
+const METHODOLOGY_CALLOUT_MD =
+  'Изчислено от чисти (amount_eur ненулеви) договори, подписани в рамките на пълна календарна ' +
+  'седмица (понеделник–неделя). Справката е автоматично генерирана — сигнали, не присъди: цифрите ' +
+  'показват какво е подписано, не приписват вина или намерение.';
+
+// Master kill switch (mirrors apps/web/app/lib/assistant/enabled.ts's `assistantEnabled` fail-dark
+// posture): an unset/absent var reads as OFF, the safe default for a producer that writes
+// public-facing artifacts. Exported (rather than kept in index.ts, which imports `cloudflare:workers`
+// and so cannot be unit-tested under plain vitest) so the dispatch gate itself is directly testable.
+export function digestEnabled(raw: string | undefined): boolean {
+  const v = raw?.trim().toLowerCase();
+  return v === 'true' || v === '1' || v === 'on';
+}
+
+function log(event: string, extra: Record<string, unknown> = {}): void {
+  console.log(JSON.stringify({ level: 'info', event, ...extra }));
+}
+
+function logError(event: string, extra: Record<string, unknown> = {}): void {
+  console.error(JSON.stringify({ level: 'error', event, ...extra }));
+}
+
+// ── LLM wiring (net-new — apps/etl has no model builder today) ──────────────────────────────────────
+//
+// Mirrors apps/web/app/lib/assistant/agent.ts's `buildModel` EXACTLY: `createOpenAI` pointed at the
+// Cloudflare AI Gateway's OpenAI-compatible endpoint, fail-closed when the gateway URL is unset (never
+// call a provider directly — that would bypass the gateway's logging/cost accounting). This is the only
+// etl-local model-wiring code; `verifyReport`'s validators, gates and strip logic are reused unchanged
+// from `@sigma/report`, not duplicated here.
+function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
+  const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
+  if (!baseURL) {
+    throw new Error(
+      'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
+    );
+  }
+  const provider = createOpenAI({ baseURL, apiKey: env.BGGPT_API_KEY });
+  const model = provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
+  return async ({ system, prompt }) => {
+    const result = await generateText({
+      model,
+      system,
+      prompt,
+      temperature: 0.3,
+      maxRetries: 0,
+      maxOutputTokens: 512,
+    });
+    return result.text;
+  };
+}
+
+const DIGEST_SYSTEM_PROMPT = [
+  'Пишеш едно кратко въвеждащо изречение (най-много две) на български за автоматичен седмичен ' +
+    'дайджест на обществени поръчки в България.',
+  'ЗАДЪЛЖИТЕЛНИ ПРАВИЛА:',
+  '1. НИКОГА не пиши конкретни суми, брой договори, проценти, дати или други числа — те вече са ' +
+    'показани в таблиците на справката; изречение с число ще бъде отхвърлено автоматично.',
+  '2. Тон: неутрален, описателен — „сигнали, не присъди". Не квалифицирай възложители или ' +
+    'изпълнители като виновни, корумпирани или подозрителни; описвай само какво е било подписано.',
+  '3. Обикновен текст, без markdown синтаксис (без **, #, списъци).',
+  '4. Отговори САМО с изречението — без увод, без обяснение.',
+  '\nРечник на CPV разделите за коректно назоваване на сектори:\n' + cpvReference(),
+].join('\n');
+
+function buildNarrativePrompt(data: WeeklyDigestData): string {
+  const direction =
+    data.delta.deltaEur > 0 ? 'нарастване' : data.delta.deltaEur < 0 ? 'спад' : 'без промяна';
+  const topSector = data.sectors[0]?.division ?? null;
+  return [
+    `Изминалата седмица (${data.isoWeek}) спрямо предходната: ${direction} на подписаната стойност.`,
+    topSector
+      ? `Секторът с най-много подписана стойност е CPV раздел ${topSector} (виж речника).`
+      : 'Няма ясно доминиращ CPV раздел тази седмица.',
+    data.largest
+      ? 'Има поне един голям договор през седмицата.'
+      : 'Няма договор с потвърдена (value_flag=ok) стойност през седмицата.',
+    'Напиши въвеждащото изречение сега.',
+  ].join('\n');
+}
+
+// ── Deterministic evidence (server-built — the model never sees or fills these rows) ────────────────
+
+function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
+  const results: QueryResult[] = [
+    {
+      handle: 'R1',
+      columns: [
+        'total_eur',
+        'contracts',
+        'tenders',
+        'delta_eur',
+        'delta_pct',
+        'prior_total_eur',
+        'single_bid_rate',
+      ],
+      rows: [
+        [
+          data.total.totalEur,
+          data.counts.contracts,
+          data.counts.tenders,
+          data.delta.deltaEur,
+          data.delta.deltaPct,
+          data.delta.priorEur,
+          data.singleBidRate.rate,
+        ],
+      ],
+    },
+  ];
+
+  if (data.largest) {
+    const l = data.largest;
+    results.push({
+      handle: 'R2',
+      columns: [
+        'contract_slug',
+        'tender_unp',
+        'authority_slug',
+        'bidder_slug',
+        'bidder_name',
+        'amount_eur',
+        'signed_at',
+      ],
+      rows: [
+        [
+          l.contractSlug,
+          l.tenderUnp,
+          l.authoritySlug,
+          l.bidderSlug,
+          l.bidderName,
+          l.amountEur,
+          l.signedAt,
+        ],
+      ],
+    });
+  }
+
+  results.push({
+    handle: 'R3',
+    columns: [
+      'contract_slug',
+      'tender_unp',
+      'subject',
+      'authority_id',
+      'authority_name',
+      'bidder_id',
+      'bidder_name',
+      'amount_eur',
+      'signed_at',
+    ],
+    rows: data.topContracts.map((c: WeeklyTopContract) => [
+      c.contractSlug,
+      c.tenderUnp,
+      c.subject,
+      c.authorityId,
+      c.authorityName,
+      c.bidderId,
+      c.bidderName,
+      c.amountEur,
+      c.signedAt,
+    ]),
+  });
+
+  results.push({
+    handle: 'R4',
+    columns: ['division', 'contracts', 'value_eur'],
+    rows: data.sectors.map((s: WeeklySectorSlice) => [s.division, s.contracts, s.valueEur]),
+  });
+
+  results.push({
+    handle: 'R5',
+    columns: ['authority_id', 'authority_name', 'contracts', 'value_eur'],
+    rows: data.authorities.map((a: WeeklyAuthoritySlice) => [
+      a.authorityId,
+      a.authorityName,
+      a.contracts,
+      a.valueEur,
+    ]),
+  });
+
+  return results;
+}
+
+/** Build the model-facing EmitReportInput. `narrativeMd` null ⇒ AI-free fallback (no text block, no
+ *  model-authored prose anywhere but the fixed title/methodology strings this module itself owns). */
+function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): EmitReportInput {
+  const blocks: EmitBlock[] = [];
+  if (narrativeMd) blocks.push({ type: 'text', md: narrativeMd });
+
+  const totalsItems: { label: string; ref: CellRef; format: CellFormat }[] = [
+    { label: 'Обща стойност', ref: { resultId: 'R1', row: 0, col: 'total_eur' }, format: 'money' },
+    { label: 'Договори', ref: { resultId: 'R1', row: 0, col: 'contracts' }, format: 'number' },
+  ];
+  if (data.delta.deltaPct !== null) {
+    totalsItems.push({
+      label: 'Промяна спрямо предходната седмица',
+      ref: { resultId: 'R1', row: 0, col: 'delta_pct' },
+      format: 'percent',
+    });
+  }
+  if (data.largest) {
+    totalsItems.push({
+      label: 'Най-голяма поръчка',
+      ref: { resultId: 'R2', row: 0, col: 'amount_eur' },
+      format: 'money',
+    });
+  }
+  if (data.singleBidRate.rate !== null) {
+    totalsItems.push({
+      label: 'Дял с една оферта',
+      ref: { resultId: 'R1', row: 0, col: 'single_bid_rate' },
+      format: 'percent',
+    });
+  }
+  blocks.push({ type: 'totals', items: totalsItems });
+
+  if (data.topContracts.length > 0) {
+    blocks.push({
+      type: 'table',
+      resultId: 'R3',
+      columns: [
+        { key: 'subject', header: 'Предмет', format: 'text' },
+        {
+          key: 'authority_name',
+          header: 'Възложител',
+          format: 'text',
+          link: { kind: 'authority', idCol: 'authority_id' },
+        },
+        {
+          key: 'bidder_name',
+          header: 'Изпълнител',
+          format: 'text',
+          link: { kind: 'company', idCol: 'bidder_id' },
+        },
+        { key: 'amount_eur', header: 'Стойност', format: 'money' },
+        { key: 'signed_at', header: 'Подписан на', format: 'date' },
+      ],
+    });
+  }
+
+  if (data.sectors.length > 0) {
+    blocks.push({
+      type: 'bar',
+      resultId: 'R4',
+      labelCol: 'division',
+      valueCol: 'value_eur',
+      format: 'money',
+    });
+  }
+
+  if (data.authorities.length > 0) {
+    blocks.push({
+      type: 'table',
+      resultId: 'R5',
+      columns: [
+        {
+          key: 'authority_name',
+          header: 'Възложител',
+          format: 'text',
+          link: { kind: 'authority', idCol: 'authority_id' },
+        },
+        { key: 'contracts', header: 'Договори', format: 'number' },
+        { key: 'value_eur', header: 'Стойност', format: 'money' },
+      ],
+    });
+  }
+
+  blocks.push({ type: 'callout', title: METHODOLOGY_CALLOUT_TITLE, md: METHODOLOGY_CALLOUT_MD });
+
+  return { title: `Седмичен дайджест — ${data.isoWeek}`, question: DIGEST_QUESTION, blocks };
+}
+
+// ── Sanity gates (never persist an unvalidated number) ───────────────────────────────────────────────
+
+function sanityErrors(data: WeeklyDigestData): string[] {
+  const errors: string[] = [];
+  if (data.total.totalEur < 0) errors.push(`total_eur is negative (${data.total.totalEur})`);
+  if (data.largest && data.largest.amountEur > data.total.totalEur) {
+    errors.push(
+      `largest contract (${data.largest.amountEur}) exceeds the week's total (${data.total.totalEur})`,
+    );
+  }
+  if (data.delta.deltaPct !== null && Math.abs(data.delta.deltaPct) > MAX_RATIO_MAGNITUDE) {
+    errors.push(`week-over-week delta (${data.delta.deltaPct}) exceeds a plausible magnitude`);
+  }
+  return errors;
+}
+
+// ── Orchestrator ──────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Refresh the Monday weekly digest. Anchored on `home_totals.as_of` (GATE 1: the target week must be
+ * fully SETTLED — ADR-0007's posture, applied to a fixed Mon–Sun week instead of a recency-caveat
+ * period), then GATE 2 short-circuits a genuinely empty week with NO LLM call and NO R2 write (the
+ * `/weeks/{iso}` route stays 404 rather than publishing an empty shell). `now` and `generate` are
+ * injectable for tests; production builds `generate` from `env` lazily so a test that never reaches the
+ * LLM step needs neither the AI Gateway vars nor a mock.
+ */
+export async function generateWeeklyDigest(
+  env: WeeklyDigestEnv,
+  deps: GenerateWeeklyDigestDeps = {},
+): Promise<void> {
+  const now = deps.now ?? new Date();
+  const target = priorIsoWeek(now);
+
+  const totals = await env.DB.prepare(
+    'SELECT value_eur AS value_eur, as_of AS as_of FROM home_totals WHERE id = 1',
+  ).first<{ value_eur: number | null; as_of: string | null }>();
+  const asOf = totals?.as_of ?? null;
+  if (asOf === null) {
+    log('etl_digest_no_asof', { isoWeek: target.iso });
+    return;
+  }
+
+  // GATE 1 (settled week, ADR-0007 posture): the week's Sunday must already be covered by the data —
+  // else the week is still accumulating and would render an undercounted digest. Skip; the following
+  // Monday's cron will have moved on to the NEXT week (this week is not retried automatically — a
+  // manual/backfill invocation with an explicit `now` is the reissue path; see module comment risk note).
+  if (asOf < target.sundayIso) {
+    log('etl_digest_week_unsettled', { isoWeek: target.iso, asOf, sundayIso: target.sundayIso });
+    return;
+  }
+
+  const data = await getWeeklyDigestData(env.DB, target.iso);
+
+  // GATE 2 (zero-row short-circuit): a genuinely empty week gets NO LLM call and NO R2 write — the
+  // security-critical guarantee this producer must never regress.
+  if (data.counts.contracts === 0) {
+    log('etl_digest_zero_contracts', { isoWeek: target.iso, asOf });
+    return;
+  }
+
+  const reconciliation = await reconcileWeeklyTotal(env.DB, target.iso);
+
+  const sanity = sanityErrors(data);
+  if (sanity.length > 0) {
+    logError('etl_digest_sanity_failed', { isoWeek: target.iso, errors: sanity });
+    return;
+  }
+
+  const results = buildQueryResults(data);
+  const emitInput0 = buildEmitInput(data, null);
+
+  // Past every skip gate — safe to materialize the real LLM call now (never built/called on an
+  // unsettled-week, zero-contracts, or sanity-failed path above).
+  const generateFn: GenerateFn = deps.generate ?? buildDigestGenerate(env);
+
+  let narrativeMd: string | null = null;
+  let narrativeAttempts = 0;
+  for (let attempt = 1; attempt <= MAX_NARRATIVE_ATTEMPTS; attempt++) {
+    narrativeAttempts = attempt;
+    let raw: string;
+    try {
+      raw = await generateFn({
+        system: DIGEST_SYSTEM_PROMPT,
+        prompt: buildNarrativePrompt(data),
+      });
+    } catch (error) {
+      log('etl_digest_narrative_call_failed', {
+        isoWeek: target.iso,
+        attempt,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+    const candidate = raw.trim();
+    if (!candidate) continue;
+    const trial = bindReport(buildEmitInput(data, candidate), results, {
+      question: DIGEST_QUESTION,
+    });
+    if (trial.ok) {
+      narrativeMd = candidate;
+      break;
+    }
+    log('etl_digest_narrative_rejected', { isoWeek: target.iso, attempt, errors: trial.errors });
+  }
+
+  const emitInput = narrativeMd ? buildEmitInput(data, narrativeMd) : emitInput0;
+  const bound = bindReport(emitInput, results, { question: DIGEST_QUESTION });
+  if (!bound.ok) {
+    // The AI-free fallback (no model prose beyond this module's own fixed strings) must always bind —
+    // if it doesn't, that's a producer bug, not a data problem. Log loudly and skip publishing rather
+    // than persist a report the binder itself rejected.
+    logError('etl_digest_fallback_bind_failed', { isoWeek: target.iso, errors: bound.errors });
+    return;
+  }
+
+  const verified = await verifyReport(bound.report, generateFn);
+
+  const existing = await env.DB.prepare('SELECT iso_week FROM weekly_digests WHERE iso_week = ?1')
+    .bind(target.iso)
+    .first<{ iso_week: string }>();
+
+  const refreshedAt = now.toISOString();
+  const status = existing ? 'коригирано' : narrativeMd ? 'ok' : 'fallback';
+
+  const stored = buildStoredReport({
+    id: target.iso,
+    createdAt: refreshedAt,
+    report: verified.report,
+    question: DIGEST_QUESTION,
+    sources: results.map((r) => ({ handle: r.handle, tool: 'weekly_digest_query' })),
+    snapshot: results,
+    freshness: [{ source: 'admin', asOf }],
+    model: narrativeMd ? env.ASSISTANT_MODEL || DEFAULT_MODEL : 'none (ai-free fallback)',
+    promptVersion: DIGEST_PROMPT_VERSION,
+    verification: {
+      status: verified.status,
+      strippedClaimIds: verified.strippedClaimIds,
+      uncertainClaimIds: verified.uncertainClaimIds,
+      ...(verified.errors ? { errors: verified.errors } : {}),
+    },
+  });
+
+  const key = `weeks/${target.iso}.json`;
+  await persistReport(env.REPORTS, key, stored, { immutable: true });
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO weekly_digests (iso_week, as_of, refreshed_at, status, total_eur)
+       VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT(iso_week) DO UPDATE SET
+         as_of = excluded.as_of,
+         refreshed_at = excluded.refreshed_at,
+         status = excluded.status,
+         total_eur = excluded.total_eur`,
+    )
+      .bind(target.iso, asOf, refreshedAt, status, data.total.totalEur)
+      .run();
+  } catch (error) {
+    logError('etl_digest_upsert_failed', {
+      isoWeek: target.iso,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  log('etl_digest_written', {
+    isoWeek: target.iso,
+    key,
+    status,
+    narrativeAttempts,
+    narrativeUsed: narrativeMd !== null,
+    verificationStatus: verified.status,
+    reconciliationWithinBounds: reconciliation.withinBounds,
+  });
+}
