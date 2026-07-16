@@ -39,7 +39,7 @@ const baseContractRow = {
   tender_awards: 1 as number,
   eop_tender_id: null as string | null,
   estimated_value: 10000,
-  tender_currency: 'EUR',
+  tender_currency: 'EUR' as string | null,
   tender_fx_rate: null as number | null,
   start_date: null,
   end_date: null,
@@ -127,6 +127,31 @@ describe('getContract', () => {
     expect(detail?.value.procedureEstimatedEur).toBe(10000);
     expect(detail?.lots?.rows.map((r) => r.estimatedEur)).toEqual([5000, 7000]);
     expect(detail?.lots?.estimatedTotalEur).toBe(12000);
+  });
+
+  it('defaults a lot with no currency (and no tender currency) to the BGN peg', async () => {
+    // estimated_currency ?? tender_currency is null → eurFromNative applies `currency || 'BGN'` and
+    // converts via the peg (1.95583), so 1955.83 BGN → ~1000 EUR.
+    const detail = await getContract(
+      fakeDb({ ...baseContractRow, tender_currency: null }, [
+        {
+          lot_id: 'lot:UNP-1:1',
+          title: 'Lot 1',
+          estimated_value: 1955.83,
+          estimated_currency: null,
+          cpv_code: null,
+          contract_id: 'c:1',
+          signing_value_eur: null,
+          estimated_fx_rate: null,
+          bidder_name: 'Bidder',
+          bidder_kind: 'company',
+          bidder_id: 'eik:111111111',
+        },
+      ]),
+      'c:1',
+    );
+    expect(detail?.lots?.rows[0]?.estimatedEur).toBeCloseTo(1000, 0);
+    expect(detail?.lots?.rows[0]?.lotLabel).toBe('1');
   });
 
   it('uses FX rates for foreign-currency estimated values when available', async () => {
@@ -477,6 +502,44 @@ describe('getCompany', () => {
     expect(d.hasEik).toBe(false);
     expect(d.eikValid).toBe(false);
   });
+
+  it('fills every fallback when metadata/bids/suspect rows and the procedure value are absent', async () => {
+    // Exercises the `?? null`/`?? 0` fallbacks: null bidderMeta, null bidsRow, null suspectRow,
+    // a null primary_sector (bound as ''), and a procedure row whose value is NULL.
+    const row = { ...companyRow, primary_sector: null };
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          bind() {
+            return stmt;
+          },
+          async first<T>() {
+            if (sql.includes('FROM company_totals')) return row as T;
+            if (sql.includes('nuts_regions')) return null as T; // bidderMeta null
+            if (sql.includes('AS primary_eur')) return null as T; // extra null
+            if (sql.includes('four_plus')) return null as T; // bidsRow null
+            if (sql.includes('amount_eur IS NULL')) return null as T; // suspectRow null
+            return null as T;
+          },
+          async all<T>() {
+            if (sql.includes('AS paid')) return { results: [] as T[] };
+            if (sql.includes('GROUP BY t.procedure_type') && sql.includes('c.bidder_id'))
+              return { results: [{ procedure_type: 'Открита процедура', n: 1, eur: null }] as T[] };
+            return { results: [] as T[] };
+          },
+        };
+        return stmt;
+      },
+    } as unknown as D1Database;
+    const d = (await getCompany(db, 'eik:111111111'))!;
+    expect(d.region).toBeNull();
+    expect(d.legalForm).toBeNull();
+    expect(d.bids).toEqual({ one: 0, two: 0, three: 0, fourPlus: 0, unknown: 0 });
+    expect(d.suspect).toBe(0);
+    expect(d.sectorSharePct).toBeNull();
+    expect(d.avgBids).toBeNull();
+    expect(d.procedureMix).toEqual([]); // null proc value → group valueEur 0 → dropped
+  });
 });
 
 // ── getAuthority ────────────────────────────────────────────────────────────────────────────────
@@ -579,6 +642,54 @@ describe('getAuthority', () => {
     expect(d.euSharePct).toBe(0);
     expect(d.topContractors[0]!.sharePct).toBe(0);
     expect(d.sectors[0]!.sharePct).toBe(0);
+  });
+
+  it('spent-nothing authority: drops an unknown sector, zeroes the tail share, nulls absent bids/suspect', async () => {
+    const sectorRows = [
+      { division: '45', eur: 70000 },
+      { division: '33', eur: 40000 },
+      { division: '15', eur: 30000 },
+      { division: '09', eur: 20000 },
+      { division: '48', eur: 15000 },
+      { division: '72', eur: 10000 },
+      { division: '34', eur: 5000 }, // 7th valid → tail
+      { division: 'XX', eur: 3000 }, // unknown CPV division → sectorRef null → filtered out
+    ];
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          bind() {
+            return stmt;
+          },
+          async first<T>() {
+            if (sql.includes('FROM authority_totals'))
+              return { ...authorityRow, spent_eur: 0 } as T;
+            if (sql.includes('AVG(c.bids_received)')) return { avg_bids: null } as T; // avgBids null
+            if (sql.includes('amount_eur IS NULL')) return null as T; // suspectRow null → 0
+            return null as T;
+          },
+          async all<T>() {
+            if (sql.includes('ORDER BY won DESC'))
+              return {
+                results: [
+                  { bidder_id: 'eik:1', name: 'A ООД', kind: 'company', won: 1, n: 1 },
+                ] as T[],
+              };
+            if (sql.includes('GROUP BY division')) return { results: sectorRows as T[] };
+            if (sql.includes('GROUP BY t.procedure_type')) return { results: [] as T[] };
+            return { results: [] as T[] };
+          },
+        };
+        return stmt;
+      },
+    } as unknown as D1Database;
+    const d = (await getAuthority(db, 'auth:123456789'))!;
+    expect(d.avgBids).toBeNull();
+    expect(d.suspect).toBe(0);
+    expect(d.sectors).toHaveLength(6); // 7 valid sectors → 6 shown + tail
+    expect(d.sectors.some((s) => s.code === 'XX')).toBe(false); // unknown division dropped
+    expect(d.sectorsOther).not.toBeNull();
+    expect(d.sectorsOther!.sharePct).toBe(0); // spent_eur 0 → 0
   });
 });
 
