@@ -207,7 +207,12 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
     continue;
   }
   const pid = personId(h.person, h.institution);
-  const did = `decl:${h.xmlFile}`;
+  // Namespace the declaration id by FOLDER, not the bare xmlFile. The register splits years across
+  // suffixed folders; keying on the basename alone means two officials whose declarations share an
+  // xmlFile across folders collapse to one `did` under INSERT OR IGNORE — the second's interests would
+  // attach to the first (cross-person mis-attribution, the libel risk this surface exists to avoid).
+  // folder+xmlFile is unique by construction, independent of any GUID-uniqueness assumption.
+  const did = `decl:${h.folder}:${h.xmlFile}`;
   insPerson.run(pid, h.person);
   insDecl.run(
     did,
@@ -306,7 +311,9 @@ for (const h of readJsonl(path.join(STAGING, 'holdings.jsonl'))) {
 // related persons (internal/PII)
 let rpN = 0;
 for (const r of readJsonl(path.join(STAGING, 'related.jsonl'))) {
-  const did = `decl:${r.xmlFile}`;
+  // Same folder-namespaced key as the holdings loop — so the related rows of a declaration resolve to
+  // the very declaration the holdings loop inserted (and so cross-folder xmlFile clashes can't merge).
+  const did = `decl:${r.folder}:${r.xmlFile}`;
   if (!db.prepare('SELECT 1 FROM declarations WHERE id=?').get(did)) {
     insPerson.run(personId(r.person, r.institution), r.person);
     insDecl.run(
