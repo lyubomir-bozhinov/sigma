@@ -8,14 +8,21 @@ import {
 } from '@sigma/ingest';
 import refreshSliceSql from '../../../scripts/refresh-slice.sql';
 import workStagingSchemaSql from '../../../scripts/work-staging-schema.sql';
-import { PROMPTS_CRON, REFRESH_CRON } from './crons';
+import { DIGEST_CRON, PROMPTS_CRON, REFRESH_CRON } from './crons';
 import { computeWorkerCatchupPlan, ingestBucketWindow, type CatchupPlan } from './eop';
 import { generateSuggestedPrompts } from './suggested-prompts';
+import { digestEnabled, generateWeeklyDigest } from './weekly-digest';
 
 export interface Env {
   DB: D1Database;
   REFRESH: Workflow;
+  REPORTS: R2Bucket;
   EOP_OPEN_DATA_BASE_URL?: string;
+  AI_GATEWAY_BASE_URL?: string;
+  ASSISTANT_MODEL?: string;
+  BGGPT_API_KEY?: string;
+  /** Master kill switch (mirrors apps/web's ASSISTANT_ENABLED): fail-dark unless explicitly "true". */
+  DIGEST_ENABLED?: string;
 }
 
 interface RefreshParams {
@@ -183,6 +190,26 @@ export default {
       const instance = await env.REFRESH.create();
       console.log(
         JSON.stringify({ level: 'info', event: 'etl_scheduled_refresh', id: instance.id }),
+      );
+      return;
+    }
+    if (controller.cron === DIGEST_CRON) {
+      if (!digestEnabled(env.DIGEST_ENABLED)) {
+        console.log(JSON.stringify({ level: 'info', event: 'etl_digest_disabled' }));
+        return;
+      }
+      // Same degrade-safe posture as PROMPTS_CRON: a failure is a structured event, not an unhandled
+      // rejection — the prior week's artifact (if any) stays served.
+      ctx.waitUntil(
+        generateWeeklyDigest(env).catch((error) =>
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_digest_failed',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        ),
       );
       return;
     }

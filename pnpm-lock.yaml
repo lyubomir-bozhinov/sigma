@@ -40,15 +40,27 @@ importers:
 
   apps/etl:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.73
+        version: 3.0.74(zod@4.4.3)
       '@sigma/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@sigma/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@sigma/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest
+      '@sigma/report':
+        specifier: workspace:*
+        version: link:../../packages/report
       '@sigma/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      ai:
+        specifier: 6.0.208
+        version: 6.0.208(zod@4.4.3)
 
   apps/web:
     dependencies:
