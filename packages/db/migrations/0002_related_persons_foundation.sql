@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS persons (
 
 -- One row per filed declaration (natural key xml_file + control_hash makes re-import idempotent).
 CREATE TABLE IF NOT EXISTS declarations (
-  id            TEXT PRIMARY KEY,           -- 'decl:' || xml_file
+  id            TEXT PRIMARY KEY,           -- 'decl:' || folder_year || ':' || xml_file (folder-namespaced; load.mjs)
   person_id     TEXT NOT NULL REFERENCES persons(id),
   xml_file      TEXT NOT NULL,
   control_hash  TEXT,                       -- source integrity hash; re-import key with xml_file
