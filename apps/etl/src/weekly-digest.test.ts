@@ -48,7 +48,8 @@ interface FakeWeekData {
   asOf: string | null;
   homeTotalEur: number;
   totalsByWeek: Record<string, number>;
-  counts: { contracts: number; tenders: number };
+  /** Raw `getWeeklyCounts` row shape (snake_case): the fake DB hands this back for the query layer to map. */
+  counts: { contracts: number; contracts_with_amount: number; tenders: number };
   largest: LargestRawRow | null;
   singleBid: { single_bid: number | null; sample: number };
   topContracts: TopContractRawRow[];
@@ -75,7 +76,7 @@ function happyPathData(): FakeWeekData {
       [TARGET.iso]: 100_000,
       [PRIOR_WEEK]: 80_000,
     },
-    counts: { contracts: 12, tenders: 10 },
+    counts: { contracts: 12, contracts_with_amount: 10, tenders: 10 },
     largest: {
       id: 'c1',
       source_id: '00042-2024-0001',
@@ -275,7 +276,7 @@ describe('generateWeeklyDigest — gate matrix', () => {
 
   it('SECURITY: zero contracts — no LLM call and no R2 put', async () => {
     const data = happyPathData();
-    data.counts = { contracts: 0, tenders: 0 };
+    data.counts = { contracts: 0, contracts_with_amount: 0, tenders: 0 };
     data.totalsByWeek[TARGET.iso] = 0;
     data.largest = null;
     data.topContracts = [];
@@ -358,6 +359,28 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
     expect(upserts[0]!.status).toBe('ok');
     expect(upserts[0]!.totalEur).toBe(data.totalsByWeek[TARGET.iso]);
+  });
+
+  // precompute.sql's COUNT/SUM CONSISTENCY rule: a (count, sum) rendered as one KPI set must cover ONE
+  // row set. The totals strip puts "Договори" right next to "Обща стойност", so it must bind the
+  // clean-amount count (10) — binding the raw volume (12) would let a reader divide the two and get a
+  // wrong average contract value.
+  it('totals: "Договори" binds the clean-amount count, not the raw activity volume', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      generate: mockGenerate('Кратко резюме на седмицата.'),
+    });
+
+    const totals = JSON.parse(puts[0]!.body).report.blocks.find(
+      (b: { type: string }) => b.type === 'totals',
+    );
+    const contractsItem = totals.items.find((i: { label: string }) => i.label === 'Договори');
+    expect(contractsItem.value).toBe(data.counts.contracts_with_amount); // 10
+    expect(contractsItem.value).not.toBe(data.counts.contracts); // not the 12-row volume
   });
 
   it('reissue: a second run for an already-written week is stamped "коригирано"', async () => {

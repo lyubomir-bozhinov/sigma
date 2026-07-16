@@ -150,6 +150,7 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
       columns: [
         'total_eur',
         'contracts',
+        'contracts_with_amount',
         'tenders',
         'delta_eur',
         'delta_pct',
@@ -160,6 +161,7 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
         [
           data.total.totalEur,
           data.counts.contracts,
+          data.counts.contractsWithAmount,
           data.counts.tenders,
           data.delta.deltaEur,
           data.delta.deltaPct,
@@ -251,7 +253,14 @@ function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): Emi
 
   const totalsItems: { label: string; ref: CellRef; format: CellFormat }[] = [
     { label: 'Обща стойност', ref: { resultId: 'R1', row: 0, col: 'total_eur' }, format: 'money' },
-    { label: 'Договори', ref: { resultId: 'R1', row: 0, col: 'contracts' }, format: 'number' },
+    // Binds the CLEAN-amount count, not the raw volume: this sits next to „Обща стойност" in the same
+    // strip, and a (count, sum) shown as one KPI set must cover one row set (precompute.sql's
+    // COUNT/SUM CONSISTENCY rule) — else total/count reads as a wrong average contract value.
+    {
+      label: 'Договори',
+      ref: { resultId: 'R1', row: 0, col: 'contracts_with_amount' },
+      format: 'number',
+    },
   ];
   if (data.delta.deltaPct !== null) {
     totalsItems.push({
