@@ -383,6 +383,30 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(contractsItem.value).not.toBe(data.counts.contracts); // not the 12-row volume
   });
 
+  // A verifier that strips EVERY claim leaves an artifact with no surviving model prose — content
+  // identical in kind to the AI-free fallback. It must be labelled as such, or the archive index
+  // advertises a model-authored digest whose model text is gone.
+  it('verifier strips the whole narrative: artifact is labelled AI-free, not "ok"', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      // Verifier returns no verdicts at all -> parseVerdicts fails closed -> every claim stripped.
+      generate: async ({ system }: { system: string; prompt: string }) =>
+        system.includes('verification critic')
+          ? JSON.stringify({ verdicts: [] })
+          : 'Изминалата седмица бе разнообразна за обществените поръчки в страната.',
+    });
+
+    expect(puts).toHaveLength(1);
+    const stored = JSON.parse(puts[0]!.body);
+    expect(stored.report.blocks.some((b: { type: string }) => b.type === 'text')).toBe(false);
+    expect(stored.provenance.model).toBe('none (ai-free fallback)');
+    expect(upserts[0]!.status).toBe('fallback');
+  });
+
   it('reissue: a second run for an already-written week is stamped "коригирано"', async () => {
     const data = happyPathData();
     data.existingDigestRow = true;

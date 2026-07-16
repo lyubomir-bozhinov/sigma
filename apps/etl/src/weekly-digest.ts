@@ -468,7 +468,14 @@ export async function generateWeeklyDigest(
     .first<{ iso_week: string }>();
 
   const refreshedAt = now.toISOString();
-  const status = existing ? 'коригирано' : narrativeMd ? 'ok' : 'fallback';
+  // A narrative that BOUND but was then fully stripped by the verifier leaves an artifact with no
+  // surviving model prose — the same content class as the AI-free fallback, so it must carry the same
+  // labels. Keying on `narrativeMd` alone would advertise a model-authored digest whose model text is
+  // gone (the archive index reads `status`, and `provenance.model` names a model that wrote nothing
+  // that survived). A PARTIAL strip still leaves prose, so the text block's survival is the test.
+  const narrativeSurvived =
+    narrativeMd !== null && verified.report.blocks.some((b) => b.type === 'text');
+  const status = existing ? 'коригирано' : narrativeSurvived ? 'ok' : 'fallback';
 
   const stored = buildStoredReport({
     id: target.iso,
@@ -478,7 +485,7 @@ export async function generateWeeklyDigest(
     sources: results.map((r) => ({ handle: r.handle, tool: 'weekly_digest_query' })),
     snapshot: results,
     freshness: [{ source: 'admin', asOf }],
-    model: narrativeMd ? env.ASSISTANT_MODEL || DEFAULT_MODEL : 'none (ai-free fallback)',
+    model: narrativeSurvived ? env.ASSISTANT_MODEL || DEFAULT_MODEL : 'none (ai-free fallback)',
     promptVersion: DIGEST_PROMPT_VERSION,
     verification: {
       status: verified.status,
