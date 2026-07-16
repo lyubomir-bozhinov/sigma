@@ -23,6 +23,7 @@ export function sharedCoverage(include: string[]): NonNullable<ViteUserConfig['t
       // assistant JSON fixtures).
       '**/fixtures/**',
       '**/*.json',
+      '**/*.md',
       '**/*.d.ts',
     ],
     reporter: ['text', 'json-summary'],
