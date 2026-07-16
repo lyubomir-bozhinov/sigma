@@ -72,3 +72,22 @@ describe('getRegionalSpending', () => {
     expect(filtered.some((s) => s.includes('JOIN tenders t'))).toBe(true);
   });
 });
+
+describe('getRegionalSpending — filter predicates', () => {
+  it('applies the year filter via base aggregation, not the rollup', async () => {
+    const cap: string[] = [];
+    await getRegionalSpending(fakeDb(cap), { year: '2025' });
+    expect(cap.some((s) => s.includes('substr(c.signed_at, 1, 4) = ?'))).toBe(true);
+    expect(cap.some((s) => s.includes('FROM authority_totals'))).toBe(false);
+  });
+  it('applies the EU funding predicate', async () => {
+    const cap: string[] = [];
+    await getRegionalSpending(fakeDb(cap), { funding: 'eu' });
+    expect(cap.some((s) => s.includes('c.eu_funded = 1'))).toBe(true);
+  });
+  it('applies the national (non-EU) funding predicate', async () => {
+    const cap: string[] = [];
+    await getRegionalSpending(fakeDb(cap), { funding: 'national' });
+    expect(cap.some((s) => s.includes('c.eu_funded IS NULL OR c.eu_funded = 0'))).toBe(true);
+  });
+});

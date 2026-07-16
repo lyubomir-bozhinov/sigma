@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { AUTHORITY_FILTER_KEYS } from './authorities';
 import { COMPANY_FILTER_KEYS } from './companies';
 import { CONTRACT_FILTER_KEYS } from './contracts';
-import { decodeCursor, encodeCursor, filterSignature, keyset, pageCursors } from './keyset';
+import {
+  MAX_CURSOR_CHARS,
+  decodeCursor,
+  encodeCursor,
+  filterSignature,
+  keyset,
+  pageCursors,
+} from './keyset';
 
 const FILTER_VALUE: Record<string, unknown> = {
   authority: '000695089',
@@ -217,5 +224,33 @@ describe('pageCursors', () => {
     });
     expect(decodeCursor(more.prevCursor)).toMatchObject({ dir: 'before', value: 900, id: 'a' });
     expect(decodeCursor(more.nextCursor)).toMatchObject({ dir: 'after', value: 800, id: 'b' });
+  });
+});
+
+describe('decodeCursor — malformed and hostile input', () => {
+  const enc = (tuple: unknown) =>
+    'after:' +
+    btoa(unescape(encodeURIComponent(JSON.stringify(tuple))))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+  it('rejects an oversized cursor before running the decode pipeline', () => {
+    expect(decodeCursor('after:' + 'A'.repeat(MAX_CURSOR_CHARS))).toBeNull();
+  });
+  it('rejects a payload that is not valid JSON (decode pipeline throws)', () => {
+    expect(decodeCursor('after:' + btoa('not json').replace(/=+$/, ''))).toBeNull();
+  });
+  it('rejects a non-string/number sort value or a non-string id', () => {
+    expect(decodeCursor(enc([{}, 'id']))).toBeNull();
+    expect(decodeCursor(enc(['v', 123]))).toBeNull();
+  });
+  it('rejects a non-string sortToken', () => {
+    expect(decodeCursor(enc(['v', 'id', 123]))).toBeNull();
+  });
+  it('rejects a cursor whose sortToken does not match the expected one', () => {
+    const c = encodeCursor('after', 'v', 'id', 'tokA');
+    expect(decodeCursor(c, 'tokB')).toBeNull();
+    expect(decodeCursor(c, 'tokA')).toMatchObject({ sortToken: 'tokA' });
   });
 });

@@ -143,3 +143,17 @@ describe('getFlows', () => {
     expect(Array.isArray(data.sectors)).toBe(true);
   });
 });
+
+describe('getFlows — sankey ordering', () => {
+  it('orders ribbons by company rank when two pairs share an authority (sort tiebreak)', async () => {
+    const pairs = [
+      { ...pairRow, bidder_id: 'eik:111', bidder_name: 'Алфа ООД', won_eur: 300000, contracts: 5 },
+      { ...pairRow, bidder_id: 'eik:222', bidder_name: 'Бета ООД', won_eur: 200000, contracts: 3 },
+    ];
+    const data = await getFlows(fakeDb(pairs), {});
+    expect(data.sankey.ribbons).toHaveLength(2);
+    // the two companies fan out from the single shared authority node
+    expect(data.sankey.nodes.filter((n) => n.side === 'authority')).toHaveLength(1);
+    expect(data.sankey.nodes.filter((n) => n.side === 'company')).toHaveLength(2);
+  });
+});
