@@ -397,7 +397,16 @@ function weekDates(isoWeek: string): string[] {
   });
 }
 
-/** Per-day clean-basis spend for one week, projected onto a fixed Mon..Sun 7-slot array (zero-filled). */
+/**
+ * Per-day clean-basis spend for one week, projected onto a fixed Mon..Sun 7-slot array (zero-filled).
+ *
+ * Date alignment (#81 review, note 2): `substr(c.signed_at, 1, 10)` takes the calendar-date prefix of
+ * `signed_at`, and `weekDates()` enumerates the same week's dates from `isoWeekMonday` in UTC. This is
+ * consistent because `signed_at` is stored as a UTC date-prefixed string — the SAME basis the
+ * whole-file `WEEK_FILTER` (`strftime('%G-W%V', c.signed_at)`) already relies on to bucket a row into a
+ * week. Both the substring day-key and the UTC slot boundaries read that one calendar date, so a
+ * midnight edge cannot split a row from its slot.
+ */
 async function daySpendFor(db: D1Database, isoWeek: string): Promise<WeeklyDaySpend[]> {
   const dates = weekDates(isoWeek);
   const { results } = await db

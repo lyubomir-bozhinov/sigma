@@ -255,17 +255,20 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
   });
 
   // R8 — competition concentration (§3.8): single-bid vs multi-bid contract counts over the reported
-  // sample. Only meaningful at/above the reporting floor (rate !== null); emitted regardless, the block
-  // is gated in buildEmitInput.
-  const { singleBid, sample } = data.singleBidRate;
-  results.push({
-    handle: 'R8',
-    columns: ['label', 'count'],
-    rows: [
-      ['С една оферта', singleBid],
-      ['С няколко оферти', Math.max(0, sample - singleBid)],
-    ],
-  });
+  // sample. Pushed under the SAME guard as the bar block in buildEmitInput (rate !== null, i.e. the
+  // sample cleared the reporting floor), so the persisted snapshot never carries a dead result no block
+  // references (#81 review, note 1).
+  if (data.singleBidRate.rate !== null) {
+    const { singleBid, sample } = data.singleBidRate;
+    results.push({
+      handle: 'R8',
+      columns: ['label', 'count'],
+      rows: [
+        ['С една оферта', singleBid],
+        ['С няколко оферти', Math.max(0, sample - singleBid)],
+      ],
+    });
+  }
 
   return results;
 }

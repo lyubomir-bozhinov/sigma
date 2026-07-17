@@ -44,3 +44,8 @@ Shared with the assistant's own render layer — build to be reusable by both.
 ## Coordination
 - Freeze the `StoredReport` contract jointly with Dev A on day 1; both code against the shared fixture.
 - Report-serving route + `ReportBlockRenderer` are also the assistant's Phase-2 render layer — keep them generic (not digest-specific) so the chat can reuse them. Flag to maintainers if the assistant epic wants to co-own (plan Phase 0 open question).
+
+## Follow-ups (tracked, out of this PR)
+- **Week-scoped „Разгледай сам" deep links** (#81 review, note 4): `DigestExplore` currently links to the full `/contracts` `/authorities` `/companies` `/flows` surfaces because the list loaders have no `?week=` filter. When a `week=<ISO>` filter lands on those loaders (parse in `filters.ts` + `strftime('%G-W%V', signed_at)` predicate in `@sigma/db` + add `week` to the cache-key allow-list), thread `iso` into `DigestExplore`'s hrefs so the links open the week's slice.
+- **§3.8 stacked-procedure lane**: the competition section ships the single-bid concentration bar only; the stacked procedure-mix bar needs a weekly `procedure_type` grouping query + a stacked report block type.
+- **`WeeklyGhostBars` daily vs weekly axis**: revisit if a future digest wants intra-day or multi-week series (the current index-pairing assumes 7 fixed Mon..Sun slots — see the component invariant comment).

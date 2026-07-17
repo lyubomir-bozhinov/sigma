@@ -30,6 +30,10 @@ export function WeeklyGhostBars({
 }) {
   if (current.length === 0) return null;
   const n = current.length;
+  // INVARIANT (#81 review, note 3): `current` and `previous` are paired by ARRAY INDEX, not by day
+  // label. This is correct only because both are the same fixed 7 Mon..Sun slots (getWeeklyDailySpend
+  // zero-fills each week to Mon..Sun before they reach here). Do not reuse this component with two
+  // series whose indices are not day-of-week aligned — pair by label first if you do.
   const prev = previous ?? [];
   const max = Math.max(1, ...current.map((d) => d.value), ...prev.map((d) => d.value));
   const slot = W / n;

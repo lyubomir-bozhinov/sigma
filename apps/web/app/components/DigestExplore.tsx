@@ -5,8 +5,9 @@ import { Link } from 'react-router';
 // themselves. Rendered by the /weeks/:iso route, not emitted as a report block.
 //
 // NOTE: the list routes don't yet accept a `?week=` filter, so these point at the full exploration
-// surfaces rather than a week-scoped slice. When a `week` filter lands on the contracts/authorities/
-// companies loaders, thread `iso` into these hrefs.
+// surfaces rather than a week-scoped slice. Tracked as a follow-up in docs/tickets/167b (#81 review,
+// note 4): when a `week` filter lands on the contracts/authorities/companies loaders, thread `iso`
+// into these hrefs.
 const LINKS: { to: string; label: string; hint: string }[] = [
   {
     to: '/contracts?sort=date-desc',
