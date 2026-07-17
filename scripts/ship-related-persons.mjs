@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // INSERT order — parents before children. link_suppressions first so a re-import can't briefly expose a
 // contested link (it is back in place before interest_links reappears). D1 DOES enforce foreign keys, so a
@@ -219,5 +220,7 @@ function main() {
   );
 }
 
-// Only run when invoked directly (importing for tests has no side effects).
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// Only run when invoked directly (importing for tests has no side effects). pathToFileURL — not a raw
+// `file://` template — so a repo path with spaces or non-ASCII (which import.meta.url percent-encodes)
+// still matches and the CLI runs.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
