@@ -429,7 +429,7 @@ describe('buildSectorGroup', () => {
     expect(group.key).toBe('sector');
     expect(group.type).toBe('checkbox');
     expect(group.selected).toEqual([a.code]);
-    const cat = group.categories.find((c) => c.options.some((o) => o.value === a.code))!;
+    const cat = group.categories!.find((c) => c.options.some((o) => o.value === a.code))!;
     expect(cat.count).toBe(3); // all option counts present → category count summed
     expect(cat.options.find((o) => o.value === a.code)).toMatchObject({ label: a.label, count: 3 });
   });
@@ -437,14 +437,14 @@ describe('buildSectorGroup', () => {
   it('omits the category count when any sector count is missing', () => {
     const a = withCat[0]!;
     const group = buildSectorGroup([{ value: a.code, label: a.label }], []); // no count
-    const cat = group.categories.find((c) => c.options.some((o) => o.value === a.code))!;
+    const cat = group.categories!.find((c) => c.options.some((o) => o.value === a.code))!;
     expect(cat.count).toBeUndefined();
     expect(cat.options.find((o) => o.value === a.code)!.count).toBeUndefined();
   });
 
   it('skips a facet sector with no CPV category', () => {
     const group = buildSectorGroup([{ value: 'ZZ', label: 'Bogus', count: 1 }], []);
-    expect(group.categories.every((c) => c.options.every((o) => o.value !== 'ZZ'))).toBe(true);
+    expect(group.categories!.every((c) => c.options.every((o) => o.value !== 'ZZ'))).toBe(true);
   });
 });
 
