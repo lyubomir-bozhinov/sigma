@@ -34,6 +34,23 @@ describe('mapSectorWord', () => {
     expect(r.callout).toContain('Уточнете');
   });
 
+  it('pins health to exactly divisions 33 + 85 (Q24/Q25 — misses half the spend if 85 is dropped)', () => {
+    const r = mapSectorWord('здравеопазване');
+    expect(r.matchType).toBe('category');
+    expect(r.divisions).toEqual(['33', '85']);
+  });
+
+  it.each([
+    ['ит', ['48', '72', '30', '32', '64']],
+    ['софтуер', ['48', '72', '30', '32', '64']],
+    ['енергетика', ['09', '76', '14']],
+    ['транспорт', ['34', '60', '63']],
+  ] as const)('pins category synonym "%s" to its exact @sigma/config divisions', (word, divisions) => {
+    const r = mapSectorWord(word);
+    expect(r.matchType).toBe('category');
+    expect(r.divisions).toEqual(divisions);
+  });
+
   it('normalizes case, whitespace and NFC form to the same mapping', () => {
     const base = mapSectorWord('строителство');
     for (const variant of ['  Строителство  ', 'СТРОИТЕЛСТВО', 'строителство'.normalize('NFD')]) {
@@ -85,24 +102,6 @@ describe('mapSectorWord', () => {
       expect(r.matchType).toBe('sector');
       expect(r.divisions).toHaveLength(1);
       expect(KNOWN_DIVISIONS.has(r.divisions[0])).toBe(true);
-    }
-  });
-
-  it('hardcoded category synonyms still resolve to real @sigma/config categories', () => {
-    // Mirrors CATEGORY_SYNONYMS in cpv-map.ts — a renamed/removed category key would otherwise throw
-    // inside categoryMapping; this fails loudly instead.
-    for (const word of [
-      'инфраструктура',
-      'здравеопазване',
-      'ит',
-      'софтуер',
-      'енергетика',
-      'транспорт',
-    ]) {
-      const r = mapSectorWord(word);
-      expect(r.matchType).toBe('category');
-      expect(r.divisions.length).toBeGreaterThan(0);
-      for (const division of r.divisions) expect(KNOWN_DIVISIONS.has(division)).toBe(true);
     }
   });
 
