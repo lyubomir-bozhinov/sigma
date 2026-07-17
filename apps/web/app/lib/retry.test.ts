@@ -46,6 +46,7 @@ describe('withDbRetry', () => {
     // A non-Error thrown value exercises the `: error` log branch, and a 4th attempt indexes past
     // the two-entry BACKOFF_MS table, exercising the `?? 150` fallback.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const fn = vi
       .fn()
       .mockRejectedValueOnce('string fault')
@@ -56,6 +57,10 @@ describe('withDbRetry', () => {
     await expect(withDbRetry(fn, 4)).resolves.toBe('ok');
     expect(fn).toHaveBeenCalledTimes(4);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('read failed'), 'string fault');
+    // Backoffs: BACKOFF_MS[0]=50, [1]=150, then index 2 is past the table → the `?? 150` fallback.
+    const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
+    expect(delays).toEqual([50, 150, 150]);
+    setTimeoutSpy.mockRestore();
     warn.mockRestore();
   });
 });

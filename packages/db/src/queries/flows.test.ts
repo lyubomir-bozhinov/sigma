@@ -202,13 +202,15 @@ describe('getFlows — sankey ordering', () => {
   });
 
   it('orders ribbons by company rank when two pairs share an authority (sort tiebreak)', async () => {
+    // Input is deliberately NOT in rank order (Бета before the bigger Алфа) so the comparator has to
+    // reorder: ribbons must come out in company-node order (Алфа's node ranks above Бета's by value).
+    // Without the `.sort()` the ribbons would keep input order — this assertion discriminates it.
     const pairs = [
-      { ...pairRow, bidder_id: 'eik:111', bidder_name: 'Алфа ООД', won_eur: 300000, contracts: 5 },
       { ...pairRow, bidder_id: 'eik:222', bidder_name: 'Бета ООД', won_eur: 200000, contracts: 3 },
+      { ...pairRow, bidder_id: 'eik:111', bidder_name: 'Алфа ООД', won_eur: 300000, contracts: 5 },
     ];
     const data = await getFlows(fakeDb(pairs), {});
-    expect(data.sankey.ribbons).toHaveLength(2);
-    // the two companies fan out from the single shared authority node
+    expect(data.sankey.ribbons.map((r) => r.toName)).toEqual(['Алфа ООД', 'Бета ООД']);
     expect(data.sankey.nodes.filter((n) => n.side === 'authority')).toHaveLength(1);
     expect(data.sankey.nodes.filter((n) => n.side === 'company')).toHaveLength(2);
   });

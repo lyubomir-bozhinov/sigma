@@ -168,10 +168,12 @@ function capDb(): { db: D1Database; sql: string[] } {
 }
 
 describe('listCompanies — backward pagination', () => {
-  it('reverses the page rows when walking backward through a before-cursor', async () => {
+  it('emits a backward page in reversed fetch order (before-cursor → reverse)', async () => {
+    // 3 rows, pageSize 2 → a full page so the reverse is observable (pageSize 1 would hide it).
     const rows = [
-      { ...filteredRows[0]!, bidder_id: 'eik:1', sort_value: 200 },
-      { ...filteredRows[0]!, bidder_id: 'eik:2', sort_value: 100 },
+      { ...filteredRows[0]!, bidder_id: 'eik:1', sort_value: 300 },
+      { ...filteredRows[0]!, bidder_id: 'eik:2', sort_value: 200 },
+      { ...filteredRows[0]!, bidder_id: 'eik:3', sort_value: 100 },
     ];
     const db = {
       prepare() {
@@ -183,16 +185,17 @@ describe('listCompanies — backward pagination', () => {
             return { results: rows as T[] };
           },
           async first<T>() {
-            return { n: 2 } as T;
+            return { n: 3 } as T;
           },
         };
       },
     } as unknown as D1Database;
-    const p1 = await listCompanies(db, { pageSize: 1 });
-    const p2 = await listCompanies(db, { pageSize: 1, cursor: p1.nextCursor! });
-    expect(p2.prevCursor).toBeTruthy();
-    const back = await listCompanies(db, { pageSize: 1, cursor: p2.prevCursor! });
-    expect(back.items).toHaveLength(1); // reverse branch ran
+    const fwd = await listCompanies(db, { pageSize: 2 });
+    const mid = await listCompanies(db, { pageSize: 2, cursor: fwd.nextCursor! });
+    expect(mid.prevCursor).toBeTruthy();
+    const back = await listCompanies(db, { pageSize: 2, cursor: mid.prevCursor! });
+    expect(back.items.map((i) => i.slug)).toEqual([...fwd.items].reverse().map((i) => i.slug));
+    expect(back.items).toHaveLength(2);
   });
 });
 

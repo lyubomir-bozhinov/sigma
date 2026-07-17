@@ -77,13 +77,22 @@ function run(url: string, init?: RequestInit) {
 }
 
 describe('app.ts response hardening', () => {
-  it('re-reads the body through the nonce-hardening path for a cacheable HTML response', async () => {
-    // Drives hardenResponse's `nonce !== null` branch: the body is buffered and re-hashed. (The
-    // prod-only CSP swap itself is asserted in security.test.ts; import.meta.env.PROD is false here,
-    // so nonceLessSecurityHeaders emits no CSP and the SSR nonce header is left intact.)
-    const { res, body } = await run('https://x/');
-    expect(res.headers.get('X-Edge-Cache')).toBe('MISS');
-    expect(body).toContain('window.__d=1;'); // body preserved through the buffered re-read
+  it('swaps the per-request nonce CSP for a hash-based one on a cacheable HTML response (prod)', async () => {
+    // Force prod so hardenResponse's `nonce !== null` branch actually rewrites the CSP: the SSR nonce
+    // must be gone and the trusted framework script re-authorized by its sha256 hash instead. (Under
+    // the default dev env nonceLessSecurityHeaders emits no CSP, so the swap would be unobservable and
+    // the test would pass even if the branch were skipped — hence the stub.)
+    vi.stubEnv('PROD', true);
+    try {
+      const { res, body } = await run('https://x/');
+      expect(res.headers.get('X-Edge-Cache')).toBe('MISS');
+      expect(body).toContain('window.__d=1;'); // body preserved through the buffered re-read
+      const csp = res.headers.get('Content-Security-Policy') ?? '';
+      expect(csp).not.toContain(`nonce-${NONCE}`); // the replayable nonce is gone
+      expect(csp).toContain("'sha256-"); // replaced by the framework script's hash
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('short-circuits an OPTIONS preflight before the loader', async () => {

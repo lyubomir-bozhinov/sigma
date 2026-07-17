@@ -251,13 +251,14 @@ describe('listAuthorities — base-source and entity-where branches', () => {
 });
 
 describe('listAuthorities — backward pagination', () => {
-  it('reverses the page rows when walking backward through a before-cursor', async () => {
-    // Two rows, pageSize 1 → hasMore. Page forward for a nextCursor, page again for a prevCursor
-    // (a real before-cursor minted with the internal sort token), then feed that back: keyset decodes
-    // dir='before' → reverse=true → the `if (ks.reverse) rows.reverse()` branch runs.
+  it('emits a backward page in reversed fetch order (before-cursor → reverse)', async () => {
+    // 3 rows, pageSize 2 → a FULL page (pageSize 1 would make slice+reverse a no-op and hide a broken
+    // reverse). Walk forward to mint a before-cursor, feed it back: keyset sets reverse=true and the
+    // page is emitted in reversed fetch order. Asserting the order flip guards `rows.reverse()` itself.
     const rows = [
-      { ...authorityRow, authority_id: 'auth:1', sort_value: 200 },
-      { ...authorityRow, authority_id: 'auth:2', sort_value: 100 },
+      { ...authorityRow, authority_id: 'auth:1', sort_value: 300 },
+      { ...authorityRow, authority_id: 'auth:2', sort_value: 200 },
+      { ...authorityRow, authority_id: 'auth:3', sort_value: 100 },
     ];
     const db = {
       prepare() {
@@ -269,16 +270,19 @@ describe('listAuthorities — backward pagination', () => {
             return { results: rows as T[] };
           },
           async first<T>() {
-            return { n: 2 } as T;
+            return { n: 3 } as T;
           },
         };
       },
     } as unknown as D1Database;
-    const page1 = await listAuthorities(db, { pageSize: 1 });
-    const page2 = await listAuthorities(db, { pageSize: 1, cursor: page1.nextCursor! });
-    expect(page2.prevCursor).toBeTruthy();
-    const back = await listAuthorities(db, { pageSize: 1, cursor: page2.prevCursor! });
-    expect(back.items).toHaveLength(1); // the reverse branch produced a valid page
+    const fwd = await listAuthorities(db, { pageSize: 2 });
+    const mid = await listAuthorities(db, { pageSize: 2, cursor: fwd.nextCursor! });
+    expect(mid.prevCursor).toBeTruthy();
+    const back = await listAuthorities(db, { pageSize: 2, cursor: mid.prevCursor! });
+    expect(back.items.map((i) => i.slug)).toEqual(
+      [...fwd.items].reverse().map((i) => i.slug), // reversed vs the forward page
+    );
+    expect(back.items).toHaveLength(2);
   });
 });
 

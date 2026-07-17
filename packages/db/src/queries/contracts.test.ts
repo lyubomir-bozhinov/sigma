@@ -235,10 +235,12 @@ describe('buildFilters (via listContracts)', () => {
     expect(page.items[0]!.sectorCode).toBeNull(); // r.cpv_code ? … : null
   });
 
-  it('reverses the page rows when walking backward through a before-cursor', async () => {
+  it('emits a backward page in reversed fetch order (before-cursor → reverse)', async () => {
+    // 3 rows, pageSize 2 → a full page so the reverse is observable (pageSize 1 would hide it).
     const rows = [
-      { ...contractRow, id: 'c:1', sort_value: 200 },
-      { ...contractRow, id: 'c:2', sort_value: 100 },
+      { ...contractRow, id: 'c:1', sort_value: 300 },
+      { ...contractRow, id: 'c:2', sort_value: 200 },
+      { ...contractRow, id: 'c:3', sort_value: 100 },
     ];
     const db = {
       prepare() {
@@ -250,16 +252,17 @@ describe('buildFilters (via listContracts)', () => {
             return { results: rows as T[] };
           },
           async first<T>() {
-            return { total: 2, eur: 1000, suspect: 0 } as T;
+            return { total: 3, eur: 1000, suspect: 0 } as T;
           },
         };
       },
     } as unknown as D1Database;
-    const p1 = await listContracts(db, { pageSize: 1 });
-    const p2 = await listContracts(db, { pageSize: 1, cursor: p1.nextCursor! });
-    expect(p2.prevCursor).toBeTruthy();
-    const back = await listContracts(db, { pageSize: 1, cursor: p2.prevCursor! });
-    expect(back.items).toHaveLength(1); // reverse branch ran
+    const fwd = await listContracts(db, { pageSize: 2 });
+    const mid = await listContracts(db, { pageSize: 2, cursor: fwd.nextCursor! });
+    expect(mid.prevCursor).toBeTruthy();
+    const back = await listContracts(db, { pageSize: 2, cursor: mid.prevCursor! });
+    expect(back.items.map((i) => i.id)).toEqual([...fwd.items].reverse().map((i) => i.id));
+    expect(back.items).toHaveLength(2);
   });
 });
 
