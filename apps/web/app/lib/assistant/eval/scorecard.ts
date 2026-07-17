@@ -26,7 +26,18 @@ export interface CaseResult {
 
 /** All checks pass → pass; none pass → fail; a partial (or a case with no checks) → warn. */
 export function evaluateCase({ case: c, run }: CaseRun): CaseResult {
-  const results = c.checks.map((check) => score(run, check));
+  // Score each check defensively: a scorer that throws on a malformed report becomes one failed check,
+  // never an exception that aborts the whole scorecard run.
+  const results = c.checks.map((check) => {
+    try {
+      return score(run, check);
+    } catch (err) {
+      return {
+        pass: false,
+        detail: `scorer threw: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  });
   const passed = results.filter((r) => r.pass).length;
   const total = results.length;
   const verdict: Verdict =

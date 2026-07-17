@@ -20,8 +20,19 @@ describe.skipIf(!EVAL_URL)('assistant accuracy (live)', () => {
     const cases = await loadCases();
     const runs: CaseRun[] = [];
     for (const c of cases) {
-      const run = await drive(c.prompt, { url: EVAL_URL! });
-      runs.push({ case: c, run });
+      // Isolate each turn: a network failure (or any throw) on one case is recorded as an errored run,
+      // never aborts the loop — the monitor must always reach the scorecard for the other N-1 cases.
+      try {
+        runs.push({ case: c, run: await drive(c.prompt, { url: EVAL_URL! }) });
+      } catch (err) {
+        console.warn(
+          `eval: case ${c.id} threw — ${err instanceof Error ? err.message : String(err)}`,
+        );
+        runs.push({
+          case: c,
+          run: { report: null, declined: false, error: { status: 0 }, chunks: [] },
+        });
+      }
     }
     const sc = scorecard(runs);
     // The scorecard is the deliverable — surfaced in the workflow log / artifact.

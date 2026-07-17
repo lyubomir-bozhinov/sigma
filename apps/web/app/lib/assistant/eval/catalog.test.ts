@@ -22,11 +22,18 @@ describe('catalog integrity', () => {
     for (const c of cases) expect(c.category, c.id).toMatch(/^[a-z][a-z-]*$/);
   });
 
-  it('has a dispatchable scorer for every check in the catalog', async () => {
+  it('gives every case at least one check', async () => {
+    const cases = await loadCases();
+    for (const c of cases) expect(c.checks.length, c.id).toBeGreaterThan(0);
+  });
+
+  it('never passes a check against an empty (no-report) run', async () => {
+    // Real invariant (not just "returns a boolean"): a run with no answer must fail every check — this
+    // catches a scorer mis-wired to pass unconditionally, which a typeof check would miss.
     const cases = await loadCases();
     for (const c of cases) {
       for (const check of c.checks) {
-        expect(typeof score(EMPTY, check).pass, `${c.id}:${check.kind}`).toBe('boolean');
+        expect(score(EMPTY, check).pass, `${c.id}:${check.kind}`).toBe(false);
       }
     }
   });

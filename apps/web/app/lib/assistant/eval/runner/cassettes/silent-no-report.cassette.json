@@ -1,0 +1,11 @@
+{
+  "note": "Silent failure (Q48 class): the turn produced no report and NO decline sentence — must not read as an honest decline.",
+  "status": 200,
+  "chunks": [
+    { "type": "start" },
+    { "type": "text-start", "id": "t0" },
+    { "type": "text-delta", "id": "t0", "delta": "Разглеждам въпроса." },
+    { "type": "text-end", "id": "t0" },
+    { "type": "finish" }
+  ]
+}
