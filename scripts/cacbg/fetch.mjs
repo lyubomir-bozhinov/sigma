@@ -24,11 +24,6 @@ import { assertScratchIgnored, SCRATCH, safeXmlFile, safeFolder } from './guard.
 const BASE = `https://${CACBG_HOST}`;
 const RAW = path.join(SCRATCH, 'raw');
 
-const arg = (name, def) => {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
-};
-
 // Parse + VALIDATE crawl options. An unvalidated Number() lets `--concurrency abc/0` become NaN/0 →
 // `Array.from({length})` spawns zero workers → the crawl fetches nothing and exits 0 (a silent no-op),
 // and a bad `--limit` (NaN, non-finite) silently skips the slice and fetches the whole register. Both
