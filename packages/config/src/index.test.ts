@@ -145,8 +145,8 @@ describe('procedureGroup (edge inputs)', () => {
   });
 
   it('falls back via the exported key constant, not a hard-coded literal', () => {
-    // A value that is only whitespace is falsy after trim? No — it is truthy, so it
-    // takes the map-miss path, still landing on the unknown bucket.
+    // A whitespace-only value trims to '' and an absent value is nullish — both land on the
+    // exported unknown key. Asserted against PROCEDURE_UNKNOWN_KEY, not a hard-coded 'unknown'.
     expect(procedureGroup('   ').key).toBe(PROCEDURE_UNKNOWN_KEY);
     expect(procedureGroup(undefined).key).toBe(PROCEDURE_UNKNOWN_KEY);
     expect(procedureGroup(null).key).toBe(PROCEDURE_UNKNOWN_KEY);

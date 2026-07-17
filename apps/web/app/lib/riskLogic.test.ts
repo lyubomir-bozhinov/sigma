@@ -35,7 +35,8 @@ describe('evaluateRiskIndicators', () => {
     });
 
     it('emits no competition flag when the bid count is unknown (bidsReceived null)', () => {
-      // admitted is null → neither competition branch fires (the `bidsReceived != null` false path).
+      // bidsReceived null → the `!= null` guard is false, so `admitted` stays null and neither
+      // `admitted === 1` competition check can match.
       const flags = evaluateRiskIndicators(buildContract({ bidsReceived: null, bidsRejected: 0 }));
       expect(flags).not.toContainEqual({ type: 'no_competition' });
       expect(flags).not.toContainEqual({ type: 'eu_no_competition' });

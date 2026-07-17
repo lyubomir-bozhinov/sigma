@@ -129,6 +129,54 @@ describe('getContract', () => {
     expect(detail?.lots?.estimatedTotalEur).toBe(12000);
   });
 
+  it('re-sorts lexically-collated lot labels numerically (1, 2 … 10, not 1, 10, 2)', async () => {
+    // SQL ORDER BY l.id collates the lot id as text, so multi-digit labels arrive lexically
+    // (10, 2, 1). The numeric-aware comparator must restore 1, 2, 10 — a plain localeCompare would
+    // give 1, 10, 2 and dropping the sort would leave 10, 2, 1, so only the numeric sort passes.
+    const lot = (n: string) => ({
+      lot_id: `lot:UNP-1:${n}`,
+      title: `Lot ${n}`,
+      estimated_value: null,
+      estimated_currency: 'EUR',
+      cpv_code: null,
+      contract_id: null,
+      signing_value_eur: null,
+      estimated_fx_rate: null,
+      bidder_name: null,
+      bidder_kind: null,
+      bidder_id: null,
+    });
+    const detail = await getContract(
+      fakeDb(baseContractRow, [lot('10'), lot('2'), lot('1')]),
+      'c:1',
+    );
+    expect(detail?.lots?.rows.map((r) => r.lotLabel)).toEqual(['1', '2', '10']);
+  });
+
+  it('collapses a consortium lot contractor name via the row kind', async () => {
+    // bidder_kind 'consortium' + a ';'-joined name must flow into entityName so the lot row shows
+    // „А и др." — a mutation that ignored the row kind would leave the raw joined string.
+    const detail = await getContract(
+      fakeDb(baseContractRow, [
+        {
+          lot_id: 'lot:UNP-1:1',
+          title: 'Lot 1',
+          estimated_value: null,
+          estimated_currency: 'EUR',
+          cpv_code: null,
+          contract_id: null,
+          signing_value_eur: null,
+          estimated_fx_rate: null,
+          bidder_name: 'А ООД; Б ЕООД',
+          bidder_kind: 'consortium',
+          bidder_id: 'eik:111111111',
+        },
+      ]),
+      'c:1',
+    );
+    expect(detail?.lots?.rows[0]?.contractorName).toBe('А ООД и др.');
+  });
+
   it('defaults a lot with no currency (and no tender currency) to the BGN peg', async () => {
     // estimated_currency ?? tender_currency is null → eurFromNative applies `currency || 'BGN'` and
     // converts via the peg (1.95583), so 1955.83 BGN → ~1000 EUR.
@@ -460,7 +508,9 @@ describe('getCompany', () => {
     expect(d.topAuthorities[0]!.sharePct).toBeCloseTo(0.6);
     expect(d.moreAuthorities).toBe(2); // authorities 4 − 2 listed
     expect(d.bids).toEqual({ one: 1, two: 2, three: 0, fourPlus: 1, unknown: 0 });
-    expect(d.procedureMix.length).toBeGreaterThan(0);
+    // Single procedure group (n:10, eur:90000, total 90000) → contracts/valueEur folded through and
+    // sharePct = 90000/90000. Asserting the shape, not just non-empty, guards toProcedureMix's fields.
+    expect(d.procedureMix[0]).toMatchObject({ contracts: 10, valueEur: 90000, sharePct: 1 });
     expect(d.participants).toEqual([]); // plain company → no participants
   });
 
@@ -613,7 +663,9 @@ describe('getAuthority', () => {
     expect(d.moreContractors).toBe(8); // suppliers 10 − 2 listed
     expect(d.sectors[0]).toMatchObject({ code: '45', valueEur: 120000 });
     expect(d.sectorsOther).toBeNull(); // only one sector, no tail
-    expect(d.procedureMix.length).toBeGreaterThan(0);
+    // Single procedure group (n:4, eur:60000, total 60000) → sharePct = 60000/60000. Shape assertion
+    // guards toProcedureMix's contracts/valueEur/sharePct against a coverage-only mutation.
+    expect(d.procedureMix[0]).toMatchObject({ contracts: 4, valueEur: 60000, sharePct: 1 });
   });
 
   it('rolls sectors beyond the top 6 into a „… още" tail bucket', async () => {

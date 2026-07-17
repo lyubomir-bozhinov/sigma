@@ -83,7 +83,17 @@ describe('RefreshWorkflow.run', () => {
   it('runs the full pipeline: stage, ingest, derive slice groups, count, and drop', async () => {
     eop.computeWorkerCatchupPlan.mockResolvedValue(PLAN);
     eop.ingestBucketWindow.mockResolvedValue([
-      dayResult({ baseContracts: 3, ocdsContracts: 2, parties: 1, lots: 4 }),
+      // All seven staged-row counts are non-zero (distinct values) so `staged` guards every term of
+      // the sum — including baseAmendments/ocdsAmendments, which no other case exercises.
+      dayResult({
+        baseContracts: 3,
+        baseTenders: 6,
+        baseAmendments: 5,
+        ocdsContracts: 2,
+        ocdsAmendments: 7,
+        parties: 1,
+        lots: 4,
+      }),
     ]);
     const wf = makeWorkflow();
     const names: string[] = [];
@@ -93,7 +103,7 @@ describe('RefreshWorkflow.run', () => {
       fakeStep(names) as never,
     );
 
-    expect(result).toMatchObject({ from: '2026-05-29', days: 1, staged: 10, derived: 42 });
+    expect(result).toMatchObject({ from: '2026-05-29', days: 1, staged: 28, derived: 42 });
     expect(ingest.createTransientStaging).toHaveBeenCalledWith({}, 'WORK_STAGING_SCHEMA_SQL');
     expect(ingest.runRefreshSliceStatementGroup).toHaveBeenCalledTimes(1);
     expect(ingest.refreshDerivedContractCount).toHaveBeenCalledOnce();

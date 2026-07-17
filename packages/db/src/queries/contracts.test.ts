@@ -287,13 +287,15 @@ describe('contractsSummary', () => {
 
 describe('listSingleOfferContracts', () => {
   it('orders by value in value mode and by date in recent mode', async () => {
-    const capture = (mode: 'recent' | 'value') => {
+    const capture = () => {
       const seen: string[] = [];
+      const binds: unknown[][] = [];
       const db = {
         prepare(sql: string) {
           seen.push(sql);
           return {
-            bind() {
+            bind(...args: unknown[]) {
+              binds.push(args);
               return this;
             },
             async all<T>() {
@@ -302,16 +304,19 @@ describe('listSingleOfferContracts', () => {
           };
         },
       } as D1Database;
-      return { db, seen };
+      return { db, seen, binds };
     };
-    const v = capture('value');
+    const v = capture();
     const items = await listSingleOfferContracts(v.db, 'value', 5);
     expect(items).toHaveLength(1);
     expect(v.seen[0]).toContain('ORDER BY c.amount_eur DESC');
+    expect(v.seen[0]).toContain('LIMIT ?');
+    expect(v.binds[0]).toEqual([5]); // the explicit limit reaches the LIMIT placeholder
 
-    const r = capture('recent');
+    const r = capture();
     await listSingleOfferContracts(r.db, 'recent');
     expect(r.seen[0]).toContain('ORDER BY COALESCE(c.signed_at, c.published_at) DESC');
+    expect(r.binds[0]).toEqual([10]); // default limit
   });
 });
 

@@ -263,7 +263,16 @@ describe('decodeCursor — malformed and hostile input', () => {
       .replace(/=+$/, '');
 
   it('rejects an oversized cursor before running the decode pipeline', () => {
-    expect(decodeCursor('after:' + 'A'.repeat(MAX_CURSOR_CHARS))).toBeNull();
+    // A raw run of 'A's is not decodable, so it would be rejected by the try/catch even without the
+    // length guard. Use a payload that WOULD decode to a valid tuple: only the length guard can reject
+    // it, so this actually exercises line 39 rather than the JSON.parse catch.
+    const oversizedButValid = enc([1, 'x'.repeat(600)]); // > MAX_CURSOR_CHARS once base64-expanded
+    expect(oversizedButValid.length).toBeGreaterThan(MAX_CURSOR_CHARS);
+    expect(decodeCursor(oversizedButValid)).toBeNull();
+    // A valid cursor just under the limit must still decode — the guard rejects only the oversized.
+    const underLimit = enc([1, 'y'.repeat(300)]);
+    expect(underLimit.length).toBeLessThanOrEqual(MAX_CURSOR_CHARS);
+    expect(decodeCursor(underLimit)).toMatchObject({ dir: 'after', value: 1 });
   });
   it('rejects a payload that is not valid JSON (decode pipeline throws)', () => {
     expect(decodeCursor('after:' + btoa('not json').replace(/=+$/, ''))).toBeNull();

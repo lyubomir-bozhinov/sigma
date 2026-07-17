@@ -230,6 +230,14 @@ describe('getSpendingTrend — funding scope, sectors toggle, empty inputs', () 
     expect(data.sectors).toEqual([]);
   });
 
+  it('resolves sector options from sector_totals when includeSectors defaults on', async () => {
+    // scopedFakeDb returns { division: '45' } for sector_totals; the default (includeSectors) path
+    // must resolve it to a SectorRef. Asserting the resolved code guards the true branch of line 109
+    // against a mutation that always returns [] (which the includeSectors:false case cannot detect).
+    const data = await getSpendingTrend(scopedFakeDb([]), {});
+    expect(data.sectors.map((s) => s.code)).toEqual(['45']);
+  });
+
   it('returns empty points and zero coverage when the series and coverage rows are absent', async () => {
     const db = {
       prepare(sql: string) {

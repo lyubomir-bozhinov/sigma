@@ -197,10 +197,12 @@ describe('streamContractSitemap', () => {
   });
 
   it('scopes a later page to its rowid window via page math', async () => {
-    // page 2 → rowid in (45000, 90000]; a row at 40000 is out of range, one at 45001 is in.
+    // page 2 → rowid in (45000, 90000]; 40000 is below the lower bound, 90001 above the upper bound,
+    // and only 45001 falls in the window — guarding BOTH lo and hi of the page-math computation.
     const contracts: ContractRow[] = [
       { rid: 40000, id: 'c:early', signed_at: '2026-01-01', published_at: null },
       { rid: 45001, id: 'c:inpage', signed_at: '2026-01-02', published_at: null },
+      { rid: 90001, id: 'c:overpage', signed_at: '2026-01-03', published_at: null },
     ];
     const xml = await streamContractSitemap(
       fakeDb({ contracts, asOf: null }),
@@ -208,7 +210,19 @@ describe('streamContractSitemap', () => {
       2,
     ).text();
     expect(xml).toContain('/contracts/inpage');
-    expect(xml).not.toContain('/contracts/early');
+    expect(xml).not.toContain('/contracts/early'); // below lo (45000)
+    expect(xml).not.toContain('/contracts/overpage'); // above hi (90000)
+  });
+
+  it('prefers signed_at over published_at for <lastmod> when both are present', async () => {
+    // The ?? chain is signed_at ?? published_at ?? fallback — with both dates set, signed_at must win.
+    // Guards against a swapped precedence, which the single-date rows above cannot detect.
+    const db = fakeDb({
+      contracts: [{ rid: 1, id: 'c:both', signed_at: '2026-03-05', published_at: '2026-03-09' }],
+      asOf: '2026-06-01',
+    });
+    const xml = await streamContractSitemap(db, 'https://x.test', 1).text();
+    expect(xml).toContain('/contracts/both</loc><lastmod>2026-03-05</lastmod>');
   });
 
   it('paginates across the CHUNK boundary within a page', async () => {

@@ -45,6 +45,8 @@ describe('withDbRetry', () => {
   it('logs a non-Error rejection verbatim and uses the default backoff once past the table', async () => {
     // A non-Error thrown value exercises the `: error` log branch, and a 4th attempt indexes past
     // the two-entry BACKOFF_MS table, exercising the `?? 150` fallback.
+    // Fake timers so the three real backoff sleeps don't add ~350ms of wall time to the suite.
+    vi.useFakeTimers();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const fn = vi
@@ -54,7 +56,9 @@ describe('withDbRetry', () => {
       .mockRejectedValueOnce('string fault')
       .mockResolvedValue('ok');
 
-    await expect(withDbRetry(fn, 4)).resolves.toBe('ok');
+    const result = withDbRetry(fn, 4);
+    await vi.runAllTimersAsync(); // flush the queued backoff delays
+    await expect(result).resolves.toBe('ok');
     expect(fn).toHaveBeenCalledTimes(4);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('read failed'), 'string fault');
     // Backoffs: BACKOFF_MS[0]=50, [1]=150, then index 2 is past the table → the `?? 150` fallback.
@@ -62,5 +66,6 @@ describe('withDbRetry', () => {
     expect(delays).toEqual([50, 150, 150]);
     setTimeoutSpy.mockRestore();
     warn.mockRestore();
+    vi.useRealTimers();
   });
 });
