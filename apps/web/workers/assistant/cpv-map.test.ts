@@ -45,11 +45,14 @@ describe('mapSectorWord', () => {
     ['софтуер', ['48', '72', '30', '32', '64']],
     ['енергетика', ['09', '76', '14']],
     ['транспорт', ['34', '60', '63']],
-  ] as const)('pins category synonym "%s" to its exact @sigma/config divisions', (word, divisions) => {
-    const r = mapSectorWord(word);
-    expect(r.matchType).toBe('category');
-    expect(r.divisions).toEqual(divisions);
-  });
+  ] as const)(
+    'pins category synonym "%s" to its exact @sigma/config divisions',
+    (word, divisions) => {
+      const r = mapSectorWord(word);
+      expect(r.matchType).toBe('category');
+      expect(r.divisions).toEqual(divisions);
+    },
+  );
 
   it('normalizes case, whitespace and NFC form to the same mapping', () => {
     const base = mapSectorWord('строителство');
