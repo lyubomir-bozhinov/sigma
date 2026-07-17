@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredReport } from '@sigma/report';
-import { loader } from './weeks.$iso';
+import { headers, loader } from './weeks.$iso';
+
+describe('weeks.$iso headers', () => {
+  it('caches with a bounded s-maxage + stale-while-revalidate, NOT immutable, so re-issued weeks propagate (#81 M1)', () => {
+    const cc = headers()['Cache-Control'];
+    expect(cc).toContain('s-maxage=86400');
+    expect(cc).toContain('stale-while-revalidate=604800');
+    expect(cc).not.toContain('immutable');
+  });
+});
 
 // A minimal StoredReport in the canonical @sigma/report shape (provenance carries freshness/model/sql).
 const STORED = {

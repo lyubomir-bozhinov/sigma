@@ -6,11 +6,18 @@ import { ReportBlockRenderer } from '../components/ReportBlockRenderer';
 import { ReportAiWatermark } from '../components/ReportAiWatermark';
 import { DigestFooter } from '../components/DigestFooter';
 import { DigestExplore } from '../components/DigestExplore';
+import { publicCache } from '../lib/cache';
 import { seoMeta } from '../lib/meta';
 import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 
-// A settled week's artifact is immutable; the deterministic key means a re-issue overwrites in place.
-const IMMUTABLE = 'public, s-maxage=31536000, immutable';
+// A settled week's artifact is effectively static, BUT the producer re-issues a corrected digest in
+// place at the SAME key `weeks/{ISO}.json` (status „коригирано", spec §10.4). `immutable` would tell
+// the edge/browser never to revalidate, so a correction would not reach readers for up to a year
+// (#81 strict review M1). Use a bounded `s-maxage` + long `stale-while-revalidate` instead: near-static
+// performance (served from the edge, revalidated in the background) while a late-data correction still
+// propagates within a day. When `StoredReport` gains a settled/`refreshedAt` signal, a truly-settled
+// week can go back to `immutable`.
+const DIGEST_CACHE = publicCache(86_400, 604_800); // s-maxage 1d, stale-while-revalidate 7d
 
 export function meta({ matches, data: d }: Route.MetaArgs) {
   const title = d ? `${d.report.title} — Седмицата в пари` : 'Седмичен обзор';
@@ -24,7 +31,7 @@ export function meta({ matches, data: d }: Route.MetaArgs) {
 }
 
 export function headers() {
-  return { 'Cache-Control': IMMUTABLE };
+  return { 'Cache-Control': DIGEST_CACHE };
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
