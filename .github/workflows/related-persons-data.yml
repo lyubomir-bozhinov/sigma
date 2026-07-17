@@ -12,7 +12,8 @@ name: Related-persons data foundation (build + ship)
 # never values): CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID + SIGMA_D1_ID, and the SIGMA_D1_NAME var.
 # Fails loudly if they are absent.  # pragma: allowlist secret The full crawl of register.cacbg.bg is slow (a polite crawl of the
 # whole corpus); in steady state the raw XML lives in R2 (ADR-0006) so the crawl is incremental — the
-# `sigma-etl` Worker owns that. Here `full_crawl` forces a from-scratch corpus rebuild.
+# `sigma-etl` Worker owns that. Here `full_crawl` runs the corpus crawl, which RESUMES from the cached raw
+# XML (fetch.mjs skips files already on disk) — it fills gaps, not a from-scratch rebuild unless the cache is cleared.
 
 on:
   workflow_dispatch:
@@ -23,7 +24,7 @@ on:
         options: [dev, staging, production]
         default: dev
       full_crawl:
-        description: Re-crawl the whole CACBG corpus from scratch (slow). Off = extract from the existing raw cache.
+        description: Crawl the CACBG corpus (slow). RESUMES from the cached raw XML — fetch.mjs skips files already on disk, so this fills gaps rather than re-fetching from scratch (clear the cache for a true rebuild). Off = extract from the existing raw cache without crawling.
         type: boolean
         default: false
 
