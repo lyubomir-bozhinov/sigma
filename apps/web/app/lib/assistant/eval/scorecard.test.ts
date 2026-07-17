@@ -27,28 +27,28 @@ const kase = (over: Partial<EvalCase> & Pick<EvalCase, 'id' | 'checks'>): EvalCa
 });
 
 describe('evaluateCase', () => {
-  it('✅ when every check passes', () => {
+  it('pass when every check passes', () => {
     const r = evaluateCase({
       case: kase({
         id: 'a',
         checks: [numeric({ expect: 52_100_000_000, tolerancePct: 1 })],
-        baseline: '✅',
+        baseline: 'pass',
       }),
       run: answered(52_100_000_000),
     });
-    expect(r.verdict).toBe('✅');
+    expect(r.verdict).toBe('pass');
     expect(r.regressed).toBe(false);
   });
 
-  it('❌ when every check fails', () => {
+  it('fail when every check fails', () => {
     const r = evaluateCase({
       case: kase({ id: 'b', checks: [numeric({ expect: 1, tolerancePct: 1 })] }),
       run: answered(999),
     });
-    expect(r.verdict).toBe('❌');
+    expect(r.verdict).toBe('fail');
   });
 
-  it('⚠️ on a partial pass', () => {
+  it('warn on a partial pass', () => {
     const r = evaluateCase({
       case: kase({
         id: 'c',
@@ -56,26 +56,26 @@ describe('evaluateCase', () => {
       }),
       run: answered(5), // numeric passes, contentExcludes fails (label „Общо" present)
     });
-    expect(r.verdict).toBe('⚠️');
+    expect(r.verdict).toBe('warn');
     expect(r.passed).toBe(1);
     expect(r.total).toBe(2);
   });
 
-  it('flags a regression when a ✅ baseline no longer passes', () => {
+  it('flags a regression when a passing baseline no longer passes', () => {
     const r = evaluateCase({
-      case: kase({ id: 'd', checks: [numeric({ expect: 5, tolerancePct: 1 })], baseline: '✅' }),
+      case: kase({ id: 'd', checks: [numeric({ expect: 5, tolerancePct: 1 })], baseline: 'pass' }),
       run: answered(999),
     });
-    expect(r.verdict).toBe('❌');
+    expect(r.verdict).toBe('fail');
     expect(r.regressed).toBe(true);
   });
 
-  it('does not flag a regression when the baseline was already ❌', () => {
+  it('does not flag a regression when the baseline was already fail', () => {
     const r = evaluateCase({
-      case: kase({ id: 'e', checks: [declines()], baseline: '❌' }),
-      run: answered(1), // produced a report instead of declining → still ❌, but baseline was ❌
+      case: kase({ id: 'e', checks: [declines()], baseline: 'fail' }),
+      run: answered(1), // produced a report instead of declining → still fail, but baseline was fail
     });
-    expect(r.verdict).toBe('❌');
+    expect(r.verdict).toBe('fail');
     expect(r.regressed).toBe(false);
   });
 });
@@ -83,19 +83,23 @@ describe('evaluateCase', () => {
 describe('scorecard', () => {
   const runs: CaseRun[] = [
     {
-      case: kase({ id: 'ok', checks: [numeric({ expect: 5, tolerancePct: 1 })], baseline: '✅' }),
+      case: kase({ id: 'ok', checks: [numeric({ expect: 5, tolerancePct: 1 })], baseline: 'pass' }),
       run: answered(5),
     },
     {
-      case: kase({ id: 'reg', checks: [numeric({ expect: 5, tolerancePct: 1 })], baseline: '✅' }),
+      case: kase({
+        id: 'reg',
+        checks: [numeric({ expect: 5, tolerancePct: 1 })],
+        baseline: 'pass',
+      }),
       run: answered(9),
     },
-    { case: kase({ id: 'dec', checks: [declines()], baseline: '❌' }), run: declinedRun },
+    { case: kase({ id: 'dec', checks: [declines()], baseline: 'fail' }), run: declinedRun },
   ];
 
   it('summarises verdicts and collects regressions', () => {
     const sc = scorecard(runs);
-    expect(sc.summary).toEqual({ '✅': 2, '⚠️': 0, '❌': 1, total: 3 });
+    expect(sc.summary).toEqual({ pass: 2, warn: 0, fail: 1, total: 3 });
     expect(sc.regressions.map((r) => r.id)).toEqual(['reg']);
   });
 

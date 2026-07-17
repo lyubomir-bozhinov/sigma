@@ -16,7 +16,7 @@ export interface CaseResult {
   category: string;
   verdict: Verdict;
   baseline?: Verdict;
-  /** True when this case anchored a ✅ baseline but no longer passes — the signal that matters. */
+  /** True when this case anchored a passing baseline but no longer passes — the signal that matters. */
   regressed: boolean;
   passed: number;
   total: number;
@@ -24,19 +24,19 @@ export interface CaseResult {
   failures: string[];
 }
 
-/** All pass → ✅; none pass → ❌; a partial (or a case with no checks) → ⚠️. */
+/** All checks pass → pass; none pass → fail; a partial (or a case with no checks) → warn. */
 export function evaluateCase({ case: c, run }: CaseRun): CaseResult {
   const results = c.checks.map((check) => score(run, check));
   const passed = results.filter((r) => r.pass).length;
   const total = results.length;
   const verdict: Verdict =
-    total === 0 || passed < total ? (passed === 0 && total > 0 ? '❌' : '⚠️') : '✅';
+    total === 0 || passed < total ? (passed === 0 && total > 0 ? 'fail' : 'warn') : 'pass';
   return {
     id: c.id,
     category: c.category,
     verdict,
     baseline: c.baseline,
-    regressed: c.baseline === '✅' && verdict !== '✅',
+    regressed: c.baseline === 'pass' && verdict !== 'pass',
     passed,
     total,
     failures: results.filter((r) => !r.pass).map((r) => r.detail),
@@ -45,16 +45,19 @@ export function evaluateCase({ case: c, run }: CaseRun): CaseResult {
 
 export interface Scorecard {
   results: CaseResult[];
-  summary: { '✅': number; '⚠️': number; '❌': number; total: number };
+  summary: { pass: number; warn: number; fail: number; total: number };
   regressions: CaseResult[];
 }
 
 export function scorecard(runs: CaseRun[]): Scorecard {
   const results = runs.map(evaluateCase);
-  const summary = { '✅': 0, '⚠️': 0, '❌': 0, total: results.length };
+  const summary = { pass: 0, warn: 0, fail: 0, total: results.length };
   for (const r of results) summary[r.verdict] += 1;
   return { results, summary, regressions: results.filter((r) => r.regressed) };
 }
+
+// Verdict → log glyph. The ONLY place emoji live — the code and the case data use plain words.
+const ICON: Record<Verdict, string> = { pass: '✅', warn: '⚠️', fail: '❌' };
 
 /** A Markdown scorecard: a per-case table, a summary line, and an explicit regressions list. */
 export function renderScorecard(sc: Scorecard): string {
@@ -64,12 +67,12 @@ export function renderScorecard(sc: Scorecard): string {
   sc.results.forEach((r, i) => {
     const note = r.failures.length > 0 ? r.failures.join('; ') : `${r.passed}/${r.total}`;
     lines.push(
-      `| ${i + 1} | ${r.category} | ${r.verdict} | ${r.baseline ?? '—'} | ${r.regressed ? '⬇️' : ''} | ${note} |`,
+      `| ${i + 1} | ${r.category} | ${ICON[r.verdict]} | ${r.baseline ? ICON[r.baseline] : '—'} | ${r.regressed ? '⬇️' : ''} | ${note} |`,
     );
   });
   lines.push('');
   lines.push(
-    `**Общо ${sc.summary.total}** — ✅ ${sc.summary['✅']} · ⚠️ ${sc.summary['⚠️']} · ❌ ${sc.summary['❌']}` +
+    `**Общо ${sc.summary.total}** — ✅ ${sc.summary.pass} · ⚠️ ${sc.summary.warn} · ❌ ${sc.summary.fail}` +
       (sc.regressions.length > 0
         ? ` · **регресии: ${sc.regressions.length}** (${sc.regressions.map((r) => r.id).join(', ')})`
         : ' · без регресии'),

@@ -35,14 +35,14 @@ describe('assembleCases', () => {
     const [only] = assembleCases([
       {
         category: 'honesty',
-        defs: [{ id: 'h1', prompt: 'p', checks: [], baseline: '❌', knownLimitation: 'annexes' }],
+        defs: [{ id: 'h1', prompt: 'p', checks: [], baseline: 'fail', knownLimitation: 'annexes' }],
       },
     ]);
     expect(only).toEqual({
       id: 'h1',
       prompt: 'p',
       checks: [],
-      baseline: '❌',
+      baseline: 'fail',
       knownLimitation: 'annexes',
       category: 'honesty',
     });
