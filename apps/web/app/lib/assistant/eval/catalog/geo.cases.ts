@@ -12,7 +12,7 @@ export const cases: CaseDef[] = [
     prompt: 'Как се разпределят разходите по области?',
     // Sofia leads; the grand total across regions is the system total.
     checks: [numeric({ expect: 52_100_000_000, tolerancePct: 4 }), contentIncludes('София')],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
   {
@@ -25,7 +25,7 @@ export const cases: CaseDef[] = [
       numeric({ expect: 20_500_000_000, tolerancePct: 12 }),
       contentExcludes('Пътна инфраструктура'),
     ],
-    baseline: '❌',
+    baseline: 'fail',
     knownLimitation: 'Гео-класификацията беше ненадеждна (Q41); проверяваме симптома в отговора.',
   },
 ];

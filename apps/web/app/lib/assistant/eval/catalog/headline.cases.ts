@@ -10,14 +10,14 @@ export const cases: CaseDef[] = [
     id: 'headline-total-spend',
     prompt: 'Каква е общата стойност на всички обществени поръчки?',
     checks: [numeric({ expect: 52_100_000_000, tolerancePct: 3 })],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
   {
     id: 'headline-contract-count',
     prompt: 'Колко договора има общо в системата?',
     checks: [numeric({ expect: 195_015, tolerancePct: 3 })],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
   {
@@ -27,14 +27,14 @@ export const cases: CaseDef[] = [
       numeric({ expect: 4_449, tolerancePct: 3 }),
       numeric({ expect: 17_540, tolerancePct: 3 }),
     ],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
   {
     id: 'headline-avg-contract-value',
     prompt: 'Каква е средната стойност на един договор?',
     checks: [numeric({ expect: 257_000, tolerancePct: 10 })],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
   {
@@ -42,7 +42,7 @@ export const cases: CaseDef[] = [
     prompt: 'Колко е похарчено за строителство общо?',
     // CPV 45; reconciles with Q21. Wider tolerance — sector totals move with re-ETL.
     checks: [numeric({ expect: 19_400_000_000, tolerancePct: 6 })],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
   {
@@ -50,7 +50,7 @@ export const cases: CaseDef[] = [
     prompt: 'Коя година е с най-голям общ разход?',
     // The answer is a year (2025) + its total; assert the report renders (no 500) and the total lands.
     checks: [reportPresent(), numeric({ expect: 11_100_000_000, tolerancePct: 8 })],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: V,
   },
 ];

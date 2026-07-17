@@ -9,7 +9,8 @@
 // wire carries no SQL (see ../run-output.ts), so there are deliberately no SQL-level checks here; those
 // live in the deterministic guard/golden suites.
 
-export type Verdict = '✅' | '⚠️' | '❌';
+// Plain-word verdicts in code; the scorecard maps them to ✅/⚠️/❌ only when rendering the log.
+export type Verdict = 'pass' | 'warn' | 'fail';
 
 /**
  * A report-content check. Discriminated by `kind` so the scorer dispatch (../scorers) is exhaustive

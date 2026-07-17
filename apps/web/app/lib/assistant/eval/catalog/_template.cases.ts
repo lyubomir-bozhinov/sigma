@@ -12,14 +12,14 @@ export const cases: CaseDef[] = [
     id: 'template-total-spend',
     prompt: 'Каква е общата стойност на всички обществени поръчки?',
     checks: [numeric({ expect: 52_100_000_000, tolerancePct: 3 })],
-    baseline: '✅',
+    baseline: 'pass',
     dataVersion: 'dev-2026-07',
   },
   {
     id: 'template-annexes-unsupported',
     prompt: 'Има ли договори, отбелязани като съмнителни анекси?',
     checks: [declines()],
-    baseline: '❌',
+    baseline: 'fail',
     knownLimitation:
       'Рисковият слой (анекси) още не е в обхвата на асистента — трябва да откаже, не да съчини.',
   },
@@ -33,6 +33,6 @@ export const cases: CaseDef[] = [
       contentExcludes('Агенция „Пътна инфраструктура"'),
       contentIncludes('.'),
     ],
-    baseline: '❌',
+    baseline: 'fail',
   },
 ];
