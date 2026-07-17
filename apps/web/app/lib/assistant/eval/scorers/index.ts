@@ -54,13 +54,17 @@ function numericItems(report: ResolvedReport): NumericItem[] {
         }
         break;
       case 'bar':
-        for (const p of b.points) out.push({ label: String(p.label ?? ''), value: p.value });
+        for (const p of b.points)
+          if (Number.isFinite(p.value)) out.push({ label: String(p.label ?? ''), value: p.value });
         break;
       case 'timeseries':
-        for (const p of b.points) out.push({ label: String(p.period ?? ''), value: p.value });
+        for (const p of b.points)
+          if (Number.isFinite(p.value)) out.push({ label: String(p.period ?? ''), value: p.value });
         break;
       case 'flows':
-        for (const e of b.edges) out.push({ label: `${e.from}→${e.to}`, value: e.valueEur });
+        for (const e of b.edges)
+          if (Number.isFinite(e.valueEur))
+            out.push({ label: `${e.from}→${e.to}`, value: e.valueEur });
         break;
       case 'table':
         for (const row of b.rows) {
@@ -73,14 +77,18 @@ function numericItems(report: ResolvedReport): NumericItem[] {
       case 'text':
       case 'callout':
         break;
+      default:
+        assertNever(b);
     }
   }
   return out;
 }
 
-/** All human-readable text a report renders — titles, prose, labels, string cells — for content checks. */
+/** The report's ANSWER text — title + block prose/labels/string cells — for content checks. Deliberately
+ *  EXCLUDES report.question (the echoed prompt): a content check must inspect the answer, not the ask, or
+ *  contentIncludes/Excludes would match words the user typed (e.g. a prompt that names „DROP"). */
 function reportText(report: ResolvedReport): string {
-  const parts: string[] = [report.title, report.question];
+  const parts: string[] = [report.title];
   for (const b of report.blocks) {
     switch (b.type) {
       case 'text':
@@ -109,6 +117,8 @@ function reportText(report: ResolvedReport): string {
       case 'flows':
         for (const e of b.edges) parts.push(e.from, e.to);
         break;
+      default:
+        assertNever(b);
     }
   }
   return parts.join('\n');
@@ -118,6 +128,10 @@ function noReport(run: RunOutput): string {
   return `no report (declined=${run.declined}${run.error ? `, status ${run.error.status}` : ''})`;
 }
 
+/** Numeric tolerance check. With `metric` it matches only items whose label contains it; WITHOUT `metric`
+ *  it scans EVERY number in the report and passes if any is within tolerance — handy when the answer's
+ *  label is unknown, but it can pass a wrong headline if an unrelated sibling number coincidentally lands
+ *  in range. Prefer adding `metric` (and a tight band) once a live run reveals the real labels. */
 function scoreNumeric(run: RunOutput, check: Extract<Check, { kind: 'numeric' }>): CheckResult {
   if (!run.report) return { pass: false, detail: noReport(run) };
   const metric = check.metric?.toLowerCase();
@@ -162,12 +176,14 @@ function scoreReconciles(
       case 'bar':
       case 'timeseries':
         for (const p of b.points) {
+          if (!Number.isFinite(p.value)) continue; // a non-number point can't sum — never string-concat
           partsSum += p.value;
           partsCount += 1;
         }
         break;
       case 'flows':
         for (const e of b.edges) {
+          if (!Number.isFinite(e.valueEur)) continue;
           partsSum += e.valueEur;
           partsCount += 1;
         }
@@ -228,7 +244,13 @@ function scoreContent(
   check: Extract<Check, { kind: 'contentIncludes' | 'contentExcludes' }>,
 ): CheckResult {
   if (!run.report) return { pass: false, detail: noReport(run) };
-  const re = new RegExp(check.pattern, check.flags);
+  let re: RegExp;
+  try {
+    re = new RegExp(check.pattern, check.flags);
+  } catch {
+    // A malformed pattern (repo-authored) fails the case with a clear reason, never crashes the run.
+    return { pass: false, detail: `invalid regex /${check.pattern}/${check.flags ?? ''}` };
+  }
   const matched = re.test(reportText(run.report));
   const want = check.kind === 'contentIncludes';
   return {

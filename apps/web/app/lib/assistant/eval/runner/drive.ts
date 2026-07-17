@@ -76,9 +76,16 @@ export function interpret(chunks: unknown[], status: number): RunOutput {
     } else if (c.type === 'tool-output-available') {
       const output = c.output;
       // Only emit_report carries an object output with { ok, report }; run_sql's is a plain string.
-      if (isRecord(output) && output.ok === true && isRecord(output.report)) {
-        // Trust boundary: the resolved report is server-authored and already validated server-side
-        // (the dock renders it as-is); we narrow the shape via unknown, not re-validate every cell.
+      // Trust boundary: the report is server-authored + validated server-side, but a buggy/hostile
+      // endpoint could still send a malformed one — so confirm the one shape the scorers iterate (`blocks`
+      // is an array) before accepting it. A report that fails this stays null → scored as a no-report
+      // failure, never a crash mid-run.
+      if (
+        isRecord(output) &&
+        output.ok === true &&
+        isRecord(output.report) &&
+        Array.isArray(output.report.blocks)
+      ) {
         report = output.report as unknown as ResolvedReport;
       }
     }

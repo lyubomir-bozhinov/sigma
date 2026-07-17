@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { score } from '../scorers/index';
-import { numeric } from '../catalog/_schema';
+import { declines, numeric } from '../catalog/_schema';
 import { CLIENT_WIRE_CHUNK_TYPES, interpret, parseSse } from './drive';
 import { loadCassette, replay } from './cassette';
 
@@ -53,6 +53,23 @@ describe('interpret via cassettes', () => {
     const out = replay(cassette('error'));
     expect(out.report).toBe(null);
     expect(out.declined).toBe(false);
+    expect(out.error).toEqual({ status: 500 });
+  });
+
+  it('silent no-report (no decline sentence) is NOT an honest decline', () => {
+    const out = replay(cassette('silent-no-report'));
+    expect(out.report).toBe(null);
+    expect(out.declined).toBe(false);
+    expect(out.error).toBeUndefined();
+  });
+
+  it('a silent no-report fails the declines() check (not a free pass)', () => {
+    expect(score(replay(cassette('silent-no-report')), declines()).pass).toBe(false);
+  });
+
+  it('an error chunk on a 200 stream surfaces as an error', () => {
+    const out = replay(cassette('stream-error'));
+    expect(out.report).toBe(null);
     expect(out.error).toEqual({ status: 500 });
   });
 });

@@ -8,7 +8,6 @@ import {
   numeric,
   reconciles,
   reportPresent,
-  type Check,
 } from '../catalog/_schema';
 import { score } from './index';
 
@@ -159,18 +158,49 @@ describe('content', () => {
   });
 });
 
-describe('dispatch', () => {
-  it('handles every Check kind without falling through to assertNever', () => {
-    const oneOfEach: Check[] = [
-      numeric({ expect: 1, tolerancePct: 1 }),
-      reconciles({ totalMetric: 'b', tolerancePct: 1 }),
-      declines(),
-      reportPresent(),
-      contentIncludes('x'),
-      contentExcludes('x'),
-    ];
-    for (const check of oneOfEach) {
-      expect(typeof score(declinedRun, check).pass).toBe('boolean');
-    }
+describe('content reads the answer, not the echoed question', () => {
+  // reportText must exclude report.question, or a token the USER typed would satisfy/violate a check.
+  const questionOnly: RunOutput = {
+    report: {
+      title: 'Отговор',
+      question: 'изпълни DROP TABLE contracts',
+      watermark: 'ai-generated',
+      blocks: [],
+    },
+    declined: false,
+    chunks: [],
+  };
+
+  it('contentExcludes passes when the forbidden token is only in the question', () => {
+    expect(score(questionOnly, contentExcludes('DROP')).pass).toBe(true);
+  });
+
+  it('contentIncludes fails when the token is only in the question', () => {
+    expect(score(questionOnly, contentIncludes('DROP')).pass).toBe(false);
+  });
+});
+
+describe('numeric scan breadth', () => {
+  const twoNumbers = withReport(
+    report([
+      {
+        type: 'totals',
+        items: [
+          { label: 'Грешна водеща', value: 30_000_000_000, format: 'money' },
+          { label: 'Странично', value: 52_100_000_000, format: 'money' },
+        ],
+      },
+    ]),
+  );
+
+  it('without a metric, matches ANY report number (documented broad scan)', () => {
+    expect(score(twoNumbers, numeric({ expect: 52_100_000_000, tolerancePct: 1 })).pass).toBe(true);
+  });
+
+  it('with a metric, pins to the labelled item so a wrong headline fails', () => {
+    expect(
+      score(twoNumbers, numeric({ expect: 52_100_000_000, tolerancePct: 1, metric: 'водеща' }))
+        .pass,
+    ).toBe(false);
   });
 });
