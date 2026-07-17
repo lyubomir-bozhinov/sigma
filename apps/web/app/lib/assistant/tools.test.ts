@@ -218,6 +218,27 @@ describe('run_sql — guard and error paths', () => {
     expect(c.rowsRead).toBe(0); // meta absent → +0
   });
 
+  it('tolerates a driver that returns no results array at all (results ?? [])', async () => {
+    const c: ToolContext = {
+      db: {
+        prepare() {
+          return {
+            bind() {
+              return this;
+            },
+            async all() {
+              return {}; // neither results nor meta
+            },
+          };
+        },
+      } as unknown as D1Database,
+      results: [],
+    };
+    const out = await runTool('run_sql', { sql: 'SELECT n FROM contracts' }, c);
+    expect(out).toContain('R1'); // an empty result set, still handled
+    expect(c.results[0]).toMatchObject({ rows: [] });
+  });
+
   it('returns a generic error (never the raw D1 message) when the query throws', async () => {
     const c: ToolContext = {
       db: {

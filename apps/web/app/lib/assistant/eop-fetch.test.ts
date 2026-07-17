@@ -101,6 +101,15 @@ describe('eop-fetch — parse and error branches', () => {
     const files = await fetchEopDay('2024-01-15', fetchImpl);
     expect(files.every((f) => f.error === 'network boom')).toBe(true);
   });
+
+  it('labels a non-Error thrown value with the generic fetch-error message', async () => {
+    // A thrown string (not an Error instance) exercises the `: 'fetch error'` fallback.
+    const fetchImpl: FetchImpl = async () => {
+      throw 'socket reset';
+    };
+    const files = await fetchEopDay('2024-01-15', fetchImpl);
+    expect(files.every((f) => f.error === 'fetch error')).toBe(true);
+  });
 });
 
 describe('eop-fetch — invalid JSON', () => {
