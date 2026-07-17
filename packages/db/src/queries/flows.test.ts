@@ -178,8 +178,20 @@ describe('getFlows — sankey ordering', () => {
     // Two DISTINCT authorities are needed for the authority-column `.sort()` comparator to run at all
     // (a single authority key never invokes it). The higher-total authority ranks to the top (index 0).
     const pairs = [
-      { ...pairRow, authority_id: 'auth:small', authority_name: 'Малко ведомство', won_eur: 100000, bidder_id: 'eik:a' },
-      { ...pairRow, authority_id: 'auth:big', authority_name: 'Голямо ведомство', won_eur: 900000, bidder_id: 'eik:b' },
+      {
+        ...pairRow,
+        authority_id: 'auth:small',
+        authority_name: 'Малко ведомство',
+        won_eur: 100000,
+        bidder_id: 'eik:a',
+      },
+      {
+        ...pairRow,
+        authority_id: 'auth:big',
+        authority_name: 'Голямо ведомство',
+        won_eur: 900000,
+        bidder_id: 'eik:b',
+      },
     ];
     const data = await getFlows(fakeDb(pairs), {});
     const auth = data.sankey.nodes.filter((n) => n.side === 'authority');
