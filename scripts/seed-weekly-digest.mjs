@@ -44,8 +44,8 @@ function storedReport(iso, asOf) {
   const current = daySeries(iso, total / 4);
   const previous = daySeries(iso + '-prev', total / 4);
   const report = {
-    title: `Седмичен дайджест — ${iso}`,
-    question: 'Седмичен дайджест на обществените поръчки в България',
+    title: `Седмичен обзор — ${iso}`,
+    question: 'Седмичен обзор на обществените поръчки в България',
     watermark: 'ai-generated',
     blocks: [
       {
@@ -66,7 +66,11 @@ function storedReport(iso, asOf) {
         items: [
           { label: 'Обща стойност', value: total, format: 'money' },
           { label: 'Договори', value: 40 + Math.round(rnd() * 200), format: 'number' },
-          { label: 'Промяна спрямо предходната седмица', value: rnd() * 0.4 - 0.2, format: 'percent' },
+          {
+            label: 'Промяна спрямо предходната седмица',
+            value: rnd() * 0.4 - 0.2,
+            format: 'percent',
+          },
           { label: 'Най-голяма поръчка', value: Math.round(total * 0.3), format: 'money' },
           { label: 'Дял с една оферта', value: 0.2 + rnd() * 0.3, format: 'percent' },
         ],
@@ -76,17 +80,37 @@ function storedReport(iso, asOf) {
         type: 'table',
         columns: [
           { key: 'subject', header: 'Предмет', format: 'text' },
-          { key: 'authority', header: 'Възложител', format: 'text', link: { kind: 'authority', idCol: 'authority_id' } },
-          { key: 'bidder', header: 'Изпълнител', format: 'text', link: { kind: 'company', idCol: 'bidder_id' } },
+          {
+            key: 'authority',
+            header: 'Възложител',
+            format: 'text',
+            link: { kind: 'authority', idCol: 'authority_id' },
+          },
+          {
+            key: 'bidder',
+            header: 'Изпълнител',
+            format: 'text',
+            link: { kind: 'company', idCol: 'bidder_id' },
+          },
           { key: 'amount', header: 'Стойност', format: 'money' },
         ],
         rows: [
           {
-            cells: ['Ремонт на път II-86', 'Министерство на финансите', 'Пътстрой ЕООД', Math.round(total * 0.3)],
+            cells: [
+              'Ремонт на път II-86',
+              'Министерство на финансите',
+              'Пътстрой ЕООД',
+              Math.round(total * 0.3),
+            ],
             links: [null, 'auth:000695089', 'eik:131234567', null],
           },
           {
-            cells: ['Доставка на ИТ оборудване', 'Община Пловдив', 'Технокар АД', Math.round(total * 0.15)],
+            cells: [
+              'Доставка на ИТ оборудване',
+              'Община Пловдив',
+              'Технокар АД',
+              Math.round(total * 0.15),
+            ],
             links: [null, 'auth:000471504', 'eik:115000000', null],
           },
         ],
@@ -187,7 +211,9 @@ for (const iso of weeks) {
   console.log(`wrote ${file}  (iso=${iso}, total≈${total})`);
 }
 
-console.log(`\n# bucket = ${BUCKET}  (override with SIGMA_REPORTS_NAME; preview/dev = sigma-reports-dev)`);
+console.log(
+  `\n# bucket = ${BUCKET}  (override with SIGMA_REPORTS_NAME; preview/dev = sigma-reports-dev)`,
+);
 console.log('\n# Upload to LOCAL R2 (for `pnpm --filter @sigma/web dev`):');
 for (const c of putCmds) console.log(`  ${c} --local`);
 console.log('\n# Upload to the REMOTE bucket (needs `wrangler login` to that Cloudflare account):');

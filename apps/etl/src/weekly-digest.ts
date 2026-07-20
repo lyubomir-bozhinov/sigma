@@ -54,7 +54,7 @@ const DIGEST_PROMPT_VERSION = 'weekly-digest-v2'; // v2: 3–4 paragraph „Ка
 // The fixed, server-owned "question" shown on the digest report (§4/§9.1: passing it via
 // `BindOptions.question` means bindReport does NOT gate it for material numbers — there is no
 // model-authored question here to gate).
-const DIGEST_QUESTION = 'Седмичен дайджест на обществените поръчки в България';
+const DIGEST_QUESTION = 'Седмичен обзор на обществените поръчки в България';
 // Narrative regeneration budget: one initial attempt + one retry. A risk-scaled, tool-less prose call
 // (like the verifier) does not warrant an unbounded retry loop — if the model cannot produce a
 // number-free lead paragraph twice, the AI-free fallback (data blocks only) is strictly safer than a
@@ -114,7 +114,7 @@ function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
 
 const DIGEST_SYSTEM_PROMPT = [
   'Пишеш кратък неутрален разказ „Какво се случи" от 3 до 4 абзаца на български за автоматичен ' +
-    'седмичен дайджест на обществените поръчки в България. Обясни на достъпен език какво се е ' +
+    'седмичен обзор на обществените поръчки в България. Обясни на достъпен език какво се е ' +
     'случило през седмицата: движението на подписаната стойност спрямо предходната седмица, кои ' +
     'сектори водят, каква е картината на конкуренцията и дали изпъква отделен голям договор.',
   'ЗАДЪЛЖИТЕЛНИ ПРАВИЛА:',
@@ -411,7 +411,7 @@ function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): Emi
 
   blocks.push({ type: 'callout', title: METHODOLOGY_CALLOUT_TITLE, md: METHODOLOGY_CALLOUT_MD });
 
-  return { title: `Седмичен дайджест — ${data.isoWeek}`, question: DIGEST_QUESTION, blocks };
+  return { title: `Седмичен обзор — ${data.isoWeek}`, question: DIGEST_QUESTION, blocks };
 }
 
 // ── Sanity gates (never persist an unvalidated number) ───────────────────────────────────────────────
