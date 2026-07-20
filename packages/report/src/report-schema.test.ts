@@ -266,6 +266,51 @@ describe('bindReport — server owns the values', () => {
     expect(out.ok).toBe(false);
   });
 
+  it('drops a null-valued day from a weekbars series, so the two series can differ in length', () => {
+    // The binder's per-series filter skips rows whose value is null/non-numeric. When one series has a
+    // gap the other does not, `current` and `previous` come out different lengths — the case the export
+    // + WeeklyGhostBars align by index and pad with „—". This test pins that alignment behaviour.
+    const daily: QueryResult[] = [
+      {
+        handle: 'C',
+        columns: ['day', 'v'],
+        rows: [
+          ['Пн', 1000],
+          ['Вт', null], // null → this day is dropped from `current`
+          ['Ср', 500],
+        ],
+      },
+      {
+        handle: 'P',
+        columns: ['day', 'v'],
+        rows: [
+          ['Пн', 800],
+          ['Вт', 200],
+          ['Ср', 0],
+        ],
+      },
+    ];
+    const out = bindReport(
+      emit([{ type: 'weekbars', currentId: 'C', previousId: 'P', labelCol: 'day', valueCol: 'v' }]),
+      daily,
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error('expected bind to succeed'); // loud narrowing guard — never swallows
+    const block = out.report.blocks[0];
+    expect(block).toEqual({
+      type: 'weekbars',
+      current: [
+        { label: 'Пн', value: 1000 },
+        { label: 'Ср', value: 500 },
+      ],
+      previous: [
+        { label: 'Пн', value: 800 },
+        { label: 'Вт', value: 200 },
+        { label: 'Ср', value: 0 },
+      ],
+    });
+  });
+
   it('always stamps the AI-generated watermark and echoes the question', () => {
     const out = bindReport(emit([{ type: 'text', md: 'Ето резултатите.' }]), results);
     expect(out.ok).toBe(true);

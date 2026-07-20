@@ -45,6 +45,10 @@ Shared with the assistant's own render layer — build to be reusable by both.
 - Freeze the `StoredReport` contract jointly with Dev A on day 1; both code against the shared fixture.
 - Report-serving route + `ReportBlockRenderer` are also the assistant's Phase-2 render layer — keep them generic (not digest-specific) so the chat can reuse them. Flag to maintainers if the assistant epic wants to co-own (plan Phase 0 open question).
 
+## Deviations from this ticket (intentional)
+- **Cache policy for `/weeks/{ISO}`.** T2 specified `immutable`. Shipped as `private, max-age=60` with the per-colo edge cache bypassed for `/weeks/:iso` (`apps/web/workers/app.ts`). Reason: the producer re-issues a **corrected** digest in place at the same R2 key (status „коригирано", spec §10.4); an `immutable`/long-lived shared cache keyed by URL+deploy-tag (not data-version) would keep serving the stale copy for its whole freshness+SWR window after a correction. The page is one small R2 GET, so rendering fresh is cheap and a correction shows immediately.
+- **Archive source.** T2 said list `/weeks` from the `weekly_digests` D1 index. Shipped listing from R2 (`listStoredWeeks`) instead, keeping the serve path fully D1-free (spec §6/§11) and consistent with the per-week route. Trade-off: the archive's per-week total + sparkline rely on R2 `customMetadata`.
+
 ## Follow-ups (tracked, out of this PR)
 - **Week-scoped „Разгледай сам" deep links** (#81 review, note 4): `DigestExplore` currently links to the full `/contracts` `/authorities` `/companies` `/flows` surfaces because the list loaders have no `?week=` filter. When a `week=<ISO>` filter lands on those loaders (parse in `filters.ts` + `strftime('%G-W%V', signed_at)` predicate in `@sigma/db` + add `week` to the cache-key allow-list), thread `iso` into `DigestExplore`'s hrefs so the links open the week's slice.
 - **§3.8 stacked-procedure lane**: the competition section ships the single-bid concentration bar only; the stacked procedure-mix bar needs a weekly `procedure_type` grouping query + a stacked report block type.

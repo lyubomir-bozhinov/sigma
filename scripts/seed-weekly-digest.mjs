@@ -171,14 +171,6 @@ function storedReport(iso, asOf) {
   };
 }
 
-// Prior ISO week for a given ISO week (Monday − 7 days, re-derived — year-boundary safe).
-function isoWeekMonday(y, w) {
-  const jan4 = new Date(Date.UTC(y, 0, 4));
-  const day = jan4.getUTCDay() || 7;
-  const m = new Date(jan4);
-  m.setUTCDate(jan4.getUTCDate() - (day - 1) + (w - 1) * 7);
-  return m;
-}
 function isoWeekOf(d) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = x.getUTCDay() || 7;

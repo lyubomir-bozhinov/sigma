@@ -218,6 +218,9 @@ function Block({ block }: { block: ResolvedBlock }) {
       );
 
     case 'weekbars': {
+      // `block.previous` is REQUIRED on the resolved weekbars type (report-schema.ts) — the binder
+      // always sets it (`previous: series(prev)`), so reading it unconditionally is safe here even
+      // though the standalone WeeklyGhostBars accepts `previous` as optional for reuse elsewhere.
       const toDays = (series: { label: string | number | null; value: number }[]) =>
         series.map((d) => ({ label: d.label == null ? '' : String(d.label), value: d.value }));
       return (
