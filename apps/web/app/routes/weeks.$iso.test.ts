@@ -6,7 +6,7 @@ describe('weeks.$iso headers', () => {
   it('caches with a bounded s-maxage + stale-while-revalidate, NOT immutable, so re-issued weeks propagate (#81 M1)', () => {
     const cc = headers()['Cache-Control'];
     expect(cc).toContain('s-maxage=300');
-    expect(cc).toContain('stale-while-revalidate=86400');
+    expect(cc).toContain('stale-while-revalidate=300');
     expect(cc).not.toContain('immutable');
   });
 });

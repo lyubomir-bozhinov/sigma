@@ -14,11 +14,12 @@ import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 // A settled week's artifact is effectively static, BUT the producer re-issues a corrected digest in
 // place at the SAME key `weeks/{ISO}.json` (status „коригирано", spec §10.4). `immutable` would tell the
 // edge never to revalidate, so a correction (or a redeploy's new HTML) would not reach readers for up to
-// a year (#81 review M1). A LONG `s-maxage` is also wrong for the same reason: on a workers.dev preview
-// the edge served day-old HTML across a redeploy, mismatching the freshly-built client bundle. Keep the
-// fresh window SHORT so corrections + deploys propagate within minutes; `stale-while-revalidate` still
-// serves instantly from the edge and refreshes in the background, so there's no latency cost.
-const DIGEST_CACHE = publicCache(300, 86_400); // s-maxage 5m, stale-while-revalidate 1d
+// a year (#81 review M1). A LONG `stale-while-revalidate` is wrong for the same reason: the shared edge
+// keeps serving the stale copy for the whole SWR window even after the R2 artifact is corrected/re-seeded
+// (observed on a workers.dev preview: a re-seeded week stayed stale for hours because the edge served the
+// pre-seed HTML under the bare URL for the full SWR). Keep BOTH windows short so a correction propagates
+// within minutes; SWR still serves instantly from the edge and refreshes in the background.
+const DIGEST_CACHE = publicCache(300, 300); // s-maxage 5m, stale-while-revalidate 5m
 
 export function meta({ matches, data: d }: Route.MetaArgs) {
   const title = d ? `${d.report.title} — Седмицата в пари` : 'Седмичен обзор';
