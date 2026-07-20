@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { StoredReport } from '@sigma/report';
+import { __resetWeeksCache } from '../lib/weeks-cache';
 import { headers, loader } from './weeks.$iso';
+
+// The loader now goes through the in-memory-first cache (lib/weeks-cache), whose store is module-global
+// and persists across cases — reset it so each test's R2/D1 read counts are deterministic.
+beforeEach(() => __resetWeeksCache());
 
 describe('weeks.$iso headers', () => {
   it('caches with a bounded s-maxage + stale-while-revalidate, NOT immutable, so re-issued weeks propagate (#81 M1)', () => {
@@ -32,14 +37,16 @@ const STORED = {
   },
 } as unknown as StoredReport;
 
-// D1 THROWS on any access → proves the serve path is R2-only. REPORTS returns the artifact text or null.
+// DB throws on any access → stands in for "D1 unavailable". On an R2 HIT the cache must short-circuit
+// before consulting D1 (proven by these tests staying green); on an R2 MISS the D1-build fallback is
+// attempted, its error is swallowed, and the loader 404s (see the "neither R2 nor D1" case below).
 function makeContext(objectText: string | null) {
   const getCalls: string[] = [];
   const DB = new Proxy(
     {},
     {
       get() {
-        throw new Error('D1 was accessed during /weeks serve — the serve path must be R2-only');
+        throw new Error('D1 unavailable');
       },
     },
   );
@@ -84,7 +91,7 @@ describe('weeks.$iso loader', () => {
     expect('provenance' in result).toBe(false);
   });
 
-  it('throws 404 when the week has no artifact', async () => {
+  it('throws 404 when neither R2 nor D1 yields a digest (no artifact, D1 unavailable)', async () => {
     const { promise } = callLoader('2099-W01', null);
     const err = await promise.then(
       () => null,

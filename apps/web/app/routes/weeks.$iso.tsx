@@ -1,4 +1,3 @@
-import { readStoredReport } from '@sigma/report';
 import type { Route } from './+types/weeks.$iso';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
@@ -9,7 +8,8 @@ import { DigestFooter } from '../components/DigestFooter';
 import { DigestExplore } from '../components/DigestExplore';
 import { publicCache } from '../lib/cache';
 import { seoMeta } from '../lib/meta';
-import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
+import { isValidIsoWeek } from '../lib/weeks';
+import { fetchWeekDigest } from '../lib/weeks-cache';
 
 // A settled week's artifact is effectively static, BUT the producer re-issues a corrected digest in
 // place at the SAME key `weeks/{ISO}.json` (status „коригирано", spec §10.4). `immutable` would tell the
@@ -38,11 +38,10 @@ export function headers() {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const iso = params.iso;
   if (!iso || !isValidIsoWeek(iso)) throw new Response('Not Found', { status: 404 });
-  // Serve path reads ONLY the immutable R2 artifact — no D1, no LLM (spec §6, §11). A week without an
-  // artifact (no data, not yet settled, or REPORTS not provisioned) is a 404.
-  const bucket = context.cloudflare.env.REPORTS;
-  if (!bucket) throw new Response('Not Found', { status: 404 });
-  const stored = await readStoredReport(bucket, isoWeekKey(iso));
+  // In-memory-first, then the immutable R2 artifact, then a data-only build straight from D1 so the
+  // page renders before the ETL/seed has produced an artifact (see lib/weeks-cache). A week that
+  // resolves to nothing anywhere (no data, or no binding provisioned) is a 404.
+  const stored = await fetchWeekDigest(context.cloudflare.env, iso);
   if (!stored) throw new Response('Not Found', { status: 404 });
   // Strip provenance (SQL, model, prompt version) before it reaches the client hydration JSON — mirror
   // the /reports/:id posture. Only the non-sensitive data-freshness date is surfaced (footer).
