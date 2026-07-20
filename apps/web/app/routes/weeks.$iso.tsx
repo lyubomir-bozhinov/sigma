@@ -61,7 +61,7 @@ export default function WeekDigest({ loaderData }: Route.ComponentProps) {
           { label: iso },
         ]}
       />
-      <main id="main" className="report-page">
+      <main id="main">
         <PageHeader kicker="Седмицата в пари" title={report.title} />
         <ReportAiWatermark />
         <ReportToolbar report={report} />

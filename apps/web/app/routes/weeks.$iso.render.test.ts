@@ -80,8 +80,9 @@ describe('/weeks/:iso page (golden)', () => {
     expect(html).toContain('href="/companies"');
   });
 
-  it('uses the same report-page layout + export toolbar as /reports/:id', () => {
-    expect(html).toContain('class="report-page"');
+  it('renders the export toolbar (Markdown / Word / PDF) in the standard page column', () => {
+    // Full-width site `main` column (like /contracts), NOT the narrow /reports 760px `report-page`.
+    expect(html).not.toContain('class="report-page"');
     expect(html).toContain('report-toolbar');
     expect(html).toContain('Принтирай / PDF'); // print → PDF
     expect(html).toContain('Word'); // .docx download
