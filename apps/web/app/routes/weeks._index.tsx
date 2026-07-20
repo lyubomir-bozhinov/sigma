@@ -89,6 +89,7 @@ export default function WeeksIndex({ loaderData }: Route.ComponentProps) {
             rows={weeks}
             getKey={(w) => w.iso}
             caption="Седмични обзори"
+            rowLink
           />
         </>
       )}
