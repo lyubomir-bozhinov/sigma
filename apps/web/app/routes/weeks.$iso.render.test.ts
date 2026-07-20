@@ -80,14 +80,13 @@ describe('/weeks/:iso page (golden)', () => {
     expect(html).toContain('Миналата седмица'); // shown because the fixture has a prior-week series
   });
 
-  it('renders the „Легенда" section describing only the blocks present', () => {
-    expect(html).toContain('digest-legend');
-    expect(html).toContain('Легенда');
-    expect(html).toContain('Дневен разход'); // weekbars block present
-    expect(html).toContain('Топ договори'); // table block present
-    // The fixture has no totals/bar blocks, so those legend rows must NOT appear.
+  it('labels each section with an inline heading (only for captioned block types)', () => {
+    expect(html).toContain('report-block__heading');
+    expect(html).toContain('Разход по дни'); // weekbars block present
+    expect(html).toContain('Най-големи договори'); // table block present
+    // The fixture has no bar blocks, so those headings must NOT appear.
     expect(html).not.toContain('Конкуренция');
-    expect(html).not.toContain('Сектори');
+    expect(html).not.toContain('Стойност по сектори');
   });
 
   it('renders the code-generated „Разгледай сам" deep-links (§3.10)', () => {

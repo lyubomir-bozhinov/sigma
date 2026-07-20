@@ -98,32 +98,18 @@
   border: 1px solid var(--rule-soft);
 }
 
-/* „Легенда" — key explaining what each graphic/table in the digest shows. */
-.digest-legend {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--rule);
-}
-.digest-legend h2 {
-  margin: 0 0 0.5rem;
-}
-.digest-legend-list {
-  margin: 0;
-  display: grid;
-  gap: 0.4rem;
-}
-.digest-legend-item {
-  display: grid;
-  grid-template-columns: minmax(7rem, max-content) 1fr;
+/* Per-section heading above a digest chart/table (e.g. „Стойност по сектори", „Конкуренция",
+   „Най-големи договори") so each section is self-labelling. */
+.report-block-group {
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  align-items: baseline;
 }
-.digest-legend-item dt {
-  font-weight: 600;
-}
-.digest-legend-item dd {
+.report-block__heading {
   margin: 0;
-  color: var(--ink-soft);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 /* Archive sparkline of weekly totals. */

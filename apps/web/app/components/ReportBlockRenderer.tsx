@@ -234,20 +234,32 @@ function Block({ block }: { block: ResolvedBlock }) {
 
 interface ReportBlockRendererProps {
   blocks: ResolvedBlock[];
+  // Optional per-block heading, aligned by index to `blocks` (null = no heading). Lets a caller label
+  // otherwise-unlabelled sections — the weekly digest names its charts/table („Стойност по сектори",
+  // „Конкуренция", „Най-големи договори", …) so a reader knows what each one shows. Absent for the chat
+  // report pipeline, whose output is unchanged.
+  captions?: (string | null)[];
 }
 
 /**
  * Renders a list of resolved report blocks. Each block type maps to its own component.
  * Text and callout blocks are always rendered through MarkdownBlock (no raw HTML, safe links).
  */
-export function ReportBlockRenderer({ blocks }: ReportBlockRendererProps) {
+export function ReportBlockRenderer({ blocks, captions }: ReportBlockRendererProps) {
   return (
     <div className="report-blocks">
-      {blocks.map((block, i) => (
+      {blocks.map((block, i) => {
         // Key by type + position: a report's block list is immutable and never reorders, so this is
         // stable across streaming re-renders while keeping React's reconciliation type-aware.
-        <Block key={`${block.type}-${i}`} block={block} />
-      ))}
+        const caption = captions?.[i] ?? null;
+        if (!caption) return <Block key={`${block.type}-${i}`} block={block} />;
+        return (
+          <section key={`${block.type}-${i}`} className="report-block-group">
+            <h2 className="report-block__heading">{caption}</h2>
+            <Block block={block} />
+          </section>
+        );
+      })}
     </div>
   );
 }

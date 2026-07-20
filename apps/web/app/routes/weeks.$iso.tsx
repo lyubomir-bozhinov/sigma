@@ -7,7 +7,7 @@ import { ReportAiWatermark } from '../components/ReportAiWatermark';
 import { ReportToolbar } from '../components/ReportToolbar';
 import { DigestFooter } from '../components/DigestFooter';
 import { DigestExplore } from '../components/DigestExplore';
-import { DigestLegend } from '../components/DigestLegend';
+import type { ResolvedBlock } from '../lib/assistant-contract/report';
 import { seoMeta } from '../lib/meta';
 import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 
@@ -51,6 +51,19 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return { iso, report: stored.report, asOf, generatedAt: stored.createdAt };
 }
 
+// A heading for each digest section that isn't self-labelling, so a reader knows what each chart/table
+// shows without a detached legend. Aligned by index to report.blocks; null for blocks that speak for
+// themselves (the intro narrative, the KPI strip, the „Как е изчислено" callout). The two `bar` blocks
+// are told apart by format — sectors are money, competition is a count — matching how apps/etl emits them.
+function digestCaptions(blocks: ResolvedBlock[]): (string | null)[] {
+  return blocks.map((b) => {
+    if (b.type === 'weekbars') return 'Разход по дни';
+    if (b.type === 'table') return 'Най-големи договори';
+    if (b.type === 'bar') return b.format === 'number' ? 'Конкуренция' : 'Стойност по сектори';
+    return null;
+  });
+}
+
 export default function WeekDigest({ loaderData }: Route.ComponentProps) {
   const { iso, report, asOf, generatedAt } = loaderData;
   return (
@@ -66,8 +79,7 @@ export default function WeekDigest({ loaderData }: Route.ComponentProps) {
         <PageHeader kicker="Седмицата в пари" title={report.title} />
         <ReportAiWatermark />
         <ReportToolbar report={report} />
-        <ReportBlockRenderer blocks={report.blocks} />
-        <DigestLegend blocks={report.blocks} />
+        <ReportBlockRenderer blocks={report.blocks} captions={digestCaptions(report.blocks)} />
         <DigestExplore iso={iso} />
         <DigestFooter asOf={asOf} generatedAt={generatedAt} />
       </main>
