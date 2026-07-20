@@ -50,7 +50,7 @@ export interface GenerateWeeklyDigestDeps {
 }
 
 const DEFAULT_MODEL = 'google/gemma-4-31b-it';
-const DIGEST_PROMPT_VERSION = 'weekly-digest-v2'; // v2: 3–4 paragraph „Какво се случи" narrative (§3.3)
+const DIGEST_PROMPT_VERSION = 'weekly-digest-v3'; // v3: ≥5 paragraph analytical „Какво се случи" (§3.3)
 // The fixed, server-owned "question" shown on the digest report (§4/§9.1: passing it via
 // `BindOptions.question` means bindReport does NOT gate it for material numbers — there is no
 // model-authored question here to gate).
@@ -106,62 +106,115 @@ function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
       prompt,
       temperature: 0.3,
       maxRetries: 0,
-      maxOutputTokens: 900, // room for a 3–4 paragraph „Какво се случи" narrative (spec §3.3)
+      maxOutputTokens: 1400, // room for a ≥5 paragraph „Какво се случи" analysis (spec §3.3)
     });
     return result.text;
   };
 }
 
 const DIGEST_SYSTEM_PROMPT = [
-  'Пишеш кратък неутрален разказ „Какво се случи" от 3 до 4 абзаца на български за автоматичен ' +
-    'седмичен обзор на обществените поръчки в България. Обясни на достъпен език какво се е ' +
-    'случило през седмицата: движението на подписаната стойност спрямо предходната седмица, кои ' +
-    'сектори водят, каква е картината на конкуренцията и дали изпъква отделен голям договор.',
+  'Пишеш задълбочен неутрален анализ „Какво се случи" от НАЙ-МАЛКО 5 абзаца на български за ' +
+    'автоматичен седмичен обзор на обществените поръчки в България. Не просто описвай — АНАЛИЗИРАЙ: ' +
+    'какво означава движението на подписаната стойност, доколко е концентрирана в малко сектори или ' +
+    'разпределена, какво подсказва делът на поръчките с една оферта за конкуренцията, тежи ли ' +
+    'отделен голям договор върху седмицата, и концентрирана ли е активността в малко възложители ' +
+    'или в много.',
+  'ПРЕПОРЪЧИТЕЛНА СТРУКТУРА (по един абзац на тема, свържи ги гладко):',
+  'а) Обща картина — посока и сила на движението спрямо предходната седмица.',
+  'б) Сектори — кои водят, концентрирана ли е стойността в един-два раздела или е разпределена.',
+  'в) Голям договор — има ли самостоятелна поръчка, която тежи осезаемо върху седмичната стойност.',
+  'г) Конкуренция — какво подсказва делът на поръчките с една оферта (с уговорка за размера на извадката).',
+  'д) Разпределение и ритъм — концентрирани ли са поръчките в малко възложители, кой ден е бил най-активен.',
+  'е) Заключение — какво си струва да се проследи; „сигнали, не присъди".',
   'ЗАДЪЛЖИТЕЛНИ ПРАВИЛА:',
   '1. НИКОГА не пиши конкретни суми, брой договори, проценти, дати или други числа — те вече са ' +
     'показани в таблиците и графиките на справката; абзац с число ще бъде отхвърлен автоматично. ' +
-    'Използвай думи като „нарасна", „спадна", „водещ", „значителен дял", а не стойности.',
-  '2. Тон: неутрален, описателен — „сигнали, не присъди". Не квалифицирай възложители или ' +
-    'изпълнители като виновни, корумпирани или подозрителни; описвай само какво е било подписано.',
+    'Изразявай мащаб и дял с думи („нарасна", „спадна", „доминира", „значителен дял", „малка част").',
+  '2. Тон: неутрален, аналитичен — „сигнали, не присъди". Не квалифицирай възложители или ' +
+    'изпълнители като виновни, корумпирани или подозрителни; анализирай само какво е било подписано.',
   '3. Всеки абзац е отделен, разделен с празен ред. Обикновен текст, без markdown синтаксис ' +
     '(без **, #, списъци, заглавия).',
   '4. Назовавай секторите с думи по речника по-долу (напр. „строителство"), не с CPV кодове.',
-  '5. Отговори САМО с разказа — без увод, без обяснение, без заглавие.',
+  '5. Отговори САМО с анализа — без увод, без обяснение, без заглавие.',
   '\nРечник на CPV разделите за коректно назоваване на сектори:\n' + cpvReference(),
 ].join('\n');
 
+// All context fed to the model is QUALITATIVE (word buckets), never a raw figure — the prose-number
+// gate (§1) rejects any digit, so analysis depth has to come from richer signals, not numbers.
 function buildNarrativePrompt(data: WeeklyDigestData): string {
+  // a) direction + magnitude of the week-over-week move.
+  const mag = data.delta.deltaPct === null ? null : Math.abs(data.delta.deltaPct);
+  const magWord = mag === null ? '' : mag >= 0.5 ? ' рязко' : mag >= 0.2 ? ' осезаемо' : ' леко';
   const direction =
     data.delta.deltaEur > 0
-      ? 'подписаната стойност нарасна спрямо предходната седмица'
+      ? `подписаната стойност${magWord} нарасна спрямо предходната седмица`
       : data.delta.deltaEur < 0
-        ? 'подписаната стойност спадна спрямо предходната седмица'
+        ? `подписаната стойност${magWord} спадна спрямо предходната седмица`
         : 'подписаната стойност е без съществена промяна спрямо предходната седмица';
+
+  // b) sector leaders + how concentrated the value is in the top division.
+  const sectorSum = data.sectors.reduce((a, s) => a + s.valueEur, 0);
+  const topSectorShare =
+    sectorSum > 0 && data.sectors[0] ? data.sectors[0].valueEur / sectorSum : 0;
   const topSectors = data.sectors.slice(0, 3).map((s) => s.division);
   const sectorLine =
-    topSectors.length > 0
-      ? `Водещи CPV раздели по подписана стойност (назови ги по речника): ${topSectors.join(', ')}.`
-      : 'Няма ясно доминиращ сектор тази седмица.';
-  // Bucket the single-bid rate into a QUALITATIVE description — never the number itself (§2 gate).
+    topSectors.length === 0
+      ? 'Няма ясно доминиращ сектор тази седмица.'
+      : `Водещи CPV раздели по подписана стойност, в намаляващ ред (назови ги с думи по речника, без кодове): ${topSectors.join(', ')}. ` +
+        (topSectorShare >= 0.5
+          ? 'Стойността е силно концентрирана във водещия сектор.'
+          : topSectorShare >= 0.3
+            ? 'Водещият сектор изпъква, но не доминира сам.'
+            : 'Стойността е разпределена между няколко сектора.');
+
+  // c) does a single contract carry the week?
+  const largestShare =
+    data.largest && data.total.totalEur > 0 ? data.largest.amountEur / data.total.totalEur : 0;
+  const largestLine = !data.largest
+    ? 'Няма отделен голям договор с потвърдена стойност през седмицата.'
+    : largestShare >= 0.3
+      ? 'Един голям единичен договор тежи осезаемо върху цялата седмична стойност.'
+      : 'Изпъква поне един по-голям договор, но той не определя сам седмицата.';
+
+  // d) competition — bucket the single-bid rate; never the % itself (§1 gate).
   const rate = data.singleBidRate.rate;
   const competition =
     rate === null
       ? 'Извадката с отчетени оферти е малка, затова изводът за конкуренцията е предпазлив.'
       : rate >= 0.4
-        ? 'Голям дял от поръчките са възложени с една оферта — слаба ценова конкуренция.'
+        ? 'Голям дял от поръчките са възложени с една оферта — слаба ценова конкуренция, което е сигнал за проследяване.'
         : rate >= 0.2
           ? 'Умерен дял от поръчките са с една оферта.'
           : 'Малък дял с една оферта — преобладават състезателни процедури.';
+
+  // e) authority concentration (within the top-10 slice) + the most active day.
+  const authSum = data.authorities.reduce((a, x) => a + x.valueEur, 0);
+  const topAuthShare =
+    authSum > 0 && data.authorities[0] ? data.authorities[0].valueEur / authSum : 0;
+  const authorityLine =
+    data.authorities.length === 0
+      ? ''
+      : topAuthShare >= 0.5
+        ? 'Подписаната стойност е концентрирана около един-двама възложители.'
+        : 'Подписаната стойност е разпределена между много възложители.';
+  const peak = data.dailySpend.current.reduce(
+    (best, d) => (d.valueEur > best.valueEur ? d : best),
+    data.dailySpend.current[0] ?? { label: '', valueEur: -1 },
+  );
+  const peakLine =
+    peak.valueEur > 0 ? `Най-активният ден по подписана стойност е ${peak.label}.` : '';
+
   return [
     `Изминалата седмица е ${data.isoWeek}. ${direction}.`,
     sectorLine,
+    largestLine,
     competition,
-    data.largest
-      ? 'През седмицата изпъква поне един голям единичен договор.'
-      : 'Няма отделен голям договор с потвърдена стойност през седмицата.',
+    [authorityLine, peakLine].filter(Boolean).join(' '),
     '',
-    'Напиши разказа „Какво се случи" (3–4 абзаца) сега, без числа.',
-  ].join('\n');
+    'Напиши задълбочения анализ „Какво се случи" (най-малко 5 абзаца) сега, без числа.',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 // ── Deterministic evidence (server-built — the model never sees or fills these rows) ────────────────
