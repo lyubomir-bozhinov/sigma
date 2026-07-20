@@ -6,6 +6,47 @@ function report(blocks: ResolvedReport['blocks']): ResolvedReport {
   return { title: 'Test', question: 'Въпрос?', blocks, watermark: 'ai-generated' };
 }
 
+describe('reportToMarkdown — weekbars (#81)', () => {
+  it('includes the weekbars daily series (this week + last week) rather than dropping the block', () => {
+    const md = reportToMarkdown(
+      report([
+        {
+          type: 'weekbars',
+          current: [
+            { label: 'Пн', value: 1000 },
+            { label: 'Вт', value: 2000 },
+          ],
+          previous: [
+            { label: 'Пн', value: 800 },
+            { label: 'Вт', value: 900 },
+          ],
+        },
+      ]),
+    );
+    expect(md).toContain('Ден');
+    expect(md).toContain('Тази седмица');
+    expect(md).toContain('Миналата седмица');
+    expect(md).toContain('Пн'); // day labels present
+    expect(md).toContain('Вт');
+  });
+
+  it('renders an em-dash when a day has no previous-week value', () => {
+    const md = reportToMarkdown(
+      report([
+        {
+          type: 'weekbars',
+          current: [
+            { label: 'Пн', value: 1000 },
+            { label: 'Вт', value: 2000 },
+          ],
+          previous: [{ label: 'Пн', value: 800 }],
+        },
+      ]),
+    );
+    expect(md).toContain('—');
+  });
+});
+
 describe('reportToMarkdown', () => {
   it('opens with the title and question', () => {
     const md = reportToMarkdown(report([]));

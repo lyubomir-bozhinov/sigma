@@ -93,6 +93,23 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       }
+      case 'weekbars':
+        lines.push(
+          mdTable(
+            ['Ден', 'Тази седмица', 'Миналата седмица'],
+            block.current.map((d, i) => [
+              String(d.label ?? ''),
+              money(d.value),
+              block.previous[i] ? money(block.previous[i]!.value) : '—',
+            ]),
+          ),
+          '',
+        );
+        break;
+      default:
+        // Exhaustiveness guard: a new ResolvedBlock type must add a case here (and in the docx switch)
+        // rather than silently vanish from the export — this is what let `weekbars` slip before (#81).
+        block satisfies never;
     }
   }
 
@@ -345,6 +362,40 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
         );
         break;
       }
+
+      case 'weekbars':
+        children.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: ['Ден', 'Тази седмица', 'Миналата седмица'].map(
+                  (h) =>
+                    new TableCell({
+                      children: [
+                        new Paragraph({ children: [new TextRun({ text: h, bold: true })] }),
+                      ],
+                    }),
+                ),
+              }),
+              ...block.current.map(
+                (d, i) =>
+                  new TableRow({
+                    children: [
+                      String(d.label ?? ''),
+                      money(d.value),
+                      block.previous[i] ? money(block.previous[i]!.value) : '—',
+                    ].map((v) => new TableCell({ children: [new Paragraph({ text: v })] })),
+                  }),
+              ),
+            ],
+          }),
+        );
+        break;
+
+      default:
+        // Exhaustiveness guard (mirror of reportToMarkdown): a new block type must be handled here.
+        block satisfies never;
     }
 
     children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
