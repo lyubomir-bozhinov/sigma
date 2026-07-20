@@ -93,19 +93,24 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       }
-      case 'weekbars':
+      case 'weekbars': {
+        // Drive the row count off the LONGER series so neither week's trailing days are dropped. In the
+        // digest both are 7 aligned slots, but this exporter is generic — align defensively, em-dash the
+        // missing side (symmetric with the current>previous case), never silently under-report.
+        const n = Math.max(block.current.length, block.previous.length);
         lines.push(
           mdTable(
             ['Ден', 'Тази седмица', 'Миналата седмица'],
-            block.current.map((d, i) => [
-              String(d.label ?? ''),
-              money(d.value),
+            Array.from({ length: n }, (_, i) => [
+              String(block.current[i]?.label ?? block.previous[i]?.label ?? ''),
+              block.current[i] ? money(block.current[i]!.value) : '—',
               block.previous[i] ? money(block.previous[i]!.value) : '—',
             ]),
           ),
           '',
         );
         break;
+      }
       default:
         // Exhaustiveness guard: a new ResolvedBlock type must add a case here (and in the docx switch)
         // rather than silently vanish from the export — this is what let `weekbars` slip before (#81).
@@ -363,7 +368,9 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
         break;
       }
 
-      case 'weekbars':
+      case 'weekbars': {
+        // Mirror the Markdown branch: row count off the longer series, em-dash the missing side.
+        const n = Math.max(block.current.length, block.previous.length);
         children.push(
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
@@ -378,12 +385,13 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
                     }),
                 ),
               }),
-              ...block.current.map(
-                (d, i) =>
+              ...Array.from(
+                { length: n },
+                (_, i) =>
                   new TableRow({
                     children: [
-                      String(d.label ?? ''),
-                      money(d.value),
+                      String(block.current[i]?.label ?? block.previous[i]?.label ?? ''),
+                      block.current[i] ? money(block.current[i]!.value) : '—',
                       block.previous[i] ? money(block.previous[i]!.value) : '—',
                     ].map((v) => new TableCell({ children: [new Paragraph({ text: v })] })),
                   }),
@@ -392,6 +400,7 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
           }),
         );
         break;
+      }
 
       default:
         // Exhaustiveness guard (mirror of reportToMarkdown): a new block type must be handled here.
