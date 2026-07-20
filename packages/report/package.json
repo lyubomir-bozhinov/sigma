@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sigma/config": "workspace:*"
+    "@sigma/config": "workspace:*",
+    "@sigma/db": "workspace:*"
   }
 }

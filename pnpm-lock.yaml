@@ -184,6 +184,9 @@ importers:
       '@sigma/config':
         specifier: workspace:*
         version: link:../config
+      '@sigma/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/shared: {}
 

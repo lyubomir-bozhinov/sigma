@@ -6,3 +6,4 @@ export * from './describe-schema';
 export * from './contract';
 export * from './persist';
 export * from './iso-week';
+export * from './weekly-report';

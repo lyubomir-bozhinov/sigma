@@ -10,18 +10,17 @@ import {
 } from '@sigma/db';
 import {
   bindReport,
+  buildEmitInput,
+  buildQueryResults,
   buildStoredReport,
   cpvReference,
+  DIGEST_PROMPT_VERSION,
+  DIGEST_QUESTION,
   MAX_RATIO_MAGNITUDE,
   persistReport,
   priorIsoWeek,
   verifyReport,
-  type CellFormat,
-  type CellRef,
-  type EmitBlock,
-  type EmitReportInput,
   type GenerateFn,
-  type QueryResult,
 } from '@sigma/report';
 
 // Weekly Digest producer (#167A T3) — the Monday cron that turns the prior ISO week's `@sigma/db`
@@ -50,21 +49,14 @@ export interface GenerateWeeklyDigestDeps {
 }
 
 const DEFAULT_MODEL = 'google/gemma-4-31b-it';
-const DIGEST_PROMPT_VERSION = 'weekly-digest-v2'; // v2: 3–4 paragraph „Какво се случи" narrative (§3.3)
-// The fixed, server-owned "question" shown on the digest report (§4/§9.1: passing it via
-// `BindOptions.question` means bindReport does NOT gate it for material numbers — there is no
-// model-authored question here to gate).
-const DIGEST_QUESTION = 'Седмичен обзор на обществените поръчки в България';
+// `DIGEST_QUESTION`, `DIGEST_PROMPT_VERSION` and the deterministic report builders
+// (`buildQueryResults`/`buildEmitInput`) now live in `@sigma/report` so the consumer's on-demand,
+// AI-free build path reuses the exact same block layout this cron producer emits (one source of truth).
 // Narrative regeneration budget: one initial attempt + one retry. A risk-scaled, tool-less prose call
 // (like the verifier) does not warrant an unbounded retry loop — if the model cannot produce a
 // number-free lead paragraph twice, the AI-free fallback (data blocks only) is strictly safer than a
 // third attempt at the same cost.
 const MAX_NARRATIVE_ATTEMPTS = 2;
-const METHODOLOGY_CALLOUT_TITLE = 'Как е изчислено';
-const METHODOLOGY_CALLOUT_MD =
-  'Изчислено от чисти (amount_eur ненулеви) договори, подписани в рамките на пълна календарна ' +
-  'седмица (понеделник–неделя). Справката е автоматично генерирана — сигнали, не присъди: цифрите ' +
-  'показват какво е подписано, не приписват вина или намерение.';
 
 // Master kill switch (mirrors apps/web/app/lib/assistant/enabled.ts's `assistantEnabled` fail-dark
 // posture): an unset/absent var reads as OFF, the safe default for a producer that writes
@@ -162,256 +154,6 @@ function buildNarrativePrompt(data: WeeklyDigestData): string {
     '',
     'Напиши разказа „Какво се случи" (3–4 абзаца) сега, без числа.',
   ].join('\n');
-}
-
-// ── Deterministic evidence (server-built — the model never sees or fills these rows) ────────────────
-
-function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
-  const results: QueryResult[] = [
-    {
-      handle: 'R1',
-      columns: [
-        'total_eur',
-        'contracts',
-        'contracts_with_amount',
-        'tenders',
-        'delta_eur',
-        'delta_pct',
-        'prior_total_eur',
-        'single_bid_rate',
-      ],
-      rows: [
-        [
-          data.total.totalEur,
-          data.counts.contracts,
-          data.counts.contractsWithAmount,
-          data.counts.tenders,
-          data.delta.deltaEur,
-          data.delta.deltaPct,
-          data.delta.priorEur,
-          data.singleBidRate.rate,
-        ],
-      ],
-    },
-  ];
-
-  if (data.largest) {
-    const l = data.largest;
-    results.push({
-      handle: 'R2',
-      columns: [
-        'contract_slug',
-        'tender_unp',
-        'authority_slug',
-        'bidder_slug',
-        'bidder_name',
-        'amount_eur',
-        'signed_at',
-      ],
-      rows: [
-        [
-          l.contractSlug,
-          l.tenderUnp,
-          l.authoritySlug,
-          l.bidderSlug,
-          l.bidderName,
-          l.amountEur,
-          l.signedAt,
-        ],
-      ],
-    });
-  }
-
-  results.push({
-    handle: 'R3',
-    columns: [
-      'contract_slug',
-      'tender_unp',
-      'subject',
-      'authority_id',
-      'authority_name',
-      'bidder_id',
-      'bidder_name',
-      'amount_eur',
-      'signed_at',
-    ],
-    rows: data.topContracts.map((c: WeeklyTopContract) => [
-      c.contractSlug,
-      c.tenderUnp,
-      c.subject,
-      c.authorityId,
-      c.authorityName,
-      c.bidderId,
-      c.bidderName,
-      c.amountEur,
-      c.signedAt,
-    ]),
-  });
-
-  results.push({
-    handle: 'R4',
-    columns: ['division', 'contracts', 'value_eur'],
-    rows: data.sectors.map((s: WeeklySectorSlice) => [s.division, s.contracts, s.valueEur]),
-  });
-
-  results.push({
-    handle: 'R5',
-    columns: ['authority_id', 'authority_name', 'contracts', 'value_eur'],
-    rows: data.authorities.map((a: WeeklyAuthoritySlice) => [
-      a.authorityId,
-      a.authorityName,
-      a.contracts,
-      a.valueEur,
-    ]),
-  });
-
-  // R6 (this week) + R7 (prior week) — the two 7-day series behind the ghost-bar chart (§3.4).
-  results.push({
-    handle: 'R6',
-    columns: ['day', 'value_eur'],
-    rows: data.dailySpend.current.map((d) => [d.label, d.valueEur]),
-  });
-  results.push({
-    handle: 'R7',
-    columns: ['day', 'value_eur'],
-    rows: data.dailySpend.previous.map((d) => [d.label, d.valueEur]),
-  });
-
-  // R8 — competition concentration (§3.8): single-bid vs multi-bid contract counts over the reported
-  // sample. Pushed under the SAME guard as the bar block in buildEmitInput (rate !== null, i.e. the
-  // sample cleared the reporting floor), so the persisted snapshot never carries a dead result no block
-  // references (#81 review, note 1).
-  if (data.singleBidRate.rate !== null) {
-    const { singleBid, sample } = data.singleBidRate;
-    results.push({
-      handle: 'R8',
-      columns: ['label', 'count'],
-      rows: [
-        ['С една оферта', singleBid],
-        ['С няколко оферти', Math.max(0, sample - singleBid)],
-      ],
-    });
-  }
-
-  return results;
-}
-
-/** Build the model-facing EmitReportInput. `narrativeMd` null ⇒ AI-free fallback (no text block, no
- *  model-authored prose anywhere but the fixed title/methodology strings this module itself owns). */
-function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): EmitReportInput {
-  const blocks: EmitBlock[] = [];
-  if (narrativeMd) blocks.push({ type: 'text', md: narrativeMd });
-
-  const totalsItems: { label: string; ref: CellRef; format: CellFormat }[] = [
-    { label: 'Обща стойност', ref: { resultId: 'R1', row: 0, col: 'total_eur' }, format: 'money' },
-    // Binds the CLEAN-amount count, not the raw volume: this sits next to „Обща стойност" in the same
-    // strip, and a (count, sum) shown as one KPI set must cover one row set (precompute.sql's
-    // COUNT/SUM CONSISTENCY rule) — else total/count reads as a wrong average contract value.
-    {
-      label: 'Договори',
-      ref: { resultId: 'R1', row: 0, col: 'contracts_with_amount' },
-      format: 'number',
-    },
-  ];
-  if (data.delta.deltaPct !== null) {
-    totalsItems.push({
-      label: 'Промяна спрямо предходната седмица',
-      ref: { resultId: 'R1', row: 0, col: 'delta_pct' },
-      format: 'percent',
-    });
-  }
-  if (data.largest) {
-    totalsItems.push({
-      label: 'Най-голяма поръчка',
-      ref: { resultId: 'R2', row: 0, col: 'amount_eur' },
-      format: 'money',
-    });
-  }
-  if (data.singleBidRate.rate !== null) {
-    totalsItems.push({
-      label: 'Дял с една оферта',
-      ref: { resultId: 'R1', row: 0, col: 'single_bid_rate' },
-      format: 'percent',
-    });
-  }
-  blocks.push({ type: 'totals', items: totalsItems });
-
-  // Daily spend, this week vs the prior week's ghost bars (§3.4). Always emitted (7 zero-filled slots),
-  // so the digest carries a temporal view even on a quiet week.
-  blocks.push({
-    type: 'weekbars',
-    currentId: 'R6',
-    previousId: 'R7',
-    labelCol: 'day',
-    valueCol: 'value_eur',
-  });
-
-  if (data.topContracts.length > 0) {
-    blocks.push({
-      type: 'table',
-      resultId: 'R3',
-      columns: [
-        { key: 'subject', header: 'Предмет', format: 'text' },
-        {
-          key: 'authority_name',
-          header: 'Възложител',
-          format: 'text',
-          link: { kind: 'authority', idCol: 'authority_id' },
-        },
-        {
-          key: 'bidder_name',
-          header: 'Изпълнител',
-          format: 'text',
-          link: { kind: 'company', idCol: 'bidder_id' },
-        },
-        { key: 'amount_eur', header: 'Стойност', format: 'money' },
-        { key: 'signed_at', header: 'Подписан на', format: 'date' },
-      ],
-    });
-  }
-
-  if (data.sectors.length > 0) {
-    blocks.push({
-      type: 'bar',
-      resultId: 'R4',
-      labelCol: 'division',
-      valueCol: 'value_eur',
-      format: 'money',
-    });
-  }
-
-  if (data.authorities.length > 0) {
-    blocks.push({
-      type: 'table',
-      resultId: 'R5',
-      columns: [
-        {
-          key: 'authority_name',
-          header: 'Възложител',
-          format: 'text',
-          link: { kind: 'authority', idCol: 'authority_id' },
-        },
-        { key: 'contracts', header: 'Договори', format: 'number' },
-        { key: 'value_eur', header: 'Стойност', format: 'money' },
-      ],
-    });
-  }
-
-  // Competition concentration (§3.8): single-bid vs multi-bid contract counts. Only shown when the
-  // reported-bid sample clears the floor (rate !== null) — below it the split would swing on a few rows.
-  if (data.singleBidRate.rate !== null) {
-    blocks.push({
-      type: 'bar',
-      resultId: 'R8',
-      labelCol: 'label',
-      valueCol: 'count',
-      format: 'number',
-    });
-  }
-
-  blocks.push({ type: 'callout', title: METHODOLOGY_CALLOUT_TITLE, md: METHODOLOGY_CALLOUT_MD });
-
-  return { title: `Седмичен обзор — ${data.isoWeek}`, question: DIGEST_QUESTION, blocks };
 }
 
 // ── Sanity gates (never persist an unvalidated number) ───────────────────────────────────────────────
