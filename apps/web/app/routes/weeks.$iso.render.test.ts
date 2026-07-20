@@ -79,4 +79,12 @@ describe('/weeks/:iso page (golden)', () => {
     expect(html).toContain('href="/flows"');
     expect(html).toContain('href="/companies"');
   });
+
+  it('uses the same report-page layout + export toolbar as /reports/:id', () => {
+    expect(html).toContain('class="report-page"');
+    expect(html).toContain('report-toolbar');
+    expect(html).toContain('Принтирай / PDF'); // print → PDF
+    expect(html).toContain('Word'); // .docx download
+    expect(html).toContain('Markdown'); // .md download
+  });
 });

@@ -4,6 +4,7 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { PageHeader } from '../components/PageHeader';
 import { ReportBlockRenderer } from '../components/ReportBlockRenderer';
 import { ReportAiWatermark } from '../components/ReportAiWatermark';
+import { ReportToolbar } from '../components/ReportToolbar';
 import { DigestFooter } from '../components/DigestFooter';
 import { DigestExplore } from '../components/DigestExplore';
 import { publicCache } from '../lib/cache';
@@ -60,9 +61,10 @@ export default function WeekDigest({ loaderData }: Route.ComponentProps) {
           { label: iso },
         ]}
       />
-      <main id="main">
+      <main id="main" className="report-page">
         <PageHeader kicker="Седмицата в пари" title={report.title} />
         <ReportAiWatermark />
+        <ReportToolbar report={report} />
         <ReportBlockRenderer blocks={report.blocks} />
         <DigestExplore iso={iso} />
         <DigestFooter asOf={asOf} generatedAt={generatedAt} />
