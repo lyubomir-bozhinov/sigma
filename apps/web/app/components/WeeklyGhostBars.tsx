@@ -44,6 +44,21 @@ export function WeeklyGhostBars({
 
   return (
     <>
+      {/* Visible key so a reader knows which bars are this week vs the prior-week ghosts. aria-hidden —
+          the sr-only table below already labels both series for assistive tech. The ghost item appears
+          only when there IS a prior-week series to compare against. */}
+      <ul className="gb-legend" aria-hidden="true">
+        <li className="gb-legend__item">
+          <span className="gb-legend__swatch gb-legend__swatch--current" />
+          Тази седмица
+        </li>
+        {prev.length > 0 && (
+          <li className="gb-legend__item">
+            <span className="gb-legend__swatch gb-legend__swatch--ghost" />
+            Миналата седмица
+          </li>
+        )}
+      </ul>
       <svg className="ghost-bars-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ariaLabel}>
         <line x1={0} y1={baseline} x2={W} y2={baseline} className="grid" />
         {current.map((d, i) => {

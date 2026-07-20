@@ -74,6 +74,22 @@ describe('/weeks/:iso page (golden)', () => {
     expect(html).toContain('gb-ghost'); // the prior-week ghost series
   });
 
+  it('renders the ghost-bar chart key (this week vs last week)', () => {
+    expect(html).toContain('gb-legend');
+    expect(html).toContain('Тази седмица');
+    expect(html).toContain('Миналата седмица'); // shown because the fixture has a prior-week series
+  });
+
+  it('renders the „Легенда" section describing only the blocks present', () => {
+    expect(html).toContain('digest-legend');
+    expect(html).toContain('Легенда');
+    expect(html).toContain('Дневен разход'); // weekbars block present
+    expect(html).toContain('Топ договори'); // table block present
+    // The fixture has no totals/bar blocks, so those legend rows must NOT appear.
+    expect(html).not.toContain('Конкуренция');
+    expect(html).not.toContain('Сектори');
+  });
+
   it('renders the code-generated „Разгледай сам" deep-links (§3.10)', () => {
     expect(html).toContain('Разгледай сам');
     expect(html).toContain('href="/flows"');

@@ -7,6 +7,7 @@ import { ReportAiWatermark } from '../components/ReportAiWatermark';
 import { ReportToolbar } from '../components/ReportToolbar';
 import { DigestFooter } from '../components/DigestFooter';
 import { DigestExplore } from '../components/DigestExplore';
+import { DigestLegend } from '../components/DigestLegend';
 import { seoMeta } from '../lib/meta';
 import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 
@@ -66,6 +67,7 @@ export default function WeekDigest({ loaderData }: Route.ComponentProps) {
         <ReportAiWatermark />
         <ReportToolbar report={report} />
         <ReportBlockRenderer blocks={report.blocks} />
+        <DigestLegend blocks={report.blocks} />
         <DigestExplore iso={iso} />
         <DigestFooter asOf={asOf} generatedAt={generatedAt} />
       </main>
