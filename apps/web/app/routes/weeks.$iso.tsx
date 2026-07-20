@@ -12,13 +12,13 @@ import { seoMeta } from '../lib/meta';
 import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 
 // A settled week's artifact is effectively static, BUT the producer re-issues a corrected digest in
-// place at the SAME key `weeks/{ISO}.json` (status „коригирано", spec §10.4). `immutable` would tell
-// the edge/browser never to revalidate, so a correction would not reach readers for up to a year
-// (#81 strict review M1). Use a bounded `s-maxage` + long `stale-while-revalidate` instead: near-static
-// performance (served from the edge, revalidated in the background) while a late-data correction still
-// propagates within a day. When `StoredReport` gains a settled/`refreshedAt` signal, a truly-settled
-// week can go back to `immutable`.
-const DIGEST_CACHE = publicCache(86_400, 604_800); // s-maxage 1d, stale-while-revalidate 7d
+// place at the SAME key `weeks/{ISO}.json` (status „коригирано", spec §10.4). `immutable` would tell the
+// edge never to revalidate, so a correction (or a redeploy's new HTML) would not reach readers for up to
+// a year (#81 review M1). A LONG `s-maxage` is also wrong for the same reason: on a workers.dev preview
+// the edge served day-old HTML across a redeploy, mismatching the freshly-built client bundle. Keep the
+// fresh window SHORT so corrections + deploys propagate within minutes; `stale-while-revalidate` still
+// serves instantly from the edge and refreshes in the background, so there's no latency cost.
+const DIGEST_CACHE = publicCache(300, 86_400); // s-maxage 5m, stale-while-revalidate 1d
 
 export function meta({ matches, data: d }: Route.MetaArgs) {
   const title = d ? `${d.report.title} — Седмицата в пари` : 'Седмичен обзор';
