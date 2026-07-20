@@ -7,19 +7,18 @@ import { ReportAiWatermark } from '../components/ReportAiWatermark';
 import { ReportToolbar } from '../components/ReportToolbar';
 import { DigestFooter } from '../components/DigestFooter';
 import { DigestExplore } from '../components/DigestExplore';
-import { publicCache } from '../lib/cache';
 import { seoMeta } from '../lib/meta';
 import { isValidIsoWeek, isoWeekKey } from '../lib/weeks';
 
-// A settled week's artifact is effectively static, BUT the producer re-issues a corrected digest in
-// place at the SAME key `weeks/{ISO}.json` (status „коригирано", spec §10.4). `immutable` would tell the
-// edge never to revalidate, so a correction (or a redeploy's new HTML) would not reach readers for up to
-// a year (#81 review M1). A LONG `stale-while-revalidate` is wrong for the same reason: the shared edge
-// keeps serving the stale copy for the whole SWR window even after the R2 artifact is corrected/re-seeded
-// (observed on a workers.dev preview: a re-seeded week stayed stale for hours because the edge served the
-// pre-seed HTML under the bare URL for the full SWR). Keep BOTH windows short so a correction propagates
-// within minutes; SWR still serves instantly from the edge and refreshes in the background.
-const DIGEST_CACHE = publicCache(300, 300); // s-maxage 5m, stale-while-revalidate 5m
+// The producer re-issues a corrected digest in place at the SAME key `weeks/{ISO}.json` (status
+// „коригирано", spec §10.4). A shared/edge cache keyed by URL — NOT by data version — keeps serving the
+// stale copy for its whole freshness+SWR window after such an in-place overwrite (observed on a
+// workers.dev preview: a re-seeded week stayed stale for hours). So this page is NOT shared-cached: the
+// worker skips its per-colo edge cache for /weeks/:iso (apps/web/workers/app.ts), and `private` keeps
+// Cloudflare's platform CDN from holding it too. Rendering fresh is one small R2 GET. A short browser
+// max-age only avoids refetch on rapid back/forward — a correction still appears within a minute, and a
+// reload shows it immediately.
+const DIGEST_CACHE = 'private, max-age=60';
 
 export function meta({ matches, data: d }: Route.MetaArgs) {
   const title = d ? `${d.report.title} — Седмицата в пари` : 'Седмичен обзор';

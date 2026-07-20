@@ -3,10 +3,12 @@ import type { StoredReport } from '@sigma/report';
 import { headers, loader } from './weeks.$iso';
 
 describe('weeks.$iso headers', () => {
-  it('caches with a bounded s-maxage + stale-while-revalidate, NOT immutable, so re-issued weeks propagate (#81 M1)', () => {
+  it('is NOT shared-cached, so an in-place re-issued/corrected week propagates immediately (#81)', () => {
     const cc = headers()['Cache-Control'];
-    expect(cc).toContain('s-maxage=300');
-    expect(cc).toContain('stale-while-revalidate=300');
+    // `private` keeps shared caches (Cloudflare CDN) from holding a stale copy; the worker also skips its
+    // per-colo edge cache for /weeks/:iso. No s-maxage (shared TTL) and never immutable.
+    expect(cc).toContain('private');
+    expect(cc).not.toContain('s-maxage');
     expect(cc).not.toContain('immutable');
   });
 });

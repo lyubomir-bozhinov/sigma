@@ -41,6 +41,10 @@ const edgeCache = (caches as unknown as { default: Cache }).default;
 // concept, so we synthesise one by mutating the cache-key URL (the served response is unaffected).
 const DEPLOY_TAG = Date.now().toString(36);
 
+// The weekly-digest detail page `/weeks/:iso` (e.g. `/weeks/2026-W25`) — matched to opt it OUT of the
+// per-colo edge cache below. NOT the archive `/weeks` (which has no second segment) and not deeper paths.
+const DIGEST_DETAIL_PATH = /^\/weeks\/[^/]+\/?$/;
+
 function applySecurityHeaders(headers: Headers, security: Headers): void {
   for (const [key, value] of security) headers.set(key, value);
 }
@@ -107,7 +111,14 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   // (publicCache() in apps/web/app/lib/cache.ts). Deterministic and independent of platform
   // HTML-cache heuristics on *.workers.dev; TTL is driven by s-maxage. The X-Edge-Cache:
   // HIT|MISS|BYPASS header lets `curl -I` verify which path a request took.
-  const key = request.method === 'GET' ? cacheKey(request, DEPLOY_TAG) : null;
+  //
+  // Exception — the weekly-digest DETAIL page `/weeks/:iso` is never edge-cached: its body is a single
+  // small R2 artifact that the producer OVERWRITES in place on a correction/re-seed (spec §10.4), and a
+  // data-only overwrite does not bust an edge key (keyed by path + deploy tag, not data version). Caching
+  // it means a corrected week keeps serving the stale copy for the whole stale-while-revalidate window.
+  // Rendering it fresh is one R2 GET — cheap enough to skip the cache and always be correct (#81).
+  const bypassEdgeCache = DIGEST_DETAIL_PATH.test(new URL(request.url).pathname);
+  const key = request.method === 'GET' && !bypassEdgeCache ? cacheKey(request, DEPLOY_TAG) : null;
   if (key) {
     const cached = await edgeCache.match(key);
     if (cached) {
