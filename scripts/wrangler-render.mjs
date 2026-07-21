@@ -121,8 +121,12 @@ if (ext === '.json' || ext === '.jsonc') {
     etlName: process.env.SIGMA_ETL_NAME || '',
     workflowName: process.env.SIGMA_WORKFLOW_NAME || '',
     d1Name: process.env.SIGMA_D1_NAME || '',
+    // Per-environment weekly-digest schedule (e.g. a fast cadence in a data-test env). Rewrites BOTH
+    // the DIGEST_CRON var (what scheduled() matches) and the matching [triggers] crons entry (what
+    // Cloudflare fires on) from one value, so they cannot drift. Unset → committed "0 7 * * 1" stays.
+    digestCron: process.env.SIGMA_DIGEST_CRON || '',
   };
-  if (names.etlName || names.workflowName || names.d1Name) {
+  if (names.etlName || names.workflowName || names.d1Name || names.digestCron) {
     out = renderToml(out, names);
   }
 }
@@ -229,21 +233,45 @@ function stripJsonLineComments(text) {
 
 function renderToml(text, names) {
   let section = '';
-  return text
-    .split('\n')
-    .map((line) => {
-      const sectionMatch = line.match(/^\s*(\[\[?[^\]]+\]?\])\s*$/);
-      if (sectionMatch) section = sectionMatch[1];
+  // Captured from the DIGEST_CRON var in [vars] (which precedes [triggers] in the file), then used to
+  // find-and-replace that exact literal inside the crons array — so both move together.
+  let committedDigestCron = null;
+  const lines = text.split('\n').map((line) => {
+    const sectionMatch = line.match(/^\s*(\[\[?[^\]]+\]?\])\s*$/);
+    if (sectionMatch) section = sectionMatch[1];
 
-      if (section === '' && names.etlName) {
-        line = replaceTomlStringValue(line, 'name', names.etlName);
-      } else if (section === '[[workflows]]' && names.workflowName) {
-        line = replaceTomlStringValue(line, 'name', names.workflowName);
+    if (section === '' && names.etlName) {
+      line = replaceTomlStringValue(line, 'name', names.etlName);
+    } else if (section === '[[workflows]]' && names.workflowName) {
+      line = replaceTomlStringValue(line, 'name', names.workflowName);
+    }
+    if (names.d1Name) line = replaceTomlStringValue(line, 'database_name', names.d1Name);
+
+    if (names.digestCron) {
+      if (section === '[vars]') {
+        const varMatch = line.match(/^\s*DIGEST_CRON\s*=\s*"([^"]*)"/);
+        if (varMatch) {
+          committedDigestCron = varMatch[1];
+          line = replaceTomlStringValue(line, 'DIGEST_CRON', names.digestCron);
+        }
+      } else if (section === '[triggers]' && committedDigestCron && /^\s*crons\s*=/.test(line)) {
+        // Function replacement so `$` in the value is never treated as a capture-group reference.
+        line = line.replace(
+          `"${committedDigestCron}"`,
+          () => `"${escapeTomlBasicString(names.digestCron)}"`,
+        );
       }
-      if (names.d1Name) line = replaceTomlStringValue(line, 'database_name', names.d1Name);
-      return line;
-    })
-    .join('\n');
+    }
+    return line;
+  });
+
+  if (names.digestCron && committedDigestCron === null) {
+    console.error(
+      '✘ wrangler-render: SIGMA_DIGEST_CRON is set but no DIGEST_CRON var exists in [vars]',
+    );
+    process.exit(1);
+  }
+  return lines.join('\n');
 }
 
 function replaceTomlStringValue(line, key, value) {

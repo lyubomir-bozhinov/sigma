@@ -361,6 +361,27 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(upserts[0]!.totalEur).toBe(data.totalsByWeek[TARGET.iso]);
   });
 
+  it('targetIso overrides `now`, generating for the explicit week (on-demand trigger path)', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+
+    // `now` is an unrelated week; `targetIso` forces TARGET.iso, so the artifact + upsert are for
+    // TARGET rather than priorIsoWeek(now). The settled-week gate still reads TARGET's Sunday vs asOf.
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: new Date('2030-06-03T07:00:00Z'),
+      targetIso: TARGET.iso,
+      generate: mockGenerate(
+        'Изминалата седмица бе разнообразна за обществените поръчки в страната.',
+      ),
+    });
+
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.key).toBe(`weeks/${TARGET.iso}.json`);
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
+  });
+
   // precompute.sql's COUNT/SUM CONSISTENCY rule: a (count, sum) rendered as one KPI set must cover ONE
   // row set. The totals strip puts "Договори" right next to "Обща стойност", so it must bind the
   // clean-amount count (10) — binding the raw volume (12) would let a reader divide the two and get a

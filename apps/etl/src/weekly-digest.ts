@@ -12,6 +12,7 @@ import {
   bindReport,
   buildStoredReport,
   cpvReference,
+  isoWeekFromId,
   MAX_RATIO_MAGNITUDE,
   persistReport,
   priorIsoWeek,
@@ -47,6 +48,9 @@ export interface GenerateWeeklyDigestDeps {
    *  `env` lazily (never constructed on a skip/zero-row path, so a test that never reaches the LLM step
    *  can omit both `AI_GATEWAY_BASE_URL` and this override without ever touching the network). */
   generate?: GenerateFn;
+  /** Operator override (on-demand trigger / tests): generate for this explicit ISO week (`YYYY-Www`)
+   *  instead of the week before `now`. The same gates (settled-week, zero-row) still apply to it. */
+  targetIso?: string;
 }
 
 const DEFAULT_MODEL = 'google/gemma-4-31b-it';
@@ -372,7 +376,7 @@ export async function generateWeeklyDigest(
   deps: GenerateWeeklyDigestDeps = {},
 ): Promise<void> {
   const now = deps.now ?? new Date();
-  const target = priorIsoWeek(now);
+  const target = deps.targetIso ? isoWeekFromId(deps.targetIso) : priorIsoWeek(now);
 
   const totals = await env.DB.prepare(
     'SELECT value_eur AS value_eur, as_of AS as_of FROM home_totals WHERE id = 1',
