@@ -38,7 +38,10 @@ export interface WeeklyDigestEnv {
   REPORTS: R2Bucket;
   AI_GATEWAY_BASE_URL?: string;
   ASSISTANT_MODEL?: string;
-  BGGPT_API_KEY?: string;
+  /** BgGPT provider key, forwarded upstream through the AI Gateway. Same secret name the web assistant
+   *  uses (apps/web ASSISTANT_API_KEY) so both workers share one credential name. Optional: unset →
+   *  the digest still publishes AI-free. */
+  ASSISTANT_API_KEY?: string;
 }
 
 export interface GenerateWeeklyDigestDeps {
@@ -101,7 +104,7 @@ function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
       'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
     );
   }
-  const provider = createOpenAI({ baseURL, apiKey: env.BGGPT_API_KEY });
+  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
   const model = provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
   return async ({ system, prompt }) => {
     const result = await generateText({

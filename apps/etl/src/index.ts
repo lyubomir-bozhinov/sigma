@@ -21,7 +21,8 @@ export interface Env {
   EOP_OPEN_DATA_BASE_URL?: string;
   AI_GATEWAY_BASE_URL?: string;
   ASSISTANT_MODEL?: string;
-  BGGPT_API_KEY?: string;
+  /** BgGPT provider key (same secret name as apps/web's assistant), forwarded through the AI Gateway. */
+  ASSISTANT_API_KEY?: string;
   /** Master kill switch (mirrors apps/web's ASSISTANT_ENABLED): fail-dark unless explicitly "true". */
   DIGEST_ENABLED?: string;
   /** Digest cron schedule the scheduled() handler matches. Falls back to crons.ts's DIGEST_CRON when

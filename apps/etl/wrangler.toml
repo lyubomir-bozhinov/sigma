@@ -22,9 +22,9 @@ port = 8789
 [vars]
 EOP_OPEN_DATA_BASE_URL = "https://storage.eop.bg"
 # AI Gateway (mirrors apps/web/wrangler.jsonc's assistant vars — BgGPT via the same Custom Provider).
-# BGGPT_API_KEY is a SECRET (`wrangler secret put BGGPT_API_KEY`), never committed. Empty
-# AI_GATEWAY_BASE_URL fails closed in weekly-digest.ts's model builder, same posture as apps/web's
-# buildModel.
+# ASSISTANT_API_KEY is a SECRET (`wrangler secret put ASSISTANT_API_KEY`), never committed — the SAME
+# secret name apps/web uses, so both workers share one BgGPT credential name. Empty AI_GATEWAY_BASE_URL
+# fails closed in weekly-digest.ts's model builder, same posture as apps/web's buildModel.
 AI_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/custom-bggpt/v1"
 ASSISTANT_MODEL = "bggpt-gemma4-31b-it-bg-gptq-w4a16"
 # Master kill switch (mirrors ASSISTANT_ENABLED's fail-dark posture): committed "false" so a deploy
