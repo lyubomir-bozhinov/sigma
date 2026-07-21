@@ -41,9 +41,12 @@ const edgeCache = (caches as unknown as { default: Cache }).default;
 // concept, so we synthesise one by mutating the cache-key URL (the served response is unaffected).
 const DEPLOY_TAG = Date.now().toString(36);
 
-// The weekly-digest detail page `/weeks/:iso` (e.g. `/weeks/2026-W25`) — matched to opt it OUT of the
-// per-colo edge cache below. NOT the archive `/weeks` (which has no second segment) and not deeper paths.
-const DIGEST_DETAIL_PATH = /^\/weeks\/[^/]+\/?$/;
+// The weekly-digest pages — the archive `/weeks` and each detail `/weeks/:iso` (e.g. `/weeks/2026-W25`)
+// — matched to opt them OUT of the per-colo edge cache below. Both read straight from R2, which the
+// producer mutates in place (a corrected week, or a new/removed week in the archive listing), and the
+// edge key is URL+deploy-tag not data-version, so caching serves a stale list/page after such a change.
+// Does NOT match deeper paths like `/weeks/x/y`.
+const DIGEST_PATH = /^\/weeks(?:\/[^/]+)?\/?$/;
 
 function applySecurityHeaders(headers: Headers, security: Headers): void {
   for (const [key, value] of security) headers.set(key, value);
@@ -112,12 +115,13 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   // HTML-cache heuristics on *.workers.dev; TTL is driven by s-maxage. The X-Edge-Cache:
   // HIT|MISS|BYPASS header lets `curl -I` verify which path a request took.
   //
-  // Exception — the weekly-digest DETAIL page `/weeks/:iso` is never edge-cached: its body is a single
-  // small R2 artifact that the producer OVERWRITES in place on a correction/re-seed (spec §10.4), and a
-  // data-only overwrite does not bust an edge key (keyed by path + deploy tag, not data version). Caching
-  // it means a corrected week keeps serving the stale copy for the whole stale-while-revalidate window.
-  // Rendering it fresh is one R2 GET — cheap enough to skip the cache and always be correct (#81).
-  const bypassEdgeCache = DIGEST_DETAIL_PATH.test(new URL(request.url).pathname);
+  // Exception — the weekly-digest pages (`/weeks` archive + `/weeks/:iso` detail) are never edge-cached:
+  // each reads straight from R2, which the producer OVERWRITES in place (a corrected week; a new/removed
+  // week in the listing — spec §10.4/§11), and a data-only change does not bust an edge key (keyed by
+  // path + deploy tag, not data version). Caching serves a stale page/list for the whole
+  // stale-while-revalidate window. Rendering fresh is a single R2 read/list — cheap enough to always be
+  // correct (#81).
+  const bypassEdgeCache = DIGEST_PATH.test(new URL(request.url).pathname);
   const key = request.method === 'GET' && !bypassEdgeCache ? cacheKey(request, DEPLOY_TAG) : null;
   if (key) {
     const cached = await edgeCache.match(key);

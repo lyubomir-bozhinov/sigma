@@ -3,7 +3,6 @@ import { money } from '@sigma/shared';
 import type { Route } from './+types/weeks._index';
 import { PageHeader } from '../components/PageHeader';
 import { DataTable, type Column } from '../components/DataTable';
-import { publicCache } from '../lib/cache';
 import { seoMeta } from '../lib/meta';
 import { listStoredWeeks, type WeekIndexEntry } from '../lib/weeks';
 
@@ -18,7 +17,10 @@ export function meta({ matches }: Route.MetaArgs) {
 }
 
 export function headers() {
-  return { 'Cache-Control': publicCache(1800) };
+  // Not shared-cached (mirrors /weeks/:iso): the archive lists live R2 objects, so adding/removing a week
+  // must show immediately. The worker also skips its edge cache for /weeks (apps/web/workers/app.ts); a
+  // short browser max-age only avoids refetch on rapid back/forward.
+  return { 'Cache-Control': 'private, max-age=60' };
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
