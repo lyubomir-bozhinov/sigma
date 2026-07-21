@@ -22,6 +22,13 @@ describe('isoWeekKey / isValidIsoWeek', () => {
     expect(isValidIsoWeek('not-a-week')).toBe(false);
     expect(isValidIsoWeek('../weeks/x')).toBe(false);
   });
+
+  it('accepts W53 but rejects the impossible week numbers W00 and W54–99', () => {
+    expect(isValidIsoWeek('2020-W53')).toBe(true); // 2020 is a 53-week ISO year
+    expect(isValidIsoWeek('2026-W00')).toBe(false);
+    expect(isValidIsoWeek('2026-W54')).toBe(false);
+    expect(isValidIsoWeek('2026-W99')).toBe(false);
+  });
 });
 
 describe('listStoredWeeks', () => {

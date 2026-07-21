@@ -211,7 +211,7 @@ for (const iso of weeks) {
   // weeks but shows „—" for the total + hides the sparkline (which needs `customMetadata.totalEur`,
   // set by the ETL's persistReport). The per-week page /weeks/<iso> renders fully regardless.
   putCmds.push(
-    `pnpm --filter @sigma/web exec wrangler r2 object put ${BUCKET}/${key} --file="${file}" --content-type application/json`,
+    `pnpm --filter @sigma/web exec wrangler r2 object put "${BUCKET}/${key}" --file="${file}" --content-type application/json`,
   );
   console.log(`wrote ${file}  (iso=${iso}, total≈${total})`);
 }
@@ -228,7 +228,7 @@ console.log('# Clean up a seeded week when done:');
 for (const iso of weeks) {
   if (/^\d{4}-W\d{2}$/.test(iso)) {
     console.log(
-      `  pnpm --filter @sigma/web exec wrangler r2 object delete ${BUCKET}/weeks/${iso}.json --remote`,
+      `  pnpm --filter @sigma/web exec wrangler r2 object delete "${BUCKET}/weeks/${iso}.json" --remote`,
     );
   }
 }

@@ -3,8 +3,11 @@
 // deterministic key scheme and the R2 archive listing that backs the /weeks index.
 
 const WEEKS_PREFIX = 'weeks/';
-const ISO_WEEK = /^\d{4}-W\d{2}$/;
-const ISO_WEEK_KEY = /^weeks\/(\d{4}-W\d{2})\.json$/;
+// Week number is 01–53 (ISO 8601 has no W00 and at most 53 weeks) — reject W00/W54–99 up front so a
+// well-formed-but-impossible week 404s at validation rather than after a pointless R2 lookup.
+const WEEK_NUM = '(?:0[1-9]|[1-4]\\d|5[0-3])';
+const ISO_WEEK = new RegExp(`^\\d{4}-W${WEEK_NUM}$`);
+const ISO_WEEK_KEY = new RegExp(`^weeks/(\\d{4}-W${WEEK_NUM})\\.json$`);
 
 /** `2026-W25` → `weeks/2026-W25.json`, the immutable artifact's addressable key. */
 export function isoWeekKey(iso: string): string {

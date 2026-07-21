@@ -104,10 +104,12 @@ export function WeeklyGhostBars({
           </tr>
         </thead>
         <tbody>
-          {current.map((d, i) => (
+          {/* Drive off the LONGER series so a prior week with a day the current week lacks isn't dropped
+              from the accessible table (mirrors the exporters). In the digest both are 7 aligned slots. */}
+          {Array.from({ length: Math.max(current.length, prev.length) }, (_, i) => (
             <tr key={i}>
-              <td>{d.label}</td>
-              <td>{money(d.value)}</td>
+              <td>{current[i]?.label ?? prev[i]?.label ?? ''}</td>
+              <td>{current[i] ? money(current[i]!.value) : '—'}</td>
               <td>{prev[i] ? money(prev[i]!.value) : '—'}</td>
             </tr>
           ))}
