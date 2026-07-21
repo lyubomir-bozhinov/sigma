@@ -167,6 +167,8 @@ function scoreReconciles(
 ): CheckResult {
   if (!run.report) return { pass: false, detail: noReport(run) };
   // Parts = the series points (a top-N chart / flow / timeline); total = a labelled totals-or-facts item.
+  // Sums every bar/timeseries/flows block, so a report with two unrelated series would over-sum — fine for
+  // single-chart cases; scope by a series label if a multi-chart reconcile case ever appears.
   let partsSum = 0;
   let partsCount = 0;
   const totalMetric = check.totalMetric.toLowerCase();

@@ -27,11 +27,14 @@ export const cases: CaseDef[] = [
     id: 'template-outside-sofia',
     prompt: 'Кои са най-големите възложители извън София?',
     // Symptom-level checks over the ANSWER (the wire carries no SQL): the total must be the real
-    // non-Sofia figure, and no Sofia-HQ authority should be listed as „извън София".
+    // non-Sofia figure, no Sofia-HQ authority should be listed as „извън София", and the answer should
+    // actually name authorities. Add `metric: '<label-word>'` to numeric() to pin it to a specific
+    // labelled total once a live run reveals the label; without it, any report number within tolerance
+    // passes.
     checks: [
-      numeric({ expect: 20_500_000_000, tolerancePct: 8, metric: 'извън' }),
+      numeric({ expect: 20_500_000_000, tolerancePct: 8 }),
       contentExcludes('Агенция „Пътна инфраструктура"'),
-      contentIncludes('.'),
+      contentIncludes('възложител'),
     ],
     baseline: 'fail',
   },
