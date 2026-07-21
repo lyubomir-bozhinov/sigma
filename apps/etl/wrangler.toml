@@ -38,7 +38,7 @@ DIGEST_CRON = "0 7 * * 1"
 # DIGEST_TRIGGER_TOKEN secret is set, the worker's fetch() handler runs the digest immediately on an
 # authenticated POST (optional ?week=YYYY-Www). Committed "false". DIGEST_TRIGGER_TOKEN is a SECRET
 # (`wrangler secret put DIGEST_TRIGGER_TOKEN`), never committed; without it the endpoint stays 404.
-DIGEST_TRIGGER_ENABLED = "false"
+DIGEST_TRIGGER_ENABLED = "true"
 
 # `database_id` is a zero-UUID placeholder for local dev (miniflare). `pnpm --filter @sigma/etl run
 # deploy` substitutes SIGMA_D1_ID into wrangler.deploy.toml via scripts/wrangler-render.mjs.
