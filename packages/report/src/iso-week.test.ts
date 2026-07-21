@@ -2,7 +2,7 @@
 // (`YYYY-Www`), distinct from `temporal.ts`'s question-parsing half-open date-only bounds.
 
 import { describe, expect, it } from 'vitest';
-import { priorIsoWeek } from './iso-week';
+import { isoWeekFromId, priorIsoWeek } from './iso-week';
 
 describe('priorIsoWeek', () => {
   it('resolves the prior Mon–Sun week for a plain mid-week Wednesday', () => {
@@ -56,5 +56,48 @@ describe('priorIsoWeek', () => {
     expect(result.iso).toBe('2027-W01');
     expect(result.mondayIso).toBe('2027-01-04');
     expect(result.sundayIso).toBe('2027-01-10');
+  });
+});
+
+describe('isoWeekFromId', () => {
+  it('resolves a mid-year week id to its full Mon–Sun record', () => {
+    expect(isoWeekFromId('2026-W28')).toEqual({
+      iso: '2026-W28',
+      mondayIso: '2026-07-06',
+      sundayIso: '2026-07-12',
+      startTs: '2026-07-06T00:00:00',
+      endTs: '2026-07-12T23:59:59',
+    });
+  });
+
+  it('resolves a W53 leap week (ISO year 2020 has 53 weeks)', () => {
+    expect(isoWeekFromId('2020-W53')).toEqual({
+      iso: '2020-W53',
+      mondayIso: '2020-12-28',
+      sundayIso: '2021-01-03',
+      startTs: '2020-12-28T00:00:00',
+      endTs: '2021-01-03T23:59:59',
+    });
+  });
+
+  it('resolves a W01 that starts in the prior calendar year', () => {
+    expect(isoWeekFromId('2026-W01').mondayIso).toBe('2025-12-29');
+  });
+
+  it('round-trips against priorIsoWeek', () => {
+    const wk = priorIsoWeek(new Date('2026-07-20T00:00:00Z'));
+    expect(isoWeekFromId(wk.iso)).toEqual(wk);
+  });
+
+  it('throws on a malformed id', () => {
+    expect(() => isoWeekFromId('2026W28')).toThrow(/not an ISO week id/);
+    expect(() => isoWeekFromId('nope')).toThrow(/not an ISO week id/);
+  });
+
+  it('throws on an out-of-range week', () => {
+    expect(() => isoWeekFromId('2026-W54')).toThrow(/not a valid ISO week/); // W54 never exists
+    expect(() => isoWeekFromId('2027-W53')).toThrow(/not a valid ISO week/); // 2027 is a 52-week ISO year
+    // (2026 IS a 53-week ISO year — Jan 1 2026 is a Thursday — so 2026-W53 is valid and must NOT throw.)
+    expect(isoWeekFromId('2026-W53').iso).toBe('2026-W53');
   });
 });
