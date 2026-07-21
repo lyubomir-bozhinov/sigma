@@ -1,0 +1,15 @@
+{
+  "note": "Graceful decline (Q20/Q40/Q43 class): the canonical insufficient-data sentence, no report.",
+  "status": 200,
+  "chunks": [
+    { "type": "start" },
+    { "type": "text-start", "id": "t0" },
+    {
+      "type": "text-delta",
+      "id": "t0",
+      "delta": "Не разполагам с достатъчно информация, за да отговоря прецизно на този въпрос."
+    },
+    { "type": "text-end", "id": "t0" },
+    { "type": "finish" }
+  ]
+}

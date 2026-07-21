@@ -1,0 +1,10 @@
+{
+  "note": "In-band SSE error on an HTTP-200 stream (token-overflow class): an `error` chunk arrives although the HTTP status is 200.",
+  "status": 200,
+  "chunks": [
+    { "type": "start" },
+    { "type": "text-start", "id": "t0" },
+    { "type": "text-delta", "id": "t0", "delta": "Извличам…" },
+    { "type": "error", "errorText": "maximum context length" }
+  ]
+}
