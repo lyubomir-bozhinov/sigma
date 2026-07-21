@@ -23,7 +23,8 @@ export function loadCassette(url: URL): Cassette {
   return JSON.parse(readFileSync(url, 'utf8')) as Cassette;
 }
 
-/** Capture a live turn into a cassette (for authoring fixtures against a real target). Live-only. */
+/** Capture a live turn into a cassette (for authoring fixtures against a real target). Live-only.
+ *  Authoring-only: not referenced by any test — invoked by hand to record a new cassette, not dead code. */
 export async function recordCassette(prompt: string, opts: DriveOptions): Promise<Cassette> {
   const res = await fetch(opts.url, {
     method: 'POST',
