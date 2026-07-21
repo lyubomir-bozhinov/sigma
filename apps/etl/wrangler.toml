@@ -2,7 +2,7 @@ name = "sigma-etl"
 main = "src/index.ts"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = false
+workers_dev = true
 
 # Cron-first: NO public route, NO custom domain, workers_dev = false above — so in production this
 # worker is effectively scheduled()-only. It DOES define a fetch() handler (the on-demand digest
