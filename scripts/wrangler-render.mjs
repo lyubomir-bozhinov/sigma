@@ -121,12 +121,25 @@ if (ext === '.json' || ext === '.jsonc') {
     etlName: process.env.SIGMA_ETL_NAME || '',
     workflowName: process.env.SIGMA_WORKFLOW_NAME || '',
     d1Name: process.env.SIGMA_D1_NAME || '',
+    // Per-environment REPORTS R2 bucket — mirrors the JSON/web path's SIGMA_REPORTS_NAME rename. The etl
+    // worker PUBLISHES the weekly digest to this bucket; the web worker READS it. Without renaming here,
+    // a non-prod deploy would leave etl on the committed `sigma-reports` (the prod bucket) while the web
+    // worker's binding is renamed to `sigma-reports-<env>` — a silent split where dev digests land in the
+    // prod bucket and the dev web app never sees them. Unset (prod) → committed `sigma-reports` stays, so
+    // production carries NO `-dev`/`-<env>` suffix.
+    reportsName: process.env.SIGMA_REPORTS_NAME || '',
     // Per-environment weekly-digest schedule (e.g. a fast cadence in a data-test env). Rewrites BOTH
     // the DIGEST_CRON var (what scheduled() matches) and the matching [triggers] crons entry (what
     // Cloudflare fires on) from one value, so they cannot drift. Unset → committed "0 7 * * 1" stays.
     digestCron: process.env.SIGMA_DIGEST_CRON || '',
   };
-  if (names.etlName || names.workflowName || names.d1Name || names.digestCron) {
+  if (
+    names.etlName ||
+    names.workflowName ||
+    names.d1Name ||
+    names.reportsName ||
+    names.digestCron
+  ) {
     out = renderToml(out, names);
   }
 }
@@ -236,9 +249,16 @@ function renderToml(text, names) {
   // Captured from the DIGEST_CRON var in [vars] (which precedes [triggers] in the file), then used to
   // find-and-replace that exact literal inside the crons array — so both move together.
   let committedDigestCron = null;
+  // The binding of the [[r2_buckets]] block currently being scanned. In the committed layout `binding`
+  // precedes `bucket_name`, so we capture it and rename `bucket_name` only for the matching binding —
+  // never by position, which would clobber every bucket (cf. renderJson's same by-binding guard).
+  let r2Binding = null;
   const lines = text.split('\n').map((line) => {
     const sectionMatch = line.match(/^\s*(\[\[?[^\]]+\]?\])\s*$/);
-    if (sectionMatch) section = sectionMatch[1];
+    if (sectionMatch) {
+      section = sectionMatch[1];
+      if (section === '[[r2_buckets]]') r2Binding = null; // reset per bucket block
+    }
 
     if (section === '' && names.etlName) {
       line = replaceTomlStringValue(line, 'name', names.etlName);
@@ -246,6 +266,16 @@ function renderToml(text, names) {
       line = replaceTomlStringValue(line, 'name', names.workflowName);
     }
     if (names.d1Name) line = replaceTomlStringValue(line, 'database_name', names.d1Name);
+
+    if (section === '[[r2_buckets]]') {
+      const bindingMatch = line.match(/^\s*binding\s*=\s*"([^"]*)"/);
+      if (bindingMatch) r2Binding = bindingMatch[1];
+      // Only the REPORTS bucket is renamed for the etl worker (it binds no other R2 bucket). Unset
+      // reportsName (prod) → the committed bucket_name is left byte-identical, so prod omits the suffix.
+      if (r2Binding === 'REPORTS' && names.reportsName) {
+        line = replaceTomlStringValue(line, 'bucket_name', names.reportsName);
+      }
+    }
 
     if (names.digestCron) {
       if (section === '[vars]') {
