@@ -128,6 +128,12 @@ if (ext === '.json' || ext === '.jsonc') {
     // prod bucket and the dev web app never sees them. Unset (prod) → committed `sigma-reports` stays, so
     // production carries NO `-dev`/`-<env>` suffix.
     reportsName: process.env.SIGMA_REPORTS_NAME || '',
+    // AI-Gateway account id in AI_GATEWAY_BASE_URL — mirrors the JSON/web path's SIGMA_AI_GATEWAY_ACCOUNT
+    // swap. The committed URL embeds the prod account; a target on a DIFFERENT Cloudflare account (dev has
+    // its own `sigma-assistant` gateway + `custom-bggpt` provider) must stamp its own id, or the etl
+    // worker calls the prod account's gateway — which the dev worker's key cannot use, so the digest
+    // narrative fails and falls back to AI-free. Unset (prod) → committed URL left byte-identical.
+    aiGatewayAccount: process.env.SIGMA_AI_GATEWAY_ACCOUNT || '',
     // Per-environment weekly-digest schedule (e.g. a fast cadence in a data-test env). Rewrites BOTH
     // the DIGEST_CRON var (what scheduled() matches) and the matching [triggers] crons entry (what
     // Cloudflare fires on) from one value, so they cannot drift. Unset → committed "0 7 * * 1" stays.
@@ -138,6 +144,7 @@ if (ext === '.json' || ext === '.jsonc') {
     names.workflowName ||
     names.d1Name ||
     names.reportsName ||
+    names.aiGatewayAccount ||
     names.digestCron
   ) {
     out = renderToml(out, names);
@@ -275,6 +282,16 @@ function renderToml(text, names) {
       if (r2Binding === 'REPORTS' && names.reportsName) {
         line = replaceTomlStringValue(line, 'bucket_name', names.reportsName);
       }
+    }
+
+    // Re-point the AI-Gateway account id in AI_GATEWAY_BASE_URL (same swap renderJson does for the web
+    // worker). The regex matches only the 32-hex segment after `.../v1/`, so it touches only the gateway
+    // URL line and is agnostic to which account is committed. Unset → URL untouched (prod byte-identity).
+    if (names.aiGatewayAccount) {
+      line = line.replace(
+        /(gateway\.ai\.cloudflare\.com\/v1\/)[0-9a-f]{32}/,
+        `$1${names.aiGatewayAccount}`,
+      );
     }
 
     if (names.digestCron) {

@@ -68,3 +68,32 @@ describe('wrangler-render: REPORTS R2 bucket rename (etl TOML path)', () => {
     assert.match(out, /^bucket_name = "sigma-reports-dev"$/m);
   });
 });
+
+// AI_GATEWAY_BASE_URL with the committed prod account id — mirrors the etl worker's [vars].
+const GATEWAY_TOML = `name = "sigma-etl"
+
+[vars]
+AI_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com/v1/f6308e22233e69cba80ed57bdb6d5f44/sigma-assistant/custom-bggpt/v1"
+`;
+
+const PROD_ACCT = 'f6308e22233e69cba80ed57bdb6d5f44';
+const DEV_ACCT = 'b2abee0097d289c0762fd5b85a61353d';
+
+describe('wrangler-render: AI_GATEWAY_BASE_URL account rewrite (etl TOML path)', () => {
+  it('swaps the gateway account id when SIGMA_AI_GATEWAY_ACCOUNT is set (non-prod)', () => {
+    const out = render(GATEWAY_TOML, { SIGMA_AI_GATEWAY_ACCOUNT: DEV_ACCT });
+    assert.match(out, new RegExp(`/v1/${DEV_ACCT}/sigma-assistant/custom-bggpt/v1`));
+    assert.doesNotMatch(out, new RegExp(PROD_ACCT));
+  });
+
+  it('leaves the committed account id when SIGMA_AI_GATEWAY_ACCOUNT is unset (prod byte-identity)', () => {
+    const out = render(GATEWAY_TOML, {});
+    assert.match(out, new RegExp(`/v1/${PROD_ACCT}/sigma-assistant/custom-bggpt/v1`));
+    assert.doesNotMatch(out, new RegExp(DEV_ACCT));
+  });
+
+  it('rewrites only the 32-hex account segment, preserving gateway slug + provider path', () => {
+    const out = render(GATEWAY_TOML, { SIGMA_AI_GATEWAY_ACCOUNT: DEV_ACCT });
+    assert.match(out, /sigma-assistant\/custom-bggpt\/v1"/);
+  });
+});
