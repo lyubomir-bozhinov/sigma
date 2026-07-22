@@ -12,6 +12,7 @@ import { DIGEST_CRON, PROMPTS_CRON, REFRESH_CRON } from './crons';
 import { computeWorkerCatchupPlan, ingestBucketWindow, type CatchupPlan } from './eop';
 import { generateSuggestedPrompts } from './suggested-prompts';
 import { digestEnabled, generateWeeklyDigest } from './weekly-digest';
+import { handleDigestTrigger } from './digest-trigger';
 
 export interface Env {
   DB: D1Database;
@@ -20,9 +21,17 @@ export interface Env {
   EOP_OPEN_DATA_BASE_URL?: string;
   AI_GATEWAY_BASE_URL?: string;
   ASSISTANT_MODEL?: string;
-  BGGPT_API_KEY?: string;
+  /** BgGPT provider key (same secret name as apps/web's assistant), forwarded through the AI Gateway. */
+  ASSISTANT_API_KEY?: string;
   /** Master kill switch (mirrors apps/web's ASSISTANT_ENABLED): fail-dark unless explicitly "true". */
   DIGEST_ENABLED?: string;
+  /** Digest cron schedule the scheduled() handler matches. Falls back to crons.ts's DIGEST_CRON when
+   *  unset. The deploy renderer (SIGMA_DIGEST_CRON) keeps this and the [triggers] crons entry in sync. */
+  DIGEST_CRON?: string;
+  /** Fail-dark enable flag for the on-demand HTTP trigger (see digest-trigger.ts). Committed "false". */
+  DIGEST_TRIGGER_ENABLED?: string;
+  /** Bearer-token secret for the on-demand trigger. A `wrangler secret`; unset → the trigger 404s. */
+  DIGEST_TRIGGER_TOKEN?: string;
 }
 
 interface RefreshParams {
@@ -166,9 +175,10 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
 }
 
 export default {
-  // Cron entrypoint. Two triggers share this worker: the 6-hourly data refresh kicks a durable
-  // Workflow run; the weekly cron rebuilds the assistant starter prompts. Branch on the cron string
-  // (named constants above) — an unrecognised cron logs `etl_unknown_cron` rather than misrouting.
+  // Primarily a cron worker: three triggers share it — the 6-hourly data refresh kicks a durable
+  // Workflow run, the Monday prompts cron rebuilds the assistant starter prompts, and the Monday
+  // digest cron publishes the weekly digest. Branch on the cron string (named constants above) — an
+  // unrecognised cron logs `etl_unknown_cron` rather than misrouting.
   async scheduled(controller, env, ctx): Promise<void> {
     if (controller.cron === PROMPTS_CRON) {
       // Surface a failure as a structured event rather than an anonymous unhandled rejection. The job
@@ -193,7 +203,9 @@ export default {
       );
       return;
     }
-    if (controller.cron === DIGEST_CRON) {
+    // The digest schedule is configurable per environment via the DIGEST_CRON var (kept in sync with
+    // the [triggers] crons entry by the deploy renderer); fall back to the committed constant when unset.
+    if (controller.cron === (env.DIGEST_CRON?.trim() || DIGEST_CRON)) {
       if (!digestEnabled(env.DIGEST_ENABLED)) {
         console.log(JSON.stringify({ level: 'info', event: 'etl_digest_disabled' }));
         return;
@@ -216,5 +228,27 @@ export default {
     console.log(
       JSON.stringify({ level: 'warn', event: 'etl_unknown_cron', cron: controller.cron }),
     );
+  },
+
+  // On-demand digest trigger (testing). This worker has no committed route and `workers_dev = false`,
+  // so in production this handler is unreachable; where a preview env opts in, digest-trigger.ts gates
+  // it behind a fail-dark flag + bearer token. Everything else is a 404. The try/catch is a backstop:
+  // handleDigestTrigger already catches the generation path, so this only fires on an unexpected throw.
+  async fetch(request, env): Promise<Response> {
+    try {
+      return await handleDigestTrigger(request, env);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'etl_digest_trigger_error',
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return new Response(JSON.stringify({ error: 'internal' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+      });
+    }
   },
 } satisfies ExportedHandler<Env>;

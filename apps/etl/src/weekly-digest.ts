@@ -12,6 +12,7 @@ import {
   bindReport,
   buildStoredReport,
   cpvReference,
+  isoWeekFromId,
   MAX_RATIO_MAGNITUDE,
   persistReport,
   priorIsoWeek,
@@ -21,8 +22,10 @@ import {
   type EmitBlock,
   type EmitReportInput,
   type GenerateFn,
+  type IsoWeek,
   type QueryResult,
 } from '@sigma/report';
+import { date } from '@sigma/shared';
 
 // Weekly Digest producer (#167A T3) — the Monday cron that turns the prior ISO week's `@sigma/db`
 // weekly queries into an immutable `StoredReport` at `weeks/{ISO}.json`. Mirrors suggested-prompts.ts's
@@ -37,7 +40,10 @@ export interface WeeklyDigestEnv {
   REPORTS: R2Bucket;
   AI_GATEWAY_BASE_URL?: string;
   ASSISTANT_MODEL?: string;
-  BGGPT_API_KEY?: string;
+  /** BgGPT provider key, forwarded upstream through the AI Gateway. Same secret name the web assistant
+   *  uses (apps/web ASSISTANT_API_KEY) so both workers share one credential name. Optional: unset →
+   *  the digest still publishes AI-free. */
+  ASSISTANT_API_KEY?: string;
 }
 
 export interface GenerateWeeklyDigestDeps {
@@ -47,6 +53,9 @@ export interface GenerateWeeklyDigestDeps {
    *  `env` lazily (never constructed on a skip/zero-row path, so a test that never reaches the LLM step
    *  can omit both `AI_GATEWAY_BASE_URL` and this override without ever touching the network). */
   generate?: GenerateFn;
+  /** Operator override (on-demand trigger / tests): generate for this explicit ISO week (`YYYY-Www`)
+   *  instead of the week before `now`. The same gates (settled-week, zero-row) still apply to it. */
+  targetIso?: string;
 }
 
 const DEFAULT_MODEL = 'google/gemma-4-31b-it';
@@ -97,7 +106,7 @@ function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
       'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
     );
   }
-  const provider = createOpenAI({ baseURL, apiKey: env.BGGPT_API_KEY });
+  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
   const model = provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
   return async ({ system, prompt }) => {
     const result = await generateText({
@@ -351,7 +360,11 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
 
 /** Build the model-facing EmitReportInput. `narrativeMd` null ⇒ AI-free fallback (no text block, no
  *  model-authored prose anywhere but the fixed title/methodology strings this module itself owns). */
-function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): EmitReportInput {
+function buildEmitInput(
+  data: WeeklyDigestData,
+  narrativeMd: string | null,
+  target: IsoWeek,
+): EmitReportInput {
   const blocks: EmitBlock[] = [];
   if (narrativeMd) blocks.push({ type: 'text', md: narrativeMd });
 
@@ -464,7 +477,10 @@ function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): Emi
 
   blocks.push({ type: 'callout', title: METHODOLOGY_CALLOUT_TITLE, md: METHODOLOGY_CALLOUT_MD });
 
-  return { title: `Седмичен обзор — ${data.isoWeek}`, question: DIGEST_QUESTION, blocks };
+  // Human-readable Mon–Sun range (e.g. „06.07.2026 – 12.07.2026") in place of the raw ISO week id. The
+  // machine week id (target.iso) still keys the R2 object + weekly_digests row; only the heading changes.
+  const range = `${date(target.mondayIso)} – ${date(target.sundayIso)}`;
+  return { title: `Седмичен обзор — ${range}`, question: DIGEST_QUESTION, blocks };
 }
 
 // ── Sanity gates (never persist an unvalidated number) ───────────────────────────────────────────────
@@ -498,7 +514,7 @@ export async function generateWeeklyDigest(
   deps: GenerateWeeklyDigestDeps = {},
 ): Promise<void> {
   const now = deps.now ?? new Date();
-  const target = priorIsoWeek(now);
+  const target = deps.targetIso ? isoWeekFromId(deps.targetIso) : priorIsoWeek(now);
 
   const totals = await env.DB.prepare(
     'SELECT value_eur AS value_eur, as_of AS as_of FROM home_totals WHERE id = 1',
@@ -536,7 +552,7 @@ export async function generateWeeklyDigest(
   }
 
   const results = buildQueryResults(data);
-  const emitInput0 = buildEmitInput(data, null);
+  const emitInput0 = buildEmitInput(data, null, target);
 
   // Past every skip gate — safe to materialize the real LLM call now (never built/called on an
   // unsettled-week, zero-contracts, or sanity-failed path above).
@@ -567,7 +583,7 @@ export async function generateWeeklyDigest(
       log('etl_digest_narrative_empty', { isoWeek: target.iso, attempt });
       continue;
     }
-    const trial = bindReport(buildEmitInput(data, candidate), results, {
+    const trial = bindReport(buildEmitInput(data, candidate, target), results, {
       question: DIGEST_QUESTION,
     });
     if (trial.ok) {
@@ -577,7 +593,7 @@ export async function generateWeeklyDigest(
     log('etl_digest_narrative_rejected', { isoWeek: target.iso, attempt, errors: trial.errors });
   }
 
-  const emitInput = narrativeMd ? buildEmitInput(data, narrativeMd) : emitInput0;
+  const emitInput = narrativeMd ? buildEmitInput(data, narrativeMd, target) : emitInput0;
   const bound = bindReport(emitInput, results, { question: DIGEST_QUESTION });
   if (!bound.ok) {
     // The AI-free fallback (no model prose beyond this module's own fixed strings) must always bind —

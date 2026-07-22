@@ -40,6 +40,20 @@ function isoWeekNumber(iso: string): { isoYear: number; week: number } {
   return { isoYear, week };
 }
 
+/** Build the full IsoWeek record from the week's Monday date (`YYYY-MM-DD`). Shared by priorIsoWeek
+ *  (which derives the Monday from `now`) and isoWeekFromId (which derives it from a week id). */
+function isoWeekFromMonday(mondayIso: string): IsoWeek {
+  const sundayIso = addDaysIso(mondayIso, 6);
+  const { isoYear, week } = isoWeekNumber(mondayIso);
+  return {
+    iso: `${isoYear}-W${String(week).padStart(2, '0')}`,
+    mondayIso,
+    sundayIso,
+    startTs: `${mondayIso}T00:00:00`,
+    endTs: `${sundayIso}T23:59:59`,
+  };
+}
+
 /** Resolve the FULL Mon–Sun ISO week immediately before the one containing `now` (Europe/Sofia civil date). */
 export function priorIsoWeek(now: Date): IsoWeek {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -53,14 +67,30 @@ export function priorIsoWeek(now: Date): IsoWeek {
 
   const thisMondayIso = addDaysIso(todayIso, -isoWeekday(todayIso));
   const mondayIso = addDaysIso(thisMondayIso, -7);
-  const sundayIso = addDaysIso(mondayIso, 6);
-  const { isoYear, week } = isoWeekNumber(mondayIso);
+  return isoWeekFromMonday(mondayIso);
+}
 
-  return {
-    iso: `${isoYear}-W${String(week).padStart(2, '0')}`,
-    mondayIso,
-    sundayIso,
-    startTs: `${mondayIso}T00:00:00`,
-    endTs: `${sundayIso}T23:59:59`,
-  };
+/**
+ * Resolve the FULL Mon–Sun ISO week for an explicit `YYYY-Www` id (e.g. `2026-W28`) — the inverse of
+ * the `iso` field priorIsoWeek returns. Used by the on-demand digest trigger to target a specific week
+ * for testing. Throws on a malformed id or an out-of-range week (e.g. `2026-W54`), caught by a
+ * round-trip check: the Monday we compute must map back to the same id.
+ */
+export function isoWeekFromId(id: string): IsoWeek {
+  const match = /^(\d{4})-W(\d{2})$/.exec(id);
+  if (!match) throw new Error(`isoWeekFromId: not an ISO week id ('${id}')`);
+  const isoYear = Number(match[1]);
+  const week = Number(match[2]);
+
+  // Monday of ISO week 1 is the Monday on/before Jan 4 (Jan 4 is always in ISO week 1); week N's
+  // Monday is (N-1)*7 days later. UTC throughout — the wall-clock date is all that matters here.
+  const jan4 = new Date(Date.UTC(isoYear, 0, 4));
+  const jan4DayNum = (jan4.getUTCDay() + 6) % 7; // Monday=0..Sunday=6
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - jan4DayNum + (week - 1) * 7);
+  const mondayIso = monday.toISOString().slice(0, 10);
+
+  const resolved = isoWeekFromMonday(mondayIso);
+  if (resolved.iso !== id) throw new Error(`isoWeekFromId: '${id}' is not a valid ISO week`);
+  return resolved;
 }

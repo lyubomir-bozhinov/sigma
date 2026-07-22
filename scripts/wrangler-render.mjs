@@ -87,6 +87,15 @@ if (ext === '.json' || ext === '.jsonc') {
     // own name (preview="preview", staging="staging", production="production"). Unset → committed
     // "development" stays, so local `wrangler dev` (no render step) is fail-open by construction.
     environment: process.env.SIGMA_ENVIRONMENT || '',
+    // AI-Gateway account id (account-scoped). The committed AI_GATEWAY_BASE_URL / BGGPT_STT_BASE_URL
+    // embed one account's id; a target on a DIFFERENT Cloudflare account (e.g. the dev/preview account)
+    // stamps its own id here. Unset → the committed URLs are left byte-identical, so production/staging
+    // on the original account are unchanged.
+    aiGatewayAccount: process.env.SIGMA_AI_GATEWAY_ACCOUNT || '',
+    // Public Turnstile site key. Account-bound (the widget lives in one Cloudflare account), so a target
+    // on a different account (dev/preview → b2abee…) stamps its own widget's key here. Unset → committed
+    // key stays (prod/staging invariant). Pairs with the TURNSTILE_SECRET worker secret for that widget.
+    turnstileSiteKey: process.env.SIGMA_TURNSTILE_SITE_KEY || '',
   };
   if (
     names.webName ||
@@ -96,7 +105,9 @@ if (ext === '.json' || ext === '.jsonc') {
     names.vectorizeName ||
     names.buildId ||
     names.assistantEnabled ||
-    names.environment
+    names.environment ||
+    names.aiGatewayAccount ||
+    names.turnstileSiteKey
   ) {
     out = renderJson(out, names);
   }
@@ -110,8 +121,32 @@ if (ext === '.json' || ext === '.jsonc') {
     etlName: process.env.SIGMA_ETL_NAME || '',
     workflowName: process.env.SIGMA_WORKFLOW_NAME || '',
     d1Name: process.env.SIGMA_D1_NAME || '',
+    // Per-environment REPORTS R2 bucket — mirrors the JSON/web path's SIGMA_REPORTS_NAME rename. The etl
+    // worker PUBLISHES the weekly digest to this bucket; the web worker READS it. Without renaming here,
+    // a non-prod deploy would leave etl on the committed `sigma-reports` (the prod bucket) while the web
+    // worker's binding is renamed to `sigma-reports-<env>` — a silent split where dev digests land in the
+    // prod bucket and the dev web app never sees them. Unset (prod) → committed `sigma-reports` stays, so
+    // production carries NO `-dev`/`-<env>` suffix.
+    reportsName: process.env.SIGMA_REPORTS_NAME || '',
+    // AI-Gateway account id in AI_GATEWAY_BASE_URL — mirrors the JSON/web path's SIGMA_AI_GATEWAY_ACCOUNT
+    // swap. The committed URL embeds the prod account; a target on a DIFFERENT Cloudflare account (dev has
+    // its own `sigma-assistant` gateway + `custom-bggpt` provider) must stamp its own id, or the etl
+    // worker calls the prod account's gateway — which the dev worker's key cannot use, so the digest
+    // narrative fails and falls back to AI-free. Unset (prod) → committed URL left byte-identical.
+    aiGatewayAccount: process.env.SIGMA_AI_GATEWAY_ACCOUNT || '',
+    // Per-environment weekly-digest schedule (e.g. a fast cadence in a data-test env). Rewrites BOTH
+    // the DIGEST_CRON var (what scheduled() matches) and the matching [triggers] crons entry (what
+    // Cloudflare fires on) from one value, so they cannot drift. Unset → committed "0 7 * * 1" stays.
+    digestCron: process.env.SIGMA_DIGEST_CRON || '',
   };
-  if (names.etlName || names.workflowName || names.d1Name) {
+  if (
+    names.etlName ||
+    names.workflowName ||
+    names.d1Name ||
+    names.reportsName ||
+    names.aiGatewayAccount ||
+    names.digestCron
+  ) {
     out = renderToml(out, names);
   }
 }
@@ -193,6 +228,22 @@ function renderJson(text, names) {
   // env (production/staging → key required) from an ephemeral one (preview/dev → fail-open).
   if (names.environment && obj.vars && typeof obj.vars === 'object')
     obj.vars.ENVIRONMENT = names.environment;
+  // Re-point the AI-Gateway account id in the gateway URLs when deploying to a different account.
+  // Swaps only the 32-hex account segment after `.../v1/`, leaving the gateway slug + path intact, so
+  // it is agnostic to which account id is committed. Unset → URLs untouched (prod/staging byte-identity).
+  if (names.aiGatewayAccount && obj.vars && typeof obj.vars === 'object') {
+    for (const key of ['AI_GATEWAY_BASE_URL', 'BGGPT_STT_BASE_URL']) {
+      if (typeof obj.vars[key] === 'string') {
+        obj.vars[key] = obj.vars[key].replace(
+          /(gateway\.ai\.cloudflare\.com\/v1\/)[0-9a-f]{32}/,
+          `$1${names.aiGatewayAccount}`,
+        );
+      }
+    }
+  }
+  // Stamp the per-account Turnstile site key over the committed one (account-bound widget).
+  if (names.turnstileSiteKey && obj.vars && typeof obj.vars === 'object')
+    obj.vars.TURNSTILE_SITE_KEY = names.turnstileSiteKey;
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 
@@ -202,21 +253,72 @@ function stripJsonLineComments(text) {
 
 function renderToml(text, names) {
   let section = '';
-  return text
-    .split('\n')
-    .map((line) => {
-      const sectionMatch = line.match(/^\s*(\[\[?[^\]]+\]?\])\s*$/);
-      if (sectionMatch) section = sectionMatch[1];
+  // Captured from the DIGEST_CRON var in [vars] (which precedes [triggers] in the file), then used to
+  // find-and-replace that exact literal inside the crons array — so both move together.
+  let committedDigestCron = null;
+  // The binding of the [[r2_buckets]] block currently being scanned. In the committed layout `binding`
+  // precedes `bucket_name`, so we capture it and rename `bucket_name` only for the matching binding —
+  // never by position, which would clobber every bucket (cf. renderJson's same by-binding guard).
+  let r2Binding = null;
+  const lines = text.split('\n').map((line) => {
+    const sectionMatch = line.match(/^\s*(\[\[?[^\]]+\]?\])\s*$/);
+    if (sectionMatch) {
+      section = sectionMatch[1];
+      if (section === '[[r2_buckets]]') r2Binding = null; // reset per bucket block
+    }
 
-      if (section === '' && names.etlName) {
-        line = replaceTomlStringValue(line, 'name', names.etlName);
-      } else if (section === '[[workflows]]' && names.workflowName) {
-        line = replaceTomlStringValue(line, 'name', names.workflowName);
+    if (section === '' && names.etlName) {
+      line = replaceTomlStringValue(line, 'name', names.etlName);
+    } else if (section === '[[workflows]]' && names.workflowName) {
+      line = replaceTomlStringValue(line, 'name', names.workflowName);
+    }
+    if (names.d1Name) line = replaceTomlStringValue(line, 'database_name', names.d1Name);
+
+    if (section === '[[r2_buckets]]') {
+      const bindingMatch = line.match(/^\s*binding\s*=\s*"([^"]*)"/);
+      if (bindingMatch) r2Binding = bindingMatch[1];
+      // Only the REPORTS bucket is renamed for the etl worker (it binds no other R2 bucket). Unset
+      // reportsName (prod) → the committed bucket_name is left byte-identical, so prod omits the suffix.
+      if (r2Binding === 'REPORTS' && names.reportsName) {
+        line = replaceTomlStringValue(line, 'bucket_name', names.reportsName);
       }
-      if (names.d1Name) line = replaceTomlStringValue(line, 'database_name', names.d1Name);
-      return line;
-    })
-    .join('\n');
+    }
+
+    // Re-point the AI-Gateway account id in AI_GATEWAY_BASE_URL (same swap renderJson does for the web
+    // worker). The regex matches only the 32-hex segment after `.../v1/`, so it touches only the gateway
+    // URL line and is agnostic to which account is committed. Unset → URL untouched (prod byte-identity).
+    if (names.aiGatewayAccount) {
+      line = line.replace(
+        /(gateway\.ai\.cloudflare\.com\/v1\/)[0-9a-f]{32}/,
+        `$1${names.aiGatewayAccount}`,
+      );
+    }
+
+    if (names.digestCron) {
+      if (section === '[vars]') {
+        const varMatch = line.match(/^\s*DIGEST_CRON\s*=\s*"([^"]*)"/);
+        if (varMatch) {
+          committedDigestCron = varMatch[1];
+          line = replaceTomlStringValue(line, 'DIGEST_CRON', names.digestCron);
+        }
+      } else if (section === '[triggers]' && committedDigestCron && /^\s*crons\s*=/.test(line)) {
+        // Function replacement so `$` in the value is never treated as a capture-group reference.
+        line = line.replace(
+          `"${committedDigestCron}"`,
+          () => `"${escapeTomlBasicString(names.digestCron)}"`,
+        );
+      }
+    }
+    return line;
+  });
+
+  if (names.digestCron && committedDigestCron === null) {
+    console.error(
+      '✘ wrangler-render: SIGMA_DIGEST_CRON is set but no DIGEST_CRON var exists in [vars]',
+    );
+    process.exit(1);
+  }
+  return lines.join('\n');
 }
 
 function replaceTomlStringValue(line, key, value) {

@@ -48,6 +48,14 @@ jobs:
       # committed defaults stay (original-account invariant). wrangler-render already supports the swap.
       SIGMA_REPORTS_NAME: ${{ vars.SIGMA_REPORTS_NAME }}
       SIGMA_VECTORIZE_NAME: ${{ vars.SIGMA_VECTORIZE_NAME }}
+      # AI-Gateway is account-scoped: the committed AI_GATEWAY_BASE_URL / BGGPT_STT_BASE_URL embed the
+      # original account's id, so a preview on a different account (b2abee…) must swap it or every model
+      # call 404s. wrangler-render rewrites the 32-hex account segment. Unset → committed URLs unchanged.
+      SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
+      # Turnstile widget is account+domain-bound: the committed site key can't solve a challenge on the
+      # preview account's *.workers.dev domain (challenge 400 → chat 403), so stamp this account's widget
+      # key. Pairs with the TURNSTILE_SECRET provisioned below. Unset → committed key (original account).
+      SIGMA_TURNSTILE_SITE_KEY: ${{ vars.SIGMA_TURNSTILE_SITE_KEY }}
       # Per-PR worker name. wrangler-render.mjs writes this into wrangler.deploy.json.
       SIGMA_WEB_NAME: sigma-pr-${{ github.event.pull_request.number }}
       # Per-build dedup freshness `c`: the PR head sha. Previews share ONE sigma-dedup-dev namespace AND the

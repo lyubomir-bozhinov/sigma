@@ -1,5 +1,6 @@
 import { priorIsoWeek as priorIsoWeekOfWeek } from '@sigma/db';
 import { priorIsoWeek as priorIsoWeekFromNow } from '@sigma/report';
+import { date } from '@sigma/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { digestEnabled, generateWeeklyDigest, type WeeklyDigestEnv } from './weekly-digest';
 
@@ -363,7 +364,9 @@ describe('generateWeeklyDigest — gate matrix', () => {
     const stored = JSON.parse(puts[0]!.body);
     expect(stored.schemaVersion).toBe(1);
     expect(stored.id).toBe(TARGET.iso);
-    expect(stored.report.title).toContain(TARGET.iso);
+    // Title carries the human-readable Mon–Sun range, not the raw ISO week id.
+    expect(stored.report.title).toContain(`${date(TARGET.mondayIso)} – ${date(TARGET.sundayIso)}`);
+    expect(stored.report.title).not.toContain(TARGET.iso);
     const totalsBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'totals');
     expect(totalsBlock).toBeTruthy();
     expect(totalsBlock.items[0].value).toBe(data.totalsByWeek[TARGET.iso]);
@@ -377,6 +380,27 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
     expect(upserts[0]!.status).toBe('ok');
     expect(upserts[0]!.totalEur).toBe(data.totalsByWeek[TARGET.iso]);
+  });
+
+  it('targetIso overrides `now`, generating for the explicit week (on-demand trigger path)', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+
+    // `now` is an unrelated week; `targetIso` forces TARGET.iso, so the artifact + upsert are for
+    // TARGET rather than priorIsoWeek(now). The settled-week gate still reads TARGET's Sunday vs asOf.
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: new Date('2030-06-03T07:00:00Z'),
+      targetIso: TARGET.iso,
+      generate: mockGenerate(
+        'Изминалата седмица бе разнообразна за обществените поръчки в страната.',
+      ),
+    });
+
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.key).toBe(`weeks/${TARGET.iso}.json`);
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
   });
 
   // precompute.sql's COUNT/SUM CONSISTENCY rule: a (count, sum) rendered as one KPI set must cover ONE
