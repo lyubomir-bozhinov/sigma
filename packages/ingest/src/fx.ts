@@ -1,10 +1,13 @@
 // Shared FX-rate logic (#158). Both pricing paths — the Node CLI (scripts/load-fx.mjs) and the
 // Worker cron refresh (apps/etl) — convert foreign-currency contracts to EUR from ECB reference
-// rates served by the no-auth api.frankfurter.app. The pure pieces (lookback, series URL, response
+// rates served by the no-auth frankfurter API. The pure pieces (lookback, series URL, response
 // validation) live here once so the two implementations cannot drift; the Worker-native loader and
 // its coverage guard are D1-based and pure-fetch, safe for workerd (no Node APIs).
 
-export const FRANKFURTER_API = 'https://api.frankfurter.app';
+// Canonical host. The legacy api.frankfurter.app now 301-redirects here — with host-pinned
+// fetches (assertSameFinalHost) the legacy host would fail closed, so point at the target
+// directly. Same response shape; the /v1 prefix is required on the .dev host.
+export const FRANKFURTER_API = 'https://api.frankfurter.dev/v1';
 // ECB publishes business-day rates only; the derive SQL (scripts/refresh-slice.sql and
 // scripts/normalize-raw.sql) carries the latest prior rate forward over weekends/holidays, bounded
 // to this many days. Keep the three in sync.

@@ -2,7 +2,7 @@
 // End-to-end refresh Workflow test (#158): the cron path must load FX rates before the derive so
 // foreign-currency contracts get a real amount_eur instead of silently dropping out of every
 // rollup. Runs the real RefreshWorkflow.run() — real staging, real refresh-slice.sql derive —
-// against a real SQLite behind the D1 facade, with storage.eop.bg and api.frankfurter.app fetches
+// against a real SQLite behind the D1 facade, with storage.eop.bg and frankfurter fetches
 // mocked deterministically (fixed rates, no live network).
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FRANKFURTER_API } from '../../../packages/ingest/src/fx';
 import { d1FromSqlite } from '../../../packages/ingest/src/test/d1-sqlite';
 import { RefreshWorkflow, type Env } from './index';
 
@@ -92,7 +93,7 @@ function stubFetchRoutes(): { frankfurterCalls: () => number } {
   vi.stubGlobal('fetch', (async (input: RequestInfo | URL) => {
     const url = String(input);
 
-    if (url.startsWith('https://api.frankfurter.app/')) {
+    if (url.startsWith(`${FRANKFURTER_API}/`)) {
       frankfurterCalls += 1;
       const base = new URL(url).searchParams.get('base');
       if (base === 'USD') {
