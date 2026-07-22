@@ -99,15 +99,18 @@
 }
 
 /* Per-section heading above a digest chart/table (e.g. „Стойност по сектори", „Конкуренция",
-   „Най-големи договори") so each section is self-labelling. */
+   „Най-големи договори") so each section is self-labelling. Sized on the site's h3 scale so the section
+   titles are clearly noticed; extra top space sets each section off from the block above it. */
 .report-block-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
 }
 .report-block__heading {
   margin: 0;
-  font-size: 1rem;
+  font-size: clamp(20px, 2vw, 26px);
+  line-height: 1.2;
   font-weight: 600;
   color: var(--ink);
 }
