@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Fetch ECB euro reference rates (via the no-auth frankfurter.app API, which serves ECB data)
+// Fetch ECB euro reference rates (via the no-auth frankfurter API, which serves ECB data)
 // for the foreign-currency contracts, into the fx_rates table — so scripts/normalize-raw.sql
 // can convert those contracts to canonical EUR at the date-of-signing rate.
 //
