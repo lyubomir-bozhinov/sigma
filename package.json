@@ -33,5 +33,10 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
     "wrangler": "^4.93.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp@<0.35.0": ">=0.35.0"
+    }
   }
 }
