@@ -22,8 +22,10 @@ import {
   type EmitBlock,
   type EmitReportInput,
   type GenerateFn,
+  type IsoWeek,
   type QueryResult,
 } from '@sigma/report';
+import { date } from '@sigma/shared';
 
 // Weekly Digest producer (#167A T3) — the Monday cron that turns the prior ISO week's `@sigma/db`
 // weekly queries into an immutable `StoredReport` at `weeks/{ISO}.json`. Mirrors suggested-prompts.ts's
@@ -254,7 +256,11 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
 
 /** Build the model-facing EmitReportInput. `narrativeMd` null ⇒ AI-free fallback (no text block, no
  *  model-authored prose anywhere but the fixed title/methodology strings this module itself owns). */
-function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): EmitReportInput {
+function buildEmitInput(
+  data: WeeklyDigestData,
+  narrativeMd: string | null,
+  target: IsoWeek,
+): EmitReportInput {
   const blocks: EmitBlock[] = [];
   if (narrativeMd) blocks.push({ type: 'text', md: narrativeMd });
 
@@ -345,7 +351,10 @@ function buildEmitInput(data: WeeklyDigestData, narrativeMd: string | null): Emi
 
   blocks.push({ type: 'callout', title: METHODOLOGY_CALLOUT_TITLE, md: METHODOLOGY_CALLOUT_MD });
 
-  return { title: `Седмичен дайджест — ${data.isoWeek}`, question: DIGEST_QUESTION, blocks };
+  // Human-readable Mon–Sun range (e.g. „06.07.2026 – 12.07.2026") in place of the raw ISO week id. The
+  // machine week id (target.iso) still keys the R2 object + weekly_digests row; only the heading changes.
+  const range = `${date(target.mondayIso)} – ${date(target.sundayIso)}`;
+  return { title: `Седмичен дайджест — ${range}`, question: DIGEST_QUESTION, blocks };
 }
 
 // ── Sanity gates (never persist an unvalidated number) ───────────────────────────────────────────────
@@ -417,7 +426,7 @@ export async function generateWeeklyDigest(
   }
 
   const results = buildQueryResults(data);
-  const emitInput0 = buildEmitInput(data, null);
+  const emitInput0 = buildEmitInput(data, null, target);
 
   // Past every skip gate — safe to materialize the real LLM call now (never built/called on an
   // unsettled-week, zero-contracts, or sanity-failed path above).
@@ -448,7 +457,7 @@ export async function generateWeeklyDigest(
       log('etl_digest_narrative_empty', { isoWeek: target.iso, attempt });
       continue;
     }
-    const trial = bindReport(buildEmitInput(data, candidate), results, {
+    const trial = bindReport(buildEmitInput(data, candidate, target), results, {
       question: DIGEST_QUESTION,
     });
     if (trial.ok) {
@@ -458,7 +467,7 @@ export async function generateWeeklyDigest(
     log('etl_digest_narrative_rejected', { isoWeek: target.iso, attempt, errors: trial.errors });
   }
 
-  const emitInput = narrativeMd ? buildEmitInput(data, narrativeMd) : emitInput0;
+  const emitInput = narrativeMd ? buildEmitInput(data, narrativeMd, target) : emitInput0;
   const bound = bindReport(emitInput, results, { question: DIGEST_QUESTION });
   if (!bound.ok) {
     // The AI-free fallback (no model prose beyond this module's own fixed strings) must always bind —

@@ -1,5 +1,6 @@
 import { priorIsoWeek as priorIsoWeekOfWeek } from '@sigma/db';
 import { priorIsoWeek as priorIsoWeekFromNow } from '@sigma/report';
+import { date } from '@sigma/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { digestEnabled, generateWeeklyDigest, type WeeklyDigestEnv } from './weekly-digest';
 
@@ -351,7 +352,9 @@ describe('generateWeeklyDigest — gate matrix', () => {
     const stored = JSON.parse(puts[0]!.body);
     expect(stored.schemaVersion).toBe(1);
     expect(stored.id).toBe(TARGET.iso);
-    expect(stored.report.title).toContain(TARGET.iso);
+    // Title carries the human-readable Mon–Sun range, not the raw ISO week id.
+    expect(stored.report.title).toContain(`${date(TARGET.mondayIso)} – ${date(TARGET.sundayIso)}`);
+    expect(stored.report.title).not.toContain(TARGET.iso);
     const totalsBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'totals');
     expect(totalsBlock).toBeTruthy();
     expect(totalsBlock.items[0].value).toBe(data.totalsByWeek[TARGET.iso]);
