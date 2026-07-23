@@ -69,6 +69,9 @@ const DIGEST_QUESTION = 'Седмичен дайджест на обществе
 // number-free lead paragraph twice, the AI-free fallback (data blocks only) is strictly safer than a
 // third attempt at the same cost.
 const MAX_NARRATIVE_ATTEMPTS = 2;
+// Verifier call timeout (mirrors apps/web's `VERIFIER_TIMEOUT_MS`): a hung gateway call fail-closes the
+// verifier (stripping risk prose) rather than stalling the cron. Verdicts need only a few hundred tokens.
+const VERIFIER_TIMEOUT_MS = 20_000;
 const METHODOLOGY_CALLOUT_TITLE = 'Как е изчислено';
 const METHODOLOGY_CALLOUT_MD =
   'Изчислено от чисти (amount_eur ненулеви) договори, подписани в рамките на пълна календарна ' +
@@ -99,7 +102,7 @@ function logError(event: string, extra: Record<string, unknown> = {}): void {
 // call a provider directly — that would bypass the gateway's logging/cost accounting). This is the only
 // etl-local model-wiring code; `verifyReport`'s validators, gates and strip logic are reused unchanged
 // from `@sigma/report`, not duplicated here.
-function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
+export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
   const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
   if (!baseURL) {
     throw new Error(
@@ -116,6 +119,36 @@ function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
       temperature: 0.3,
       maxRetries: 0,
       maxOutputTokens: 512,
+    });
+    return result.text;
+  };
+}
+
+// The verifier is a SEPARATE closure from the narrative generator above — role ④ needs a strict JSON
+// verdict object, not prose, so it mirrors apps/web's `buildVerifierGenerate` EXACTLY: temperature 0
+// (deterministic — a small quantized model at 0.3 drifts into prose and returns no JSON object at all,
+// which fail-closes and strips the very narrative we just generated) and a 1024-token cap so a
+// multi-claim verdict list is never truncated. A 20s timeout bounds a hung gateway call: verifyReport
+// fail-closes on the reject, stripping risk prose rather than hanging the cron. Reusing the narrative's
+// 0.3/512 generator here was the drift bug that kept the summary from ever surviving verification.
+export function buildDigestVerifierGenerate(env: WeeklyDigestEnv): GenerateFn {
+  const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
+  if (!baseURL) {
+    throw new Error(
+      'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
+    );
+  }
+  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
+  const model = provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
+  return async ({ system, prompt }) => {
+    const result = await generateText({
+      model,
+      system,
+      prompt,
+      temperature: 0,
+      maxRetries: 0,
+      maxOutputTokens: 1024,
+      abortSignal: AbortSignal.timeout(VERIFIER_TIMEOUT_MS),
     });
     return result.text;
   };
@@ -477,7 +510,11 @@ export async function generateWeeklyDigest(
     return;
   }
 
-  const verified = await verifyReport(bound.report, generateFn);
+  // Role ④ runs on its OWN generator (temp 0, JSON-reliable) — NOT the narrative's `generateFn` (temp
+  // 0.3). A test that injects `deps.generate` drives both from that one mock (unchanged); production
+  // splits them so the verifier gets deterministic JSON. See buildDigestVerifierGenerate.
+  const verifierGenerate: GenerateFn = deps.generate ?? buildDigestVerifierGenerate(env);
+  const verified = await verifyReport(bound.report, verifierGenerate);
 
   const existing = await env.DB.prepare('SELECT iso_week FROM weekly_digests WHERE iso_week = ?1')
     .bind(target.iso)
