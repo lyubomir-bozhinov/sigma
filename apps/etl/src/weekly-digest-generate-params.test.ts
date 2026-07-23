@@ -62,11 +62,14 @@ describe('weekly-digest model generation params', () => {
   });
 
   // BgGPT dumps its chain-of-thought as plain content unless thinking is disabled at the chat-template
-  // level. The NARRATIVE generator must inject chat_template_kwargs.enable_thinking=false (clean
-  // sentence); the VERIFIER must NOT (role ④ reasons before judging, like apps/web — a no-think verifier
-  // false-strips supported prose).
-  it('narrative generator: provider fetch injects chat_template_kwargs.enable_thinking=false', async () => {
-    buildDigestGenerate(ENV);
+  // level; the provider's fetch wrapper must inject chat_template_kwargs.enable_thinking=false into every
+  // outgoing request body. BOTH generators use it: the narrative for a clean sentence, the verifier so
+  // its reasoning never eats the token budget before the JSON verdicts (which returns "no JSON object").
+  it.each([
+    ['narrative', buildDigestGenerate],
+    ['verifier', buildDigestVerifierGenerate],
+  ])('%s generator: provider fetch injects chat_template_kwargs.enable_thinking=false', async (_n, build) => {
+    build(ENV);
     const wrappedFetch = createOpenAIMock.mock.calls[0]![0].fetch as typeof fetch;
     expect(typeof wrappedFetch).toBe('function');
 
@@ -91,10 +94,5 @@ describe('weekly-digest model generation params', () => {
     expect((seen[0]!.chat_template_kwargs as Record<string, unknown>).enable_thinking).toBe(false);
     // The original body is preserved, not clobbered.
     expect(seen[0]!.model).toBe('m');
-  });
-
-  it('verifier generator: provider is built WITHOUT the no-think fetch wrapper (it must reason)', () => {
-    buildDigestVerifierGenerate(ENV);
-    expect(createOpenAIMock.mock.calls[0]![0].fetch).toBeUndefined();
   });
 });
