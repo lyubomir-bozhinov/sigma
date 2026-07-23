@@ -97,20 +97,53 @@ function logError(event: string, extra: Record<string, unknown> = {}): void {
 
 // ── LLM wiring (net-new — apps/etl has no model builder today) ──────────────────────────────────────
 //
-// Mirrors apps/web/app/lib/assistant/agent.ts's `buildModel` EXACTLY: `createOpenAI` pointed at the
-// Cloudflare AI Gateway's OpenAI-compatible endpoint, fail-closed when the gateway URL is unset (never
-// call a provider directly — that would bypass the gateway's logging/cost accounting). This is the only
+// Mirrors apps/web/app/lib/assistant/agent.ts's `buildModel`: `createOpenAI` pointed at the Cloudflare
+// AI Gateway's OpenAI-compatible endpoint, fail-closed when the gateway URL is unset (never call a
+// provider directly — that would bypass the gateway's logging/cost accounting). This is the only
 // etl-local model-wiring code; `verifyReport`'s validators, gates and strip logic are reused unchanged
 // from `@sigma/report`, not duplicated here.
-export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
+
+// BgGPT (`bggpt-gemma4-31b-it-*`) is a reasoning fine-tune that, by default, emits its entire
+// chain-of-thought as PLAIN CONTENT (a "thought\n* …" preamble plus drafts, not a structured
+// `reasoning_content` field the AI SDK could split off) — so `result.text` is the raw scratchpad, not
+// the answer, and the token cap truncates before the real sentence. A `/no_think` prompt directive does
+// NOT suppress it on this model (verified against the gateway); the vLLM `chat_template_kwargs.
+// enable_thinking=false` body field DOES, yielding a single clean sentence. The AI SDK OpenAI provider
+// has no passthrough for non-standard body fields, so we inject it via a fetch wrapper on the provider.
+// Applied to BOTH generators: the narrative gets a clean sentence, and the verifier stops burning its
+// budget thinking before the JSON verdicts.
+function noThinkFetch(): typeof fetch {
+  return (input, init) => {
+    if (init && typeof init.body === 'string') {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        body.chat_template_kwargs = {
+          ...(body.chat_template_kwargs as Record<string, unknown> | undefined),
+          enable_thinking: false,
+        };
+        init = { ...init, body: JSON.stringify(body) };
+      } catch {
+        // A non-JSON body should never reach a chat/completions call; pass it through untouched.
+      }
+    }
+    return fetch(input, init);
+  };
+}
+
+/** The shared AI-Gateway provider for the digest's two model calls (narrative + verifier). Fail-closed
+ *  when the gateway URL is unset, and thinking-suppressed via {@link noThinkFetch}. */
+function createDigestProvider(env: WeeklyDigestEnv) {
   const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
   if (!baseURL) {
     throw new Error(
       'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
     );
   }
-  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
-  const model = provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
+  return createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY, fetch: noThinkFetch() });
+}
+
+export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
+  const model = createDigestProvider(env).chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
   return async ({ system, prompt }) => {
     const result = await generateText({
       model,
@@ -132,14 +165,7 @@ export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
 // fail-closes on the reject, stripping risk prose rather than hanging the cron. Reusing the narrative's
 // 0.3/512 generator here was the drift bug that kept the summary from ever surviving verification.
 export function buildDigestVerifierGenerate(env: WeeklyDigestEnv): GenerateFn {
-  const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
-  if (!baseURL) {
-    throw new Error(
-      'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
-    );
-  }
-  const provider = createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY });
-  const model = provider.chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
+  const model = createDigestProvider(env).chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
   return async ({ system, prompt }) => {
     const result = await generateText({
       model,

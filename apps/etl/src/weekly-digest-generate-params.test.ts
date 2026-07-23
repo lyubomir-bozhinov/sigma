@@ -8,13 +8,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const generateTextMock = vi.fn(async (_opts: Record<string, unknown>) => ({ text: '{}' }));
 const chatMock = vi.fn(() => 'FAKE_MODEL');
+const createOpenAIMock = vi.fn((_opts: Record<string, unknown>) => ({ chat: chatMock }));
 
 vi.mock('ai', () => ({
   generateText: (opts: Record<string, unknown>) => generateTextMock(opts),
 }));
 
 vi.mock('@ai-sdk/openai', () => ({
-  createOpenAI: () => ({ chat: chatMock }),
+  createOpenAI: (opts: Record<string, unknown>) => createOpenAIMock(opts),
 }));
 
 // Import AFTER the mocks are registered so the builders bind to the mocked modules.
@@ -31,6 +32,7 @@ const ENV = {
 afterEach(() => {
   generateTextMock.mockClear();
   chatMock.mockClear();
+  createOpenAIMock.mockClear();
 });
 
 describe('weekly-digest model generation params', () => {
@@ -57,5 +59,40 @@ describe('weekly-digest model generation params', () => {
     const bare = { ...ENV, AI_GATEWAY_BASE_URL: undefined };
     expect(() => buildDigestGenerate(bare)).toThrow(/AI_GATEWAY_BASE_URL/);
     expect(() => buildDigestVerifierGenerate(bare)).toThrow(/AI_GATEWAY_BASE_URL/);
+  });
+
+  // BgGPT dumps its chain-of-thought as plain content unless thinking is disabled at the chat-template
+  // level; the provider's fetch wrapper must inject chat_template_kwargs.enable_thinking=false into every
+  // outgoing request body. Both generators share the same provider, so both must carry the wrapper.
+  it.each([
+    ['narrative', buildDigestGenerate],
+    ['verifier', buildDigestVerifierGenerate],
+  ])('%s generator: provider fetch injects chat_template_kwargs.enable_thinking=false', async (_n, build) => {
+    build(ENV);
+    const providerOpts = createOpenAIMock.mock.calls[0]![0];
+    const wrappedFetch = providerOpts.fetch as typeof fetch;
+    expect(typeof wrappedFetch).toBe('function');
+
+    const seen: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: unknown, init: { body?: string }) => {
+        seen.push(JSON.parse(init.body ?? '{}'));
+        return new Response('{}');
+      }),
+    );
+    try {
+      await wrappedFetch('https://gw.example/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'm', messages: [] }),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(seen).toHaveLength(1);
+    expect((seen[0]!.chat_template_kwargs as Record<string, unknown>).enable_thinking).toBe(false);
+    // The original body is preserved, not clobbered.
+    expect(seen[0]!.model).toBe('m');
   });
 });
