@@ -55,6 +55,10 @@ export interface WeeklyDigestEnv {
    *  uses (apps/web ASSISTANT_API_KEY) so both workers share one credential name. Optional: unset →
    *  the digest still publishes AI-free. */
   ASSISTANT_API_KEY?: string;
+  /** DIAGNOSTIC (dev-only, revert before merge): when truthy, log the generated narrative text and the
+   *  verifier's raw response so a verifier-strip can be attributed to a bad narrative vs an over-eager
+   *  verdict. Fail-dark like the other flags — unset/absent → no model prose ever reaches the logs. */
+  DIGEST_DEBUG?: string;
 }
 
 export interface GenerateWeeklyDigestDeps {
@@ -525,6 +529,9 @@ export async function generateWeeklyDigest(
   // unsettled-week, zero-contracts, or sanity-failed path above).
   const generateFn: GenerateFn = deps.generate ?? buildDigestGenerate(env);
 
+  // DIAGNOSTIC (dev-only): fail-dark model-prose logging. See WeeklyDigestEnv.DIGEST_DEBUG.
+  const debug = digestEnabled(env.DIGEST_DEBUG);
+
   let narrativeMd: string | null = null;
   let narrativeAttempts = 0;
   for (let attempt = 1; attempt <= MAX_NARRATIVE_ATTEMPTS; attempt++) {
@@ -555,6 +562,7 @@ export async function generateWeeklyDigest(
     });
     if (trial.ok) {
       narrativeMd = candidate;
+      if (debug) log('etl_digest_debug_narrative', { isoWeek: target.iso, attempt, narrative: candidate });
       break;
     }
     log('etl_digest_narrative_rejected', { isoWeek: target.iso, attempt, errors: trial.errors });
@@ -573,7 +581,17 @@ export async function generateWeeklyDigest(
   // Role ④ runs on its OWN generator (temp 0, JSON-reliable) — NOT the narrative's `generateFn` (temp
   // 0.3). A test that injects `deps.generate` drives both from that one mock (unchanged); production
   // splits them so the verifier gets deterministic JSON. See buildDigestVerifierGenerate.
-  const verifierGenerate: GenerateFn = deps.generate ?? buildDigestVerifierGenerate(env);
+  const baseVerifierGenerate: GenerateFn = deps.generate ?? buildDigestVerifierGenerate(env);
+  // DIAGNOSTIC (dev-only): capture the verifier's raw response so a strip can be read as "the model
+  // returned this verdict" rather than inferred from strippedClaimIds. Wraps, never replaces, the real
+  // generator; off unless DIGEST_DEBUG is set.
+  const verifierGenerate: GenerateFn = debug
+    ? async (input) => {
+        const out = await baseVerifierGenerate(input);
+        log('etl_digest_debug_verifier_raw', { isoWeek: target.iso, raw: out.slice(0, 4000) });
+        return out;
+      }
+    : baseVerifierGenerate;
   const verified = await verifyReport(bound.report, verifierGenerate);
 
   const existing = await env.DB.prepare('SELECT iso_week FROM weekly_digests WHERE iso_week = ?1')
