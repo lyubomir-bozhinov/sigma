@@ -349,6 +349,18 @@ describe('generateWeeklyDigest — gate matrix', () => {
 
     expect(puts).toHaveLength(1);
     expect(puts[0]!.key).toBe(`weeks/${TARGET.iso}.json`);
+    // Listing-facing R2 customMetadata: the /weeks archive index reads these without a per-week fetch.
+    // persistReport translates `immutable` into httpMetadata.cacheControl and passes customMetadata through.
+    const putOpts = puts[0]!.opts as {
+      httpMetadata?: { cacheControl?: string };
+      customMetadata?: Record<string, string>;
+    };
+    expect(putOpts.httpMetadata?.cacheControl).toMatch(/immutable/);
+    expect(putOpts.customMetadata).toMatchObject({
+      totalEur: String(data.totalsByWeek[TARGET.iso]),
+      monday: TARGET.mondayIso,
+      sunday: TARGET.sundayIso,
+    });
     const stored = JSON.parse(puts[0]!.body);
     expect(stored.schemaVersion).toBe(1);
     expect(stored.id).toBe(TARGET.iso);

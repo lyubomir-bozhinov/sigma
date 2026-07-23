@@ -699,7 +699,17 @@ export async function generateWeeklyDigest(
   });
 
   const key = `weeks/${target.iso}.json`;
-  await persistReport(env.REPORTS, key, stored, { immutable: true });
+  // Stamp listing-facing fields into R2 customMetadata so the /weeks archive index renders the week's
+  // date range + total without a per-week object fetch (it lists customMetadata only). Dates are raw
+  // `YYYY-MM-DD` (the consumer formats them); totalEur is stringified (R2 metadata is string→string).
+  await persistReport(env.REPORTS, key, stored, {
+    immutable: true,
+    customMetadata: {
+      totalEur: String(data.total.totalEur),
+      monday: target.mondayIso,
+      sunday: target.sundayIso,
+    },
+  });
 
   try {
     await env.DB.prepare(

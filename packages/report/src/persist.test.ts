@@ -150,6 +150,30 @@ describe('persistReport / readStoredReport', () => {
     expect((opts.httpMetadata as { cacheControl?: string }).cacheControl).toMatch(/immutable/);
   });
 
+  it('merges opts.customMetadata over the base keys, and the base trio always wins', async () => {
+    const bucket = fakeBucket();
+    const stored = buildStoredReport(baseInput());
+
+    await persistReport(bucket as never, 'weeks/2026-W28.json', stored, {
+      customMetadata: {
+        totalEur: '51600000000',
+        monday: '2026-06-08',
+        sunday: '2026-06-14',
+        title: 'HACKED', // a caller must NOT be able to clobber the canonical title
+      },
+    });
+
+    const [, , opts] = bucket.put.mock.calls[0] as [string, string, Record<string, unknown>];
+    const cm = opts.customMetadata as Record<string, string>;
+    expect(cm.totalEur).toBe('51600000000');
+    expect(cm.monday).toBe('2026-06-08');
+    expect(cm.sunday).toBe('2026-06-14');
+    // Base keys are applied last, so the real title survives the collision attempt.
+    expect(cm.title).toBe(stored.report.title);
+    expect(cm.question).toBe(stored.provenance.question);
+    expect(cm.createdAt).toBe(stored.createdAt);
+  });
+
   it('round-trips via readStoredReport', async () => {
     const bucket = fakeBucket();
     const stored = buildStoredReport(baseInput());
