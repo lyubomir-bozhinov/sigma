@@ -110,8 +110,7 @@ function logError(event: string, extra: Record<string, unknown> = {}): void {
 // NOT suppress it on this model (verified against the gateway); the vLLM `chat_template_kwargs.
 // enable_thinking=false` body field DOES, yielding a single clean sentence. The AI SDK OpenAI provider
 // has no passthrough for non-standard body fields, so we inject it via a fetch wrapper on the provider.
-// Applied to BOTH generators: the narrative gets a clean sentence, and the verifier stops burning its
-// budget thinking before the JSON verdicts.
+// Applied to the NARRATIVE generator ONLY — the verifier must keep reasoning (see createDigestProvider).
 function noThinkFetch(): typeof fetch {
   return (input, init) => {
     if (init && typeof init.body === 'string') {
@@ -130,20 +129,28 @@ function noThinkFetch(): typeof fetch {
   };
 }
 
-/** The shared AI-Gateway provider for the digest's two model calls (narrative + verifier). Fail-closed
- *  when the gateway URL is unset, and thinking-suppressed via {@link noThinkFetch}. */
-function createDigestProvider(env: WeeklyDigestEnv) {
+/** The shared AI-Gateway provider for the digest's model calls. Fail-closed when the gateway URL is unset.
+ *  `suppressThinking` toggles the {@link noThinkFetch} wrapper: ON for the NARRATIVE (we want a single
+ *  clean sentence, not a chain-of-thought dump), OFF for the VERIFIER — role ④ reasons BEFORE judging,
+ *  exactly like apps/web's verifier (which pins temp 0 but never disables thinking). A verifier that
+ *  cannot reason first turns trigger-happy and false-strips supported prose; letting it think keeps its
+ *  verdicts accurate while temp 0 + the first-JSON-object parser still recover a clean verdict object. */
+function createDigestProvider(env: WeeklyDigestEnv, suppressThinking: boolean) {
   const baseURL = env.AI_GATEWAY_BASE_URL?.trim();
   if (!baseURL) {
     throw new Error(
       'AI_GATEWAY_BASE_URL is not set — refusing to reach the model provider outside the Cloudflare AI Gateway',
     );
   }
-  return createOpenAI({ baseURL, apiKey: env.ASSISTANT_API_KEY, fetch: noThinkFetch() });
+  return createOpenAI({
+    baseURL,
+    apiKey: env.ASSISTANT_API_KEY,
+    ...(suppressThinking ? { fetch: noThinkFetch() } : {}),
+  });
 }
 
 export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
-  const model = createDigestProvider(env).chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
+  const model = createDigestProvider(env, true).chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
   return async ({ system, prompt }) => {
     const result = await generateText({
       model,
@@ -165,7 +172,7 @@ export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
 // fail-closes on the reject, stripping risk prose rather than hanging the cron. Reusing the narrative's
 // 0.3/512 generator here was the drift bug that kept the summary from ever surviving verification.
 export function buildDigestVerifierGenerate(env: WeeklyDigestEnv): GenerateFn {
-  const model = createDigestProvider(env).chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
+  const model = createDigestProvider(env, false).chat(env.ASSISTANT_MODEL || DEFAULT_MODEL);
   return async ({ system, prompt }) => {
     const result = await generateText({
       model,
