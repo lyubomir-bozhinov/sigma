@@ -407,6 +407,42 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(contractsItem.value).not.toBe(data.counts.contracts); // not the 12-row volume
   });
 
+  // Prompt-v2 enrichment: the narrative call is fed the concrete week facts (direction, leading sector
+  // by NAME, leading authority, largest contract's winner) so the lead can say something specific rather
+  // than a generic number-free sentence — while the system prompt still forbids MATERIAL numbers in prose
+  // (those stay server-bound in the tables). This asserts the facts reach the model prompt.
+  it('narrative prompt: carries direction, leading sector name, top authority and largest winner', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+    let narrativePrompt = '';
+    let narrativeSystem = '';
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      generate: async ({ system, prompt }: { system: string; prompt: string }) => {
+        if (system.includes('verification critic')) {
+          const ids = [...prompt.matchAll(/^(C\d+):/gm)].map((m) => m[1]);
+          return JSON.stringify({ verdicts: ids.map((id) => ({ id, verdict: 'supported' })) });
+        }
+        narrativePrompt = prompt;
+        narrativeSystem = system;
+        return 'Изминалата седмица бе разнообразна за обществените поръчки в страната.';
+      },
+    });
+
+    // Delta 100_000 vs prior 80_000 → нарастване.
+    expect(narrativePrompt).toContain('нарастване');
+    // Sector division 45 handed to the model as its human name (curated `short`), not a bare code.
+    expect(narrativePrompt).toContain('Строителство');
+    // Leading authority (data.authorities[0]) and the largest contract's winning bidder, by name.
+    expect(narrativePrompt).toContain('Община Пример');
+    expect(narrativePrompt).toContain('Изпълнител ЕООД');
+    // The system prompt permits naming sectors/authorities (v2) yet still bans material numbers in prose.
+    expect(narrativeSystem).toContain('МОЖЕШ да назоваваш');
+    expect(narrativeSystem).toContain('СЪЩЕСТВЕНИ числа');
+  });
+
   // A verifier that strips EVERY claim leaves an artifact with no surviving model prose — content
   // identical in kind to the AI-free fallback. It must be labelled as such, or the archive index
   // advertises a model-authored digest whose model text is gone.

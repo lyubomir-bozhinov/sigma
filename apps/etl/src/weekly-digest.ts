@@ -25,7 +25,18 @@ import {
   type IsoWeek,
   type QueryResult,
 } from '@sigma/report';
+import { CPV_SECTORS } from '@sigma/config';
 import { date } from '@sigma/shared';
+
+// CPV division code → a short, human-readable Bulgarian sector name, so the narrative prompt can hand
+// BgGPT the sector NAME directly (e.g. „Строителство", „Медицинско оборудване") instead of a bare 2-digit
+// code it would have to decode from the CPV dictionary. Prefers the curated `short` label where one
+// exists (§ CPV_SECTORS), else the official division label. An unknown/absent code falls back to the raw
+// code so the prompt never silently drops the sector.
+const SECTOR_LABEL = new Map(CPV_SECTORS.map((s) => [s.code, s.short ?? s.label]));
+function sectorLabel(division: string): string {
+  return SECTOR_LABEL.get(division) ?? `CPV раздел ${division}`;
+}
 
 // Weekly Digest producer (#167A T3) — the Monday cron that turns the prior ISO week's `@sigma/db`
 // weekly queries into an immutable `StoredReport` at `weeks/{ISO}.json`. Mirrors suggested-prompts.ts's
@@ -59,7 +70,11 @@ export interface GenerateWeeklyDigestDeps {
 }
 
 const DEFAULT_MODEL = 'google/gemma-4-31b-it';
-const DIGEST_PROMPT_VERSION = 'weekly-digest-v1';
+// v2: the narrative is no longer a bare number-free one-liner — it may name the leading sector,
+// authority and the largest contract's parties and describe the week's direction (still no MATERIAL
+// numbers in prose; those stay server-bound in the tables). Bumped so the stored provenance distinguishes
+// the two prompt generations.
+const DIGEST_PROMPT_VERSION = 'weekly-digest-v2';
 // The fixed, server-owned "question" shown on the digest report (§4/§9.1: passing it via
 // `BindOptions.question` means bindReport does NOT gate it for material numbers — there is no
 // model-authored question here to gate).
@@ -186,32 +201,46 @@ export function buildDigestVerifierGenerate(env: WeeklyDigestEnv): GenerateFn {
 }
 
 const DIGEST_SYSTEM_PROMPT = [
-  'Пишеш едно кратко въвеждащо изречение (най-много две) на български за автоматичен седмичен ' +
-    'дайджест на обществени поръчки в България.',
+  'Пишеш кратък въвеждащ текст (едно до две изречения) на български за автоматичен седмичен ' +
+    'дайджест на обществени поръчки в България. Текстът е лидът над таблиците — направи го ' +
+    'информативен, а не общ.',
   'ЗАДЪЛЖИТЕЛНИ ПРАВИЛА:',
-  '1. НИКОГА не пиши конкретни суми, брой договори, проценти, дати или други числа — те вече са ' +
-    'показани в таблиците на справката; изречение с число ще бъде отхвърлено автоматично.',
-  '2. Тон: неутрален, описателен — „сигнали, не присъди". Не квалифицирай възложители или ' +
+  '1. МОЖЕШ да назоваваш: посоката на промяната спрямо предходната седмица (нарастване/спад/без ' +
+    'промяна), водещия сектор, водещия възложител и страните по най-голямата поръчка — точно както ' +
+    'са ти подадени по-долу. Използвай ги, за да кажеш нещо конкретно за седмицата.',
+  '2. НЕ пиши СЪЩЕСТВЕНИ числа в текста — суми, милиони/милиарди, проценти, групирани числа или ' +
+    'дати. Тези стойности вече са показани в таблиците на справката; изречение със сума или процент ' +
+    'ще бъде отхвърлено автоматично. Описвай качествено („нарастване", „водещ сектор"), не с цифри.',
+  '3. Тон: неутрален, описателен — „сигнали, не присъди". Не квалифицирай възложители или ' +
     'изпълнители като виновни, корумпирани или подозрителни; описвай само какво е било подписано.',
-  '3. Обикновен текст, без markdown синтаксис (без **, #, списъци).',
-  '4. Отговори САМО с изречението — без увод, без обяснение.',
+  '4. Обикновен текст, без markdown синтаксис (без **, #, списъци).',
+  '5. Отговори САМО с текста — без увод, без обяснение.',
   '\nРечник на CPV разделите за коректно назоваване на сектори:\n' + cpvReference(),
 ].join('\n');
 
 function buildNarrativePrompt(data: WeeklyDigestData): string {
   const direction =
     data.delta.deltaEur > 0 ? 'нарастване' : data.delta.deltaEur < 0 ? 'спад' : 'без промяна';
-  const topSector = data.sectors[0]?.division ?? null;
-  return [
+  const topSector = data.sectors[0] ?? null;
+  const topAuthority = data.authorities[0] ?? null;
+  const lines = [
     `Изминалата седмица (${data.isoWeek}) спрямо предходната: ${direction} на подписаната стойност.`,
     topSector
-      ? `Секторът с най-много подписана стойност е CPV раздел ${topSector} (виж речника).`
-      : 'Няма ясно доминиращ CPV раздел тази седмица.',
+      ? `Водещ сектор по подписана стойност: ${sectorLabel(topSector.division)} (CPV раздел ${topSector.division}).`
+      : 'Няма ясно доминиращ сектор тази седмица.',
+    topAuthority
+      ? `Възложителят с най-много подписана стойност е „${topAuthority.authorityName}".`
+      : 'Няма ясно доминиращ възложител тази седмица.',
     data.largest
-      ? 'Има поне един голям договор през седмицата.'
+      ? `Най-голямата отделна поръчка е спечелена от изпълнителя „${data.largest.bidderName}".`
       : 'Няма договор с потвърдена (value_flag=ok) стойност през седмицата.',
-    'Напиши въвеждащото изречение сега.',
-  ].join('\n');
+    // The largest contract's subject often carries a magnitude ("Доставка на 12 000 тона…") that would
+    // trip the binder's material-number gate if the model quoted it verbatim; feed only the named parties
+    // above and steer the model off the raw subject line.
+    'Не цитирай предмета на договора дословно и не пиши никакви суми, проценти или брой — опиши седмицата качествено.',
+    'Напиши въвеждащия текст сега (едно до две изречения).',
+  ];
+  return lines.join('\n');
 }
 
 // ── Deterministic evidence (server-built — the model never sees or fills these rows) ────────────────
