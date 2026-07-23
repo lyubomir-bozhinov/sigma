@@ -443,6 +443,47 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(narrativeSystem).toContain('СЪЩЕСТВЕНИ числа');
   });
 
+  // Regenerate-on-strip safety net: a verifier strip of one draft must NOT condemn the week to AI-free
+  // on the spot — the narrative runs at temp 0.3 (varies), so a regenerated draft gets a fresh pass.
+  // Here the first draft's narrative (C1) is stripped, the retry is supported and survives.
+  it('regenerate-on-strip: a stripped first draft is retried and a surviving draft wins', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+    let narrativeCalls = 0;
+    let verifyCalls = 0;
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      generate: async ({ system, prompt }: { system: string; prompt: string }) => {
+        if (system.includes('verification critic')) {
+          verifyCalls += 1;
+          const ids = [...prompt.matchAll(/^(C\d+):/gm)].map((m) => m[1]);
+          // First verification strips the narrative claim (C1); every later one supports all claims.
+          return JSON.stringify({
+            verdicts: ids.map((id) => ({
+              id,
+              verdict: verifyCalls === 1 && id === 'C1' ? 'unsupported' : 'supported',
+            })),
+          });
+        }
+        narrativeCalls += 1;
+        return narrativeCalls === 1 ? 'Първо резюме на седмицата.' : 'Второ резюме на седмицата.';
+      },
+    });
+
+    // One strip → one regeneration; the second draft survives, so exactly two of each call.
+    expect(narrativeCalls).toBe(2);
+    expect(verifyCalls).toBe(2);
+    expect(puts).toHaveLength(1);
+    const stored = JSON.parse(puts[0]!.body);
+    const textBlocks = stored.report.blocks.filter((b: { type: string }) => b.type === 'text');
+    expect(textBlocks).toHaveLength(1);
+    expect(textBlocks[0].md).toBe('Второ резюме на седмицата.'); // the surviving retry, not the stripped first draft
+    expect(stored.provenance.model).not.toBe('none (ai-free fallback)');
+    expect(upserts[0]!.status).toBe('ok');
+  });
+
   // A verifier that strips EVERY claim leaves an artifact with no surviving model prose — content
   // identical in kind to the AI-free fallback. It must be labelled as such, or the archive index
   // advertises a model-authored digest whose model text is gone.

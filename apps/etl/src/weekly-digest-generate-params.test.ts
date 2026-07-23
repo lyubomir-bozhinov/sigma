@@ -55,6 +55,25 @@ describe('weekly-digest model generation params', () => {
     expect(opts.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
+  // The verifier over-strips grounded ranking prose under @sigma/report's generic VERIFIER_SYSTEM, so
+  // the digest substitutes its own sharpened prompt: verifyReport hands the generic system in, the
+  // digest generator ignores it and uses DIGEST_VERIFIER_SYSTEM (which reserves "unsupported" for
+  // contradictions and biases to "uncertain"). The narrative generator, by contrast, must pass its
+  // caller's system (DIGEST_SYSTEM_PROMPT) straight through.
+  it('verifier generator substitutes the digest-tuned system prompt, ignoring the generic one', async () => {
+    await buildDigestVerifierGenerate(ENV)({ system: 'GENERIC_SHARED_SYSTEM', prompt: 'p' });
+    const opts = generateTextMock.mock.calls[0]![0];
+    expect(opts.system).not.toBe('GENERIC_SHARED_SYSTEM');
+    expect(opts.system).toContain('CONTRADICTS'); // unsupported reserved for contradictions
+    expect(opts.system).toContain('"uncertain"'); // hedge keeps the block
+  });
+
+  it('narrative generator passes the caller system through unchanged', async () => {
+    await buildDigestGenerate(ENV)({ system: 'NARRATIVE_SYSTEM', prompt: 'p' });
+    const opts = generateTextMock.mock.calls[0]![0];
+    expect(opts.system).toBe('NARRATIVE_SYSTEM');
+  });
+
   it('both refuse to build when AI_GATEWAY_BASE_URL is unset (never bypass the gateway)', () => {
     const bare = { ...ENV, AI_GATEWAY_BASE_URL: undefined };
     expect(() => buildDigestGenerate(bare)).toThrow(/AI_GATEWAY_BASE_URL/);
