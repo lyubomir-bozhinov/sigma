@@ -4,7 +4,7 @@ import type { Route } from './+types/weeks._index';
 import { PageHeader } from '../components/PageHeader';
 import { DataTable, type Column } from '../components/DataTable';
 import { seoMeta } from '../lib/meta';
-import { listStoredWeeks, type WeekIndexEntry } from '../lib/weeks';
+import { listStoredWeeks, weekRangeLabel, type WeekIndexEntry } from '../lib/weeks';
 
 export function meta({ matches }: Route.MetaArgs) {
   return seoMeta({
@@ -65,7 +65,8 @@ export default function WeeksIndex({ loaderData }: Route.ComponentProps) {
       key: 'iso',
       header: 'Седмица',
       isTitle: true,
-      cell: (w) => <Link to={`/weeks/${w.iso}`}>{w.iso}</Link>,
+      // Show the human Mon–Sun range; keep the href/slug on the iso (the R2 key + rowLink overlay).
+      cell: (w) => <Link to={`/weeks/${w.iso}`}>{weekRangeLabel(w)}</Link>,
     },
     {
       key: 'total',

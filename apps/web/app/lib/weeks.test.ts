@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidIsoWeek, isoWeekKey, listStoredWeeks } from './weeks';
+import { isValidIsoWeek, isoWeekKey, listStoredWeeks, weekRangeLabel } from './weeks';
 
 // A single-page R2 list stub (no pagination): `list` returns these objects, not truncated.
 function bucketListing(
@@ -64,5 +64,39 @@ describe('listStoredWeeks', () => {
       ]),
     );
     expect(weeks.every((w) => w.totalEur === null)).toBe(true);
+  });
+
+  it('parses Mon–Sun dates from customMetadata, null when absent or malformed', async () => {
+    const weeks = await listStoredWeeks(
+      bucketListing([
+        {
+          key: 'weeks/2026-W25.json',
+          customMetadata: { monday: '2026-06-15', sunday: '2026-06-21', totalEur: '2000' },
+        },
+        { key: 'weeks/2026-W24.json', customMetadata: { totalEur: '1000' } }, // no dates → null
+        {
+          key: 'weeks/2026-W23.json',
+          customMetadata: { monday: 'garbage', sunday: '2026-06-07' }, // malformed monday → null
+        },
+      ]),
+    );
+    const byIso = Object.fromEntries(weeks.map((w) => [w.iso, w]));
+    expect(byIso['2026-W25']).toMatchObject({ monday: '2026-06-15', sunday: '2026-06-21' });
+    expect(byIso['2026-W24']).toMatchObject({ monday: null, sunday: null });
+    expect(byIso['2026-W23']).toMatchObject({ monday: null, sunday: '2026-06-07' });
+  });
+});
+
+describe('weekRangeLabel', () => {
+  it('formats the Mon–Sun range as DD.MM.YYYY – DD.MM.YYYY when both dates are present', () => {
+    expect(
+      weekRangeLabel({ iso: '2026-W29', monday: '2026-07-13', sunday: '2026-07-19' }),
+    ).toBe('13.07.2026 – 19.07.2026');
+  });
+
+  it('falls back to the iso when either date is missing', () => {
+    expect(weekRangeLabel({ iso: '2026-W29', monday: null, sunday: '2026-07-19' })).toBe('2026-W29');
+    expect(weekRangeLabel({ iso: '2026-W29', monday: '2026-07-13', sunday: null })).toBe('2026-W29');
+    expect(weekRangeLabel({ iso: '2026-W29', monday: null, sunday: null })).toBe('2026-W29');
   });
 });

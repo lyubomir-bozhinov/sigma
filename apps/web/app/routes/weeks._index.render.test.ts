@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest';
 import WeeksIndex from './weeks._index';
 
 // loaderData is the client-safe shape the loader returns: the R2-derived week index.
+// W25 carries Mon–Sun dates (the human range label); W24 has none (older artifact → iso fallback).
 const loaderData = {
   weeks: [
-    { iso: '2026-W25', totalEur: 3_656_000 },
-    { iso: '2026-W24', totalEur: null },
+    { iso: '2026-W25', monday: '2026-06-15', sunday: '2026-06-21', totalEur: 3_656_000 },
+    { iso: '2026-W24', monday: null, sunday: null, totalEur: null },
   ],
 };
 
@@ -35,5 +36,14 @@ describe('/weeks archive', () => {
 
   it('shows the total, and an em-dash when a week has no total', () => {
     expect(html).toContain('—'); // 2026-W24 has null totalEur
+  });
+
+  it('labels a week by its Mon–Sun date range, falling back to the iso when dates are absent', () => {
+    // W25 has dates → human range (the link text, not the href).
+    expect(html).toContain('15.06.2026 – 21.06.2026');
+    // The iso is no longer the visible label for a dated week…
+    expect(html).not.toContain('>2026-W25<');
+    // …but W24 (no dates) still falls back to the iso as its label.
+    expect(html).toContain('>2026-W24<');
   });
 });
