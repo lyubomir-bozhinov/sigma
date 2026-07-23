@@ -25,8 +25,8 @@ export function isValidIsoWeek(iso: string): boolean {
 }
 
 /** One archive-index row for `/weeks`: the week, its Mon–Sun dates (for the human label) and its total
- *  spend (for the sparkline), if published. `monday`/`sunday` are null on artifacts written before the
- *  producer began stamping them — the label then falls back to the iso. */
+ *  spend (shown in the archive's total column), if published. `monday`/`sunday` are null on artifacts
+ *  written before the producer began stamping them — the label then falls back to the iso. */
 export interface WeekIndexEntry {
   iso: string;
   monday: string | null;

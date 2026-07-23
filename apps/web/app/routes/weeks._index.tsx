@@ -31,33 +31,6 @@ export async function loader({ context }: Route.LoaderArgs) {
   return { weeks };
 }
 
-// A minimal inline sparkline of weekly totals (chronological, oldest → newest). Rendered only when at
-// least two weeks carry a total. role="img" + aria-label; the table below is the accessible data.
-function Sparkline({ weeks }: { weeks: WeekIndexEntry[] }) {
-  const series = weeks
-    .filter((w): w is WeekIndexEntry & { totalEur: number } => w.totalEur != null)
-    .slice()
-    .reverse();
-  if (series.length < 2) return null;
-  const W = 480;
-  const H = 48;
-  const max = Math.max(1, ...series.map((s) => s.totalEur));
-  const n = series.length;
-  const pts = series
-    .map((s, i) => `${((i / (n - 1)) * W).toFixed(1)},${(H - (s.totalEur / max) * H).toFixed(1)}`)
-    .join(' ');
-  return (
-    <svg
-      className="weeks-sparkline"
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label="Обща стойност на договорите по седмици"
-    >
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={2} />
-    </svg>
-  );
-}
-
 export default function WeeksIndex({ loaderData }: Route.ComponentProps) {
   const { weeks } = loaderData;
   const columns: Column<WeekIndexEntry>[] = [
@@ -85,16 +58,13 @@ export default function WeeksIndex({ loaderData }: Route.ComponentProps) {
       {weeks.length === 0 ? (
         <p className="small muted">Все още няма публикувани седмични обзори.</p>
       ) : (
-        <>
-          <Sparkline weeks={weeks} />
-          <DataTable
-            columns={columns}
-            rows={weeks}
-            getKey={(w) => w.iso}
-            caption="Седмични обзори"
-            rowLink
-          />
-        </>
+        <DataTable
+          columns={columns}
+          rows={weeks}
+          getKey={(w) => w.iso}
+          caption="Седмични обзори"
+          rowLink
+        />
       )}
     </main>
   );
