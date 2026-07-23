@@ -548,6 +548,33 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(upserts[0]!.status).toBe('fallback');
   });
 
+  // The verifier runs under a hard timeout (VERIFIER_TIMEOUT_MS); a hung gateway call aborts and THROWS.
+  // verifyReport must fail-CLOSED on that throw — strip the unverified prose — never publish it because
+  // the judge never answered. Same observable outcome as an empty-verdicts strip, reached via a throw.
+  it('verifier throwing (e.g. timeout abort) fails closed: prose stripped, labelled AI-free', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      // Narrative generates fine; the verifier call rejects with an AbortError (what AbortSignal.timeout
+      // throws when the budget elapses) on EVERY attempt.
+      generate: async ({ system }: { system: string; prompt: string }) => {
+        if (system.includes('verification critic')) {
+          throw new DOMException('The operation was aborted', 'AbortError');
+        }
+        return 'Изминалата седмица бе разнообразна за обществените поръчки в страната.';
+      },
+    });
+
+    expect(puts).toHaveLength(1);
+    const stored = JSON.parse(puts[0]!.body);
+    expect(stored.report.blocks.some((b: { type: string }) => b.type === 'text')).toBe(false);
+    expect(stored.provenance.model).toBe('none (ai-free fallback)');
+    expect(upserts[0]!.status).toBe('fallback');
+  });
+
   it('reissue: a second run for an already-written week is stamped "коригирано"', async () => {
     const data = happyPathData();
     data.existingDigestRow = true;

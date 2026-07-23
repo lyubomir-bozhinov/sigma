@@ -56,9 +56,9 @@ export interface WeeklyDigestEnv {
    *  uses (apps/web ASSISTANT_API_KEY) so both workers share one credential name. Optional: unset →
    *  the digest still publishes AI-free. */
   ASSISTANT_API_KEY?: string;
-  /** DIAGNOSTIC (dev-only, revert before merge): when truthy, log the generated narrative text and the
-   *  verifier's raw response so a verifier-strip can be attributed to a bad narrative vs an over-eager
-   *  verdict. Fail-dark like the other flags — unset/absent → no model prose ever reaches the logs. */
+  /** DIAGNOSTIC (dev-only): when truthy, log the generated narrative text and the verifier's raw response
+   *  so a verifier-strip can be attributed to a bad narrative vs an over-eager verdict. Fail-dark like the
+   *  other flags — unset/absent → no model prose ever reaches the logs. Committed OFF (see wrangler.toml). */
   DIGEST_DEBUG?: string;
 }
 
@@ -93,6 +93,12 @@ const MAX_NARRATIVE_ATTEMPTS = 2;
 // Verifier call timeout (mirrors apps/web's `VERIFIER_TIMEOUT_MS`): a hung gateway call fail-closes the
 // verifier (stripping risk prose) rather than stalling the cron. Verdicts need only a few hundred tokens.
 const VERIFIER_TIMEOUT_MS = 20_000;
+// Narrative call timeout. The cron has no request signal to bound a hung gateway call, and the narrative
+// is the larger (1400-token) generation, so it needs its OWN abort budget — without it a stall blocks the
+// worker until the platform wall-clock kills it, twice over on the retry. A generation throw is already
+// caught and converted to a retry → AI-free fallback, so aborting fails safe. Longer than the verifier's
+// budget to fit the bigger output.
+const NARRATIVE_TIMEOUT_MS = 30_000;
 const METHODOLOGY_CALLOUT_TITLE = 'Как е изчислено';
 const METHODOLOGY_CALLOUT_MD =
   'Изчислено от чисти (amount_eur ненулеви) договори, подписани в рамките на пълна календарна ' +
@@ -178,6 +184,7 @@ export function buildDigestGenerate(env: WeeklyDigestEnv): GenerateFn {
       temperature: 0.3,
       maxRetries: 0,
       maxOutputTokens: 1400, // room for a ≥5 paragraph „Какво се случи" analysis (spec §3.3)
+      abortSignal: AbortSignal.timeout(NARRATIVE_TIMEOUT_MS),
     });
     return result.text;
   };

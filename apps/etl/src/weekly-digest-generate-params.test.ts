@@ -36,13 +36,16 @@ afterEach(() => {
 });
 
 describe('weekly-digest model generation params', () => {
-  it('narrative generator: temperature 0.3, 1400-token cap (≥5-paragraph analysis), no retries', async () => {
+  it('narrative generator: temperature 0.3, 1400-token cap (≥5-paragraph analysis), no retries, bounded by a timeout', async () => {
     await buildDigestGenerate(ENV)({ system: 's', prompt: 'p' });
     expect(generateTextMock).toHaveBeenCalledTimes(1);
     const opts = generateTextMock.mock.calls[0]![0];
     expect(opts.temperature).toBe(0.3);
     expect(opts.maxOutputTokens).toBe(1400);
     expect(opts.maxRetries).toBe(0);
+    // The cron has no request signal, so the narrative call carries its own abort budget (a hung gateway
+    // call must not stall the worker — mirrors the verifier).
+    expect(opts.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
   it('verifier generator: temperature 0 (deterministic JSON), 1024-token cap, bounded by a timeout', async () => {
