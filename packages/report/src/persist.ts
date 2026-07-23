@@ -69,6 +69,11 @@ export function buildStoredReport(input: BuildStoredReportInput): StoredReport {
 export interface PersistReportOptions {
   /** Set `cacheControl: public, max-age=31536000, immutable` — the ETL producer's `weeks/{ISO}.json` artifacts. */
   immutable?: boolean;
+  /** Extra R2 customMetadata (string→string) merged over the base `title`/`question`/`createdAt`. Lets a
+   *  caller attach listing-facing fields it does NOT want to re-parse from the object body — e.g. the
+   *  digest producer stamps `totalEur`/`monday`/`sunday` so the `/weeks` archive index needs no per-week
+   *  fetch. The base keys win on collision (a caller cannot clobber `title`/`question`/`createdAt`). */
+  customMetadata?: Record<string, string>;
 }
 
 /** Write a `StoredReport` to R2 at `key`. Caller decides the key convention (`report/{id}.json` for
@@ -86,6 +91,8 @@ export async function persistReport(
       ...(opts?.immutable ? { cacheControl: 'public, max-age=31536000, immutable' } : {}),
     },
     customMetadata: {
+      ...(opts?.customMetadata ?? {}),
+      // Base keys last so a caller's extras can never clobber the canonical trio.
       title: stored.report.title,
       question: stored.provenance.question,
       createdAt: stored.createdAt,

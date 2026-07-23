@@ -361,12 +361,29 @@ describe('generateWeeklyDigest — gate matrix', () => {
 
     expect(puts).toHaveLength(1);
     expect(puts[0]!.key).toBe(`weeks/${TARGET.iso}.json`);
+    // Listing-facing R2 customMetadata: the /weeks archive index reads these without a per-week fetch.
+    // persistReport translates `immutable` into httpMetadata.cacheControl and passes customMetadata through.
+    const putOpts = puts[0]!.opts as {
+      httpMetadata?: { cacheControl?: string };
+      customMetadata?: Record<string, string>;
+    };
+    expect(putOpts.httpMetadata?.cacheControl).toMatch(/immutable/);
+    expect(putOpts.customMetadata).toMatchObject({
+      totalEur: String(data.totalsByWeek[TARGET.iso]),
+      monday: TARGET.mondayIso,
+      sunday: TARGET.sundayIso,
+    });
     const stored = JSON.parse(puts[0]!.body);
     expect(stored.schemaVersion).toBe(1);
     expect(stored.id).toBe(TARGET.iso);
-    // Title carries the human-readable Mon–Sun range, not the raw ISO week id.
+    // Title reads „Седмичен обзор — <range>": the user-facing name is „обзор" (not „дайджест"), and it
+    // carries the human-readable Mon–Sun range, not the raw ISO week id.
+    expect(stored.report.title).toContain('Седмичен обзор — ');
+    expect(stored.report.title).not.toContain('дайджест');
     expect(stored.report.title).toContain(`${date(TARGET.mondayIso)} – ${date(TARGET.sundayIso)}`);
     expect(stored.report.title).not.toContain(TARGET.iso);
+    // Stored question carries the same „обзор" wording.
+    expect(stored.provenance.question).toContain('Седмичен обзор');
     const totalsBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'totals');
     expect(totalsBlock).toBeTruthy();
     expect(totalsBlock.items[0].value).toBe(data.totalsByWeek[TARGET.iso]);
@@ -376,6 +393,12 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(weekbars.current).toHaveLength(7);
     expect(weekbars.previous).toHaveLength(7);
     expect(weekbars.current.some((d: { value: number }) => d.value === 12_000)).toBe(true);
+    // Sector bar labels the human-readable sector NAME, not the raw 2-digit CPV code: fixture division
+    // '45' → curated „Строителство".
+    const barBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'bar');
+    expect(barBlock).toBeTruthy();
+    expect(barBlock.points[0].label).toBe('Строителство');
+    expect(barBlock.points[0].label).not.toBe('45');
     expect(upserts).toHaveLength(1);
     expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
     expect(upserts[0]!.status).toBe('ok');
@@ -423,6 +446,82 @@ describe('generateWeeklyDigest — gate matrix', () => {
     const contractsItem = totals.items.find((i: { label: string }) => i.label === 'Договори');
     expect(contractsItem.value).toBe(data.counts.contracts_with_amount); // 10
     expect(contractsItem.value).not.toBe(data.counts.contracts); // not the 12-row volume
+  });
+
+  // v3 narrative: the call is fed QUALITATIVE week signals (direction, sector concentration, largest-
+  // contract weight, competition, authority spread, peak day) and asked for a ≥5-paragraph „Какво се
+  // случи" analysis — no numbers (those stay server-bound in the tables/charts). This asserts the signals
+  // and the analytical task reach the model prompt.
+  it('narrative prompt: drives a ≥5-paragraph „Какво се случи" analysis from qualitative signals', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+    let narrativePrompt = '';
+    let narrativeSystem = '';
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      generate: async ({ system, prompt }: { system: string; prompt: string }) => {
+        if (system.includes('verification critic')) {
+          const ids = [...prompt.matchAll(/^(C\d+):/gm)].map((m) => m[1]);
+          return JSON.stringify({ verdicts: ids.map((id) => ({ id, verdict: 'supported' })) });
+        }
+        narrativePrompt = prompt;
+        narrativeSystem = system;
+        return 'Изминалата седмица бе разнообразна за обществените поръчки в страната.';
+      },
+    });
+
+    // Delta 100_000 vs prior 80_000 → the week-over-week move is fed qualitatively (verb, no number).
+    expect(narrativePrompt).toContain('нарасна');
+    // The leading CPV division reaches the model (it names it via the dictionary in the system prompt).
+    expect(narrativePrompt).toContain('Водещи CPV раздели');
+    // The task itself: a ≥5-paragraph analysis, explicitly without numbers.
+    expect(narrativePrompt).toContain('най-малко 5 абзаца');
+    // The system prompt drives the analytical „Какво се случи" and still bans numbers in prose.
+    expect(narrativeSystem).toContain('НАЙ-МАЛКО 5 абзаца');
+    expect(narrativeSystem).toContain('Какво се случи');
+  });
+
+  // Regenerate-on-strip safety net: a verifier strip of one draft must NOT condemn the week to AI-free
+  // on the spot — the narrative runs at temp 0.3 (varies), so a regenerated draft gets a fresh pass.
+  // Here the first draft's narrative (C1) is stripped, the retry is supported and survives.
+  it('regenerate-on-strip: a stripped first draft is retried and a surviving draft wins', async () => {
+    const data = happyPathData();
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+    let narrativeCalls = 0;
+    let verifyCalls = 0;
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      generate: async ({ system, prompt }: { system: string; prompt: string }) => {
+        if (system.includes('verification critic')) {
+          verifyCalls += 1;
+          const ids = [...prompt.matchAll(/^(C\d+):/gm)].map((m) => m[1]);
+          // First verification strips the narrative claim (C1); every later one supports all claims.
+          return JSON.stringify({
+            verdicts: ids.map((id) => ({
+              id,
+              verdict: verifyCalls === 1 && id === 'C1' ? 'unsupported' : 'supported',
+            })),
+          });
+        }
+        narrativeCalls += 1;
+        return narrativeCalls === 1 ? 'Първо резюме на седмицата.' : 'Второ резюме на седмицата.';
+      },
+    });
+
+    // One strip → one regeneration; the second draft survives, so exactly two of each call.
+    expect(narrativeCalls).toBe(2);
+    expect(verifyCalls).toBe(2);
+    expect(puts).toHaveLength(1);
+    const stored = JSON.parse(puts[0]!.body);
+    const textBlocks = stored.report.blocks.filter((b: { type: string }) => b.type === 'text');
+    expect(textBlocks).toHaveLength(1);
+    expect(textBlocks[0].md).toBe('Второ резюме на седмицата.'); // the surviving retry, not the stripped first draft
+    expect(stored.provenance.model).not.toBe('none (ai-free fallback)');
+    expect(upserts[0]!.status).toBe('ok');
   });
 
   // A verifier that strips EVERY claim leaves an artifact with no surviving model prose — content
