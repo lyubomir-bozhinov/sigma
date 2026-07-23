@@ -83,7 +83,7 @@ const DIGEST_PROMPT_VERSION = 'weekly-digest-v2';
 // The fixed, server-owned "question" shown on the digest report (§4/§9.1: passing it via
 // `BindOptions.question` means bindReport does NOT gate it for material numbers — there is no
 // model-authored question here to gate).
-const DIGEST_QUESTION = 'Седмичен дайджест на обществените поръчки в България';
+const DIGEST_QUESTION = 'Седмичен обзор на обществените поръчки в България';
 // Narrative budget: one initial attempt + one retry. Each attempt is a FULL generate → bind → verify
 // cycle (up to one narrative call + one verifier call), and the retry now covers BOTH failure modes —
 // a bind rejection AND a verifier strip. The narrative runs at temperature 0.3 (varies per call), so a
@@ -243,7 +243,7 @@ export function buildDigestVerifierGenerate(env: WeeklyDigestEnv): GenerateFn {
 
 const DIGEST_SYSTEM_PROMPT = [
   'Пишеш кратък въвеждащ текст (едно до две изречения) на български за автоматичен седмичен ' +
-    'дайджест на обществени поръчки в България. Текстът е лидът над таблиците — направи го ' +
+    'обзор на обществени поръчки в България. Текстът е лидът над таблиците — направи го ' +
     'информативен, а не общ.',
   'ЗАДЪЛЖИТЕЛНИ ПРАВИЛА:',
   '1. МОЖЕШ да назоваваш: посоката на промяната спрямо предходната седмица (нарастване/спад/без ' +
@@ -370,8 +370,15 @@ function buildQueryResults(data: WeeklyDigestData): QueryResult[] {
 
   results.push({
     handle: 'R4',
-    columns: ['division', 'contracts', 'value_eur'],
-    rows: data.sectors.map((s: WeeklySectorSlice) => [s.division, s.contracts, s.valueEur]),
+    // `sector` carries the human-readable division NAME (via sectorLabel) so the bar labels read as
+    // sectors („Строителство"), not raw 2-digit CPV codes; the raw `division` code is kept for provenance.
+    columns: ['division', 'sector', 'contracts', 'value_eur'],
+    rows: data.sectors.map((s: WeeklySectorSlice) => [
+      s.division,
+      sectorLabel(s.division),
+      s.contracts,
+      s.valueEur,
+    ]),
   });
 
   results.push({
@@ -460,7 +467,7 @@ function buildEmitInput(
     blocks.push({
       type: 'bar',
       resultId: 'R4',
-      labelCol: 'division',
+      labelCol: 'sector',
       valueCol: 'value_eur',
       format: 'money',
     });
@@ -488,7 +495,7 @@ function buildEmitInput(
   // Human-readable Mon–Sun range (e.g. „06.07.2026 – 12.07.2026") in place of the raw ISO week id. The
   // machine week id (target.iso) still keys the R2 object + weekly_digests row; only the heading changes.
   const range = `${date(target.mondayIso)} – ${date(target.sundayIso)}`;
-  return { title: `Седмичен дайджест — ${range}`, question: DIGEST_QUESTION, blocks };
+  return { title: `Седмичен обзор — ${range}`, question: DIGEST_QUESTION, blocks };
 }
 
 // ── Sanity gates (never persist an unvalidated number) ───────────────────────────────────────────────

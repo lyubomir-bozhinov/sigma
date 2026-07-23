@@ -352,12 +352,23 @@ describe('generateWeeklyDigest — gate matrix', () => {
     const stored = JSON.parse(puts[0]!.body);
     expect(stored.schemaVersion).toBe(1);
     expect(stored.id).toBe(TARGET.iso);
-    // Title carries the human-readable Mon–Sun range, not the raw ISO week id.
+    // Title reads „Седмичен обзор — <range>": the user-facing name is „обзор" (not „дайджест"), and it
+    // carries the human-readable Mon–Sun range, not the raw ISO week id.
+    expect(stored.report.title).toContain('Седмичен обзор — ');
+    expect(stored.report.title).not.toContain('дайджест');
     expect(stored.report.title).toContain(`${date(TARGET.mondayIso)} – ${date(TARGET.sundayIso)}`);
     expect(stored.report.title).not.toContain(TARGET.iso);
+    // Stored question carries the same „обзор" wording.
+    expect(stored.provenance.question).toContain('Седмичен обзор');
     const totalsBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'totals');
     expect(totalsBlock).toBeTruthy();
     expect(totalsBlock.items[0].value).toBe(data.totalsByWeek[TARGET.iso]);
+    // Sector bar labels the human-readable sector NAME, not the raw 2-digit CPV code: fixture division
+    // '45' → curated „Строителство".
+    const barBlock = stored.report.blocks.find((b: { type: string }) => b.type === 'bar');
+    expect(barBlock).toBeTruthy();
+    expect(barBlock.points[0].label).toBe('Строителство');
+    expect(barBlock.points[0].label).not.toBe('45');
     expect(upserts).toHaveLength(1);
     expect(upserts[0]!.isoWeek).toBe(TARGET.iso);
     expect(upserts[0]!.status).toBe('ok');
