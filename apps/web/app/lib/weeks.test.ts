@@ -89,14 +89,18 @@ describe('listStoredWeeks', () => {
 
 describe('weekRangeLabel', () => {
   it('formats the Mon–Sun range as DD.MM.YYYY – DD.MM.YYYY when both dates are present', () => {
-    expect(
-      weekRangeLabel({ iso: '2026-W29', monday: '2026-07-13', sunday: '2026-07-19' }),
-    ).toBe('13.07.2026 – 19.07.2026');
+    expect(weekRangeLabel({ iso: '2026-W29', monday: '2026-07-13', sunday: '2026-07-19' })).toBe(
+      '13.07.2026 – 19.07.2026',
+    );
   });
 
   it('falls back to the iso when either date is missing', () => {
-    expect(weekRangeLabel({ iso: '2026-W29', monday: null, sunday: '2026-07-19' })).toBe('2026-W29');
-    expect(weekRangeLabel({ iso: '2026-W29', monday: '2026-07-13', sunday: null })).toBe('2026-W29');
+    expect(weekRangeLabel({ iso: '2026-W29', monday: null, sunday: '2026-07-19' })).toBe(
+      '2026-W29',
+    );
+    expect(weekRangeLabel({ iso: '2026-W29', monday: '2026-07-13', sunday: null })).toBe(
+      '2026-W29',
+    );
     expect(weekRangeLabel({ iso: '2026-W29', monday: null, sunday: null })).toBe('2026-W29');
   });
 });

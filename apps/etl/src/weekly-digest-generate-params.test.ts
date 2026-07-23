@@ -87,31 +87,36 @@ describe('weekly-digest model generation params', () => {
   it.each([
     ['narrative', buildDigestGenerate],
     ['verifier', buildDigestVerifierGenerate],
-  ])('%s generator: provider fetch injects chat_template_kwargs.enable_thinking=false', async (_n, build) => {
-    build(ENV);
-    const wrappedFetch = createOpenAIMock.mock.calls[0]![0].fetch as typeof fetch;
-    expect(typeof wrappedFetch).toBe('function');
+  ])(
+    '%s generator: provider fetch injects chat_template_kwargs.enable_thinking=false',
+    async (_n, build) => {
+      build(ENV);
+      const wrappedFetch = createOpenAIMock.mock.calls[0]![0].fetch as typeof fetch;
+      expect(typeof wrappedFetch).toBe('function');
 
-    const seen: Array<Record<string, unknown>> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_input: unknown, init: { body?: string }) => {
-        seen.push(JSON.parse(init.body ?? '{}'));
-        return new Response('{}');
-      }),
-    );
-    try {
-      await wrappedFetch('https://gw.example/chat/completions', {
-        method: 'POST',
-        body: JSON.stringify({ model: 'm', messages: [] }),
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+      const seen: Array<Record<string, unknown>> = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_input: unknown, init: { body?: string }) => {
+          seen.push(JSON.parse(init.body ?? '{}'));
+          return new Response('{}');
+        }),
+      );
+      try {
+        await wrappedFetch('https://gw.example/chat/completions', {
+          method: 'POST',
+          body: JSON.stringify({ model: 'm', messages: [] }),
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
 
-    expect(seen).toHaveLength(1);
-    expect((seen[0]!.chat_template_kwargs as Record<string, unknown>).enable_thinking).toBe(false);
-    // The original body is preserved, not clobbered.
-    expect(seen[0]!.model).toBe('m');
-  });
+      expect(seen).toHaveLength(1);
+      expect((seen[0]!.chat_template_kwargs as Record<string, unknown>).enable_thinking).toBe(
+        false,
+      );
+      // The original body is preserved, not clobbered.
+      expect(seen[0]!.model).toBe('m');
+    },
+  );
 });
