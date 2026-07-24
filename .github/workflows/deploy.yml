@@ -115,6 +115,13 @@ jobs:
       # fails open. wrangler-render stamps this into ENVIRONMENT. Not derived from import.meta.env.PROD,
       # which Vite inlines true for the staging build too (it would misclassify staging as production).
       SIGMA_ENVIRONMENT: ${{ vars.SIGMA_ENVIRONMENT }}
+      # AI-Gateway account id in AI_GATEWAY_BASE_URL (and web's BGGPT_STT_BASE_URL). wrangler-render swaps
+      # the committed prod account for this env's own — dev/staging run on a different Cloudflare account
+      # whose `sigma-assistant` gateway + `custom-bggpt` provider live there. Unset (prod) → committed
+      # account stays. Without this, a non-prod deploy calls the PROD gateway, which this env's key can't
+      # use, so every BgGPT call (web assistant + etl digest narrative) fails. preview.yml already passes
+      # this; deploy.yml was missing it, so the dev etl/web workers kept the prod URL.
+      SIGMA_AI_GATEWAY_ACCOUNT: ${{ vars.SIGMA_AI_GATEWAY_ACCOUNT }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9

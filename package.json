@@ -33,5 +33,14 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
     "wrangler": "^4.93.1"
+  },
+  "pnpm": {
+    "//": "Security pins for transitive dev deps flagged by osv-scanner (CI Dependency audit). Adding the sharp override triggers a full pnpm re-resolve that would otherwise pull older esbuild/undici/ws subtrees back in, so pin those to their already-resolved patched floors too. All are build/test-tool transitives (wrangler/miniflare/vite), not shipped code.",
+    "overrides": {
+      "sharp@<0.35.0": ">=0.35.0",
+      "esbuild@<0.28.1": ">=0.28.1",
+      "undici@<7.28.0": ">=7.28.0",
+      "ws@<8.21.0": ">=8.21.0"
+    }
   }
 }

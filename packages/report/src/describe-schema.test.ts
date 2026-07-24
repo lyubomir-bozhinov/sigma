@@ -15,10 +15,13 @@ import {
 const tableNames = new Set(TABLES.map((t) => t.name));
 
 // Base tables referenced after FROM/JOIN, and CTE names defined via `WITH x AS (` / `, y AS (`.
+const isString = (x: string | undefined): x is string => x !== undefined;
 const referencedTables = (sql: string): string[] =>
-  [...sql.matchAll(/(?:FROM|JOIN)\s+([a-z_]+)/gi)].map((m) => m[1]);
+  [...sql.matchAll(/(?:FROM|JOIN)\s+([a-z_]+)/gi)].map((m) => m[1]).filter(isString);
 const cteNames = (sql: string): Set<string> =>
-  new Set([...sql.matchAll(/(?:WITH|,)\s+([a-z_]+)\s+AS\s*\(/gi)].map((m) => m[1]));
+  new Set(
+    [...sql.matchAll(/(?:WITH|,)\s+([a-z_]+)\s+AS\s*\(/gi)].map((m) => m[1]).filter(isString),
+  );
 
 describe('describe-schema data dictionary', () => {
   it('table names are unique and fully described', () => {
