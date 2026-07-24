@@ -63,7 +63,10 @@ describe('wrangler-render: REPORTS R2 bucket rename (etl TOML path)', () => {
   });
 
   it('renames REPORTS alongside the worker name in one pass', () => {
-    const out = render(ETL_TOML, { SIGMA_ETL_NAME: 'sigma-etl-dev', SIGMA_REPORTS_NAME: 'sigma-reports-dev' });
+    const out = render(ETL_TOML, {
+      SIGMA_ETL_NAME: 'sigma-etl-dev',
+      SIGMA_REPORTS_NAME: 'sigma-reports-dev',
+    });
     assert.match(out, /^name = "sigma-etl-dev"$/m);
     assert.match(out, /^bucket_name = "sigma-reports-dev"$/m);
   });
