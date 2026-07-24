@@ -268,8 +268,9 @@ describe('bindReport — server owns the values', () => {
 
   it('drops a null-valued day from a weekbars series, so the two series can differ in length', () => {
     // The binder's per-series filter skips rows whose value is null/non-numeric. When one series has a
-    // gap the other does not, `current` and `previous` come out different lengths — the case the export
-    // + WeeklyGhostBars align by index and pad with „—". This test pins that alignment behaviour.
+    // gap the other does not, `current` and `previous` come out different lengths — which the export +
+    // WeeklyGhostBars handle by pairing on day LABEL (not array index) and em-dashing the missing side.
+    // This test pins the binder's length-divergence output that they consume.
     const daily: QueryResult[] = [
       {
         handle: 'C',

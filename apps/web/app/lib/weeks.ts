@@ -42,20 +42,27 @@ export interface WeekIndexEntry {
 export async function listStoredWeeks(bucket: R2Bucket): Promise<WeekIndexEntry[]> {
   const out: WeekIndexEntry[] = [];
   let cursor: string | undefined;
-  do {
-    const page = await bucket.list({ prefix: WEEKS_PREFIX, include: ['customMetadata'], cursor });
-    for (const o of page.objects) {
-      const m = ISO_WEEK_KEY.exec(o.key);
-      if (!m) continue;
-      const cm = o.customMetadata;
-      const raw = cm?.totalEur;
-      const total = raw != null && /^-?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : null;
-      const monday = cm?.monday != null && ISO_DATE.test(cm.monday) ? cm.monday : null;
-      const sunday = cm?.sunday != null && ISO_DATE.test(cm.sunday) ? cm.sunday : null;
-      out.push({ iso: m[1]!, monday, sunday, totalEur: total });
-    }
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
+  // A mid-pagination R2 failure must not 500 the archive: log it and return what we have so far (a
+  // partial-but-usable list beats an error page). The list is newest-first, so an early break still
+  // surfaces the most recent weeks.
+  try {
+    do {
+      const page = await bucket.list({ prefix: WEEKS_PREFIX, include: ['customMetadata'], cursor });
+      for (const o of page.objects) {
+        const m = ISO_WEEK_KEY.exec(o.key);
+        if (!m) continue;
+        const cm = o.customMetadata;
+        const raw = cm?.totalEur;
+        const total = raw != null && /^-?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : null;
+        const monday = cm?.monday != null && ISO_DATE.test(cm.monday) ? cm.monday : null;
+        const sunday = cm?.sunday != null && ISO_DATE.test(cm.sunday) ? cm.sunday : null;
+        out.push({ iso: m[1]!, monday, sunday, totalEur: total });
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  } catch (error) {
+    console.error('listStoredWeeks: R2 list failed, returning partial results', error);
+  }
   return out.sort((a, b) => (a.iso < b.iso ? 1 : a.iso > b.iso ? -1 : 0));
 }
 

@@ -32,6 +32,29 @@ describe('isoWeekKey / isValidIsoWeek', () => {
 });
 
 describe('listStoredWeeks', () => {
+  it('returns the partial accumulated list (not an error) when R2 list() fails mid-pagination', async () => {
+    // First page ok + truncated; the second list() call throws. The archive must degrade to the weeks
+    // gathered so far rather than 500.
+    let call = 0;
+    const flakyBucket = {
+      list: async () => {
+        call += 1;
+        if (call === 1) {
+          return {
+            objects: [{ key: 'weeks/2026-W25.json', customMetadata: { totalEur: '2000' } }],
+            truncated: true,
+            cursor: 'c1',
+          };
+        }
+        throw new Error('R2 unavailable');
+      },
+    } as unknown as R2Bucket;
+
+    const weeks = await listStoredWeeks(flakyBucket);
+    expect(weeks.map((w) => w.iso)).toEqual(['2026-W25']);
+    expect(weeks[0]!.totalEur).toBe(2000);
+  });
+
   it('lists weeks newest-first with totals parsed from customMetadata', async () => {
     const weeks = await listStoredWeeks(
       bucketListing([

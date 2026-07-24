@@ -1,9 +1,12 @@
 // Weekly Digest (#167) — read-side queries for the digest producer. Every indicator scopes to a
-// single ISO 8601 week (`strftime('%G-W%V', signed_at)`, e.g. '2024-W03') via a bound parameter, so
-// the SQL is identical to what a real D1 query planner sees against idx_contracts_signed. Money
-// figures follow the site-wide clean basis (amount_eur IS NOT NULL) used by the rollups
-// (home_totals / sector_totals / authority_totals) wherever the indicator sums money (a/e/g/h);
-// b/c/d/f intentionally do not add that filter — see each function's comment.
+// single ISO 8601 week (`strftime('%G-W%V', signed_at)`, e.g. '2024-W03') via a bound parameter. NOTE:
+// wrapping `signed_at` in `strftime(...)` is NON-SARGABLE — the planner cannot use `idx_contracts_signed`
+// and does a full `contracts` scan per indicator. Acceptable today: this runs cron-only (once/week), off
+// the request path. FOLLOW-UP as the corpus grows: rewrite to a sargable range bound
+// (`signed_at >= :monday AND signed_at < :nextMonday`) so the index applies. Money figures follow the
+// site-wide clean basis (amount_eur IS NOT NULL) used by the rollups (home_totals / sector_totals /
+// authority_totals) wherever the indicator sums money (a/e/g/h); b/c/d/f intentionally do not add that
+// filter — see each function's comment.
 
 import { authoritySlug, companySlug, contractSlug } from './identity';
 

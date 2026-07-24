@@ -368,12 +368,13 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(puts).toHaveLength(1);
     expect(puts[0]!.key).toBe(`weeks/${TARGET.iso}.json`);
     // Listing-facing R2 customMetadata: the /weeks archive index reads these without a per-week fetch.
-    // persistReport translates `immutable` into httpMetadata.cacheControl and passes customMetadata through.
+    // The object is NOT written `immutable` — it's overwritten in place on a §10.4 re-issue, so no
+    // immutable object cacheControl (the serve path sends its own headers).
     const putOpts = puts[0]!.opts as {
       httpMetadata?: { cacheControl?: string };
       customMetadata?: Record<string, string>;
     };
-    expect(putOpts.httpMetadata?.cacheControl).toMatch(/immutable/);
+    expect(putOpts.httpMetadata?.cacheControl).toBeUndefined();
     expect(putOpts.customMetadata).toMatchObject({
       totalEur: String(data.totalsByWeek[TARGET.iso]),
       monday: TARGET.mondayIso,
@@ -605,6 +606,34 @@ describe('generateWeeklyDigest — gate matrix', () => {
     const reissued = JSON.parse(puts.at(-1)!.body);
     expect(reissued.createdAt).toBe(ORIGINAL_CREATED);
     expect(reissued.refreshedAt).toBe(NOW.toISOString());
+  });
+
+  it('reissue: a prior-artifact READ FAILURE degrades to a first-publish, never aborts the cron', async () => {
+    const data = happyPathData();
+    data.existingDigestRow = true;
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+    // Bucket whose get() THROWS (R2 outage) — the reissue path must catch it and fall back to createdAt=now.
+    const throwingBucket = {
+      put: async (key: string, body: string, opts?: unknown) => {
+        puts.push({ key, body, opts });
+        return null as unknown as R2Object;
+      },
+      get: async () => {
+        throw new Error('R2 unavailable');
+      },
+    } as unknown as R2Bucket;
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), throwingBucket), {
+      now: NOW,
+      generate: mockGenerate('Кратко резюме на седмицата.'),
+    });
+
+    // The run completed (artifact written), the read failure did NOT throw out of the cron.
+    expect(puts).toHaveLength(1);
+    const stored = JSON.parse(puts[0]!.body);
+    expect(stored.createdAt).toBe(NOW.toISOString()); // fell back to now (no prior read)
+    expect(upserts[0]!.status).toBe('коригирано'); // still a re-issue per the D1 row
   });
 
   it('first publish carries no refreshedAt (createdAt = now)', async () => {

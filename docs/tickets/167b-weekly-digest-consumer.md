@@ -33,13 +33,13 @@ Shared with the assistant's own render layer — build to be reusable by both.
 - Golden full-page snapshot for `/weeks/{ISO}` from a committed `StoredReport` fixture.
 
 ## Definition of done
-- [ ] `ReportBlockRenderer` renders every `ResolvedBlock` type; reuses existing components; all entity links via `entityHref` (name-keyed companies safe).
-- [ ] `ReportAiWatermark` + footer provenance present; „данни към {as_of}", model, sources shown.
-- [ ] `WeeklyGhostBars` server-SVG with paired sr-only `<table>` (WCAG AA).
-- [ ] `/weeks/{ISO}` renders from R2 with **no D1/LLM**; 404 for weeks without artifacts; immutable cache on settled weeks.
-- [ ] `/weeks` archive lists only artifact-backed weeks; sparkline works.
-- [ ] AI-free fallback renders cleanly; „коригирано" note on re-issue.
-- [ ] Golden render snapshot committed; conventional commits, no `Co-Authored-By`.
+- [x] `ReportBlockRenderer` renders every `ResolvedBlock` type; reuses existing components; all entity links via `entityHref` (name-keyed companies safe).
+- [x] `ReportAiWatermark` + footer provenance present; „данни към {as_of}", model, sources shown.
+- [x] `WeeklyGhostBars` server-SVG with paired sr-only `<table>` (WCAG AA).
+- [x] `/weeks/{ISO}` renders from R2 with **no D1/LLM**; 404 for weeks without artifacts; cached per the policy in Deviations below (bounded `private` + edge-cache bypass, not `immutable`).
+- [x] `/weeks` archive lists only artifact-backed weeks. (The weekly-totals sparkline was dropped — see below.)
+- [x] AI-free fallback renders cleanly; „коригирано" note on re-issue.
+- [x] Golden render snapshot committed; conventional commits, no `Co-Authored-By`.
 
 ## Coordination
 - Freeze the `StoredReport` contract jointly with Dev A on day 1; both code against the shared fixture.
@@ -47,9 +47,10 @@ Shared with the assistant's own render layer — build to be reusable by both.
 
 ## Deviations from this ticket (intentional)
 - **Cache policy for `/weeks/{ISO}`.** T2 specified `immutable`. Shipped as `private, max-age=60` with the per-colo edge cache bypassed for `/weeks/:iso` (`apps/web/workers/app.ts`). Reason: the producer re-issues a **corrected** digest in place at the same R2 key (status „коригирано", spec §10.4); an `immutable`/long-lived shared cache keyed by URL+deploy-tag (not data-version) would keep serving the stale copy for its whole freshness+SWR window after a correction. The page is one small R2 GET, so rendering fresh is cheap and a correction shows immediately.
-- **Archive source.** T2 said list `/weeks` from the `weekly_digests` D1 index. Shipped listing from R2 (`listStoredWeeks`) instead, keeping the serve path fully D1-free (spec §6/§11) and consistent with the per-week route. Trade-off: the archive's per-week total + sparkline rely on R2 `customMetadata`.
+- **Archive source.** T2 said list `/weeks` from the `weekly_digests` D1 index. Shipped listing from R2 (`listStoredWeeks`) instead, keeping the serve path fully D1-free (spec §6/§11) and consistent with the per-week route. Trade-off: the archive's per-week total relies on R2 `customMetadata`.
+- **Sparkline dropped.** T2 sketched a weekly-totals sparkline on `/weeks`. Removed: with most weeks lacking a stamped total (and one outlier dominating the y-axis) it degenerated into a near-flat divider line. The per-week total column already carries the numbers. Revisit once there's a steady backlog of weeks with totals (and normalize the outlier).
 
 ## Follow-ups (tracked, out of this PR)
 - **Week-scoped „Разгледай сам" deep links** (#81 review, note 4): `DigestExplore` currently links to the full `/contracts` `/authorities` `/companies` `/flows` surfaces because the list loaders have no `?week=` filter. When a `week=<ISO>` filter lands on those loaders (parse in `filters.ts` + `strftime('%G-W%V', signed_at)` predicate in `@sigma/db` + add `week` to the cache-key allow-list), thread `iso` into `DigestExplore`'s hrefs so the links open the week's slice.
 - **§3.8 stacked-procedure lane**: the competition section ships the single-bid concentration bar only; the stacked procedure-mix bar needs a weekly `procedure_type` grouping query + a stacked report block type.
-- **`WeeklyGhostBars` daily vs weekly axis**: revisit if a future digest wants intra-day or multi-week series (the current index-pairing assumes 7 fixed Mon..Sun slots — see the component invariant comment).
+- **`WeeklyGhostBars` daily vs weekly axis**: revisit if a future digest wants intra-day or multi-week series. The two series are paired by day LABEL (not array index), so a gap in one week no longer mispairs; the digest still feeds 7 fixed Mon..Sun slots via `getWeeklyDailySpend`.

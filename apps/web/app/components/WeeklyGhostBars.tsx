@@ -103,7 +103,8 @@ export function WeeklyGhostBars({
           <tr>
             <th scope="col">Ден</th>
             <th scope="col">Тази седмица (€)</th>
-            <th scope="col">Миналата седмица (€)</th>
+            {/* Only when there IS a prior week — otherwise the column announces an all-em-dash series. */}
+            {prev.length > 0 && <th scope="col">Миналата седмица (€)</th>}
           </tr>
         </thead>
         <tbody>
@@ -120,7 +121,9 @@ export function WeeklyGhostBars({
               <tr key={label}>
                 <td>{label}</td>
                 <td>{curByLabel.has(label) ? money(curByLabel.get(label)!) : '—'}</td>
-                <td>{prevByLabel.has(label) ? money(prevByLabel.get(label)!) : '—'}</td>
+                {prev.length > 0 && (
+                  <td>{prevByLabel.has(label) ? money(prevByLabel.get(label)!) : '—'}</td>
+                )}
               </tr>
             ));
           })()}

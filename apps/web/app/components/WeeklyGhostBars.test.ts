@@ -71,6 +71,11 @@ describe('WeeklyGhostBars', () => {
     expect(html).toContain(`<td>Вт</td><td>—</td><td>${money(1500)}</td>`);
   });
 
+  it('omits the „Миналата седмица" column entirely when there is no previous week', () => {
+    const html = render({ current: week });
+    expect(html).not.toContain('Миналата седмица (€)');
+  });
+
   it('renders nothing for an empty week', () => {
     const html = render({ current: [] });
     expect(html).toBe('');

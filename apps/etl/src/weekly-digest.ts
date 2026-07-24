@@ -795,9 +795,20 @@ export async function generateWeeklyDigest(
   // `refreshedAt` so the D1-free serve path can show „публикувано {original} · коригирано на {now}".
   // Read it off the prior R2 artifact (the serve path can't read the D1 status row); if the prior object
   // is unreadable, fall back to `now` (no false correction note). A first publish carries no refreshedAt.
-  const priorCreatedAt = existing
-    ? ((await readStoredReport(env.REPORTS, key))?.createdAt ?? null)
-    : null;
+  // readStoredReport can THROW (R2 outage, malformed body), not just return null — an uncaught throw here
+  // would abort the whole cron and lose the week's digest. Fall back to `null` (→ createdAt = now, treated
+  // as a first publish) so a read failure degrades to "no correction note", never a lost run.
+  let priorCreatedAt: string | null = null;
+  if (existing) {
+    try {
+      priorCreatedAt = (await readStoredReport(env.REPORTS, key))?.createdAt ?? null;
+    } catch (error) {
+      logError('etl_digest_prior_read_failed', {
+        isoWeek: target.iso,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const createdAt = priorCreatedAt ?? nowIso;
   const refreshedAt = existing ? nowIso : undefined;
   // A narrative that BOUND but was then fully stripped by the verifier leaves an artifact with no
@@ -828,11 +839,12 @@ export async function generateWeeklyDigest(
     },
   });
 
-  // Stamp listing-facing fields into R2 customMetadata so the /weeks archive index renders the week's
-  // date range + total without a per-week object fetch (it lists customMetadata only). Dates are raw
-  // `YYYY-MM-DD` (the consumer formats them); totalEur is stringified (R2 metadata is string→string).
+  // NOT `immutable`: this object is OVERWRITTEN in place on a §10.4 re-issue, so an `immutable` object
+  // cacheControl would be a stale-serve trap if the R2 body were ever fronted directly over HTTP. The
+  // serve path reads the body via readStoredReport and sends its own `private, max-age=60`, so no object
+  // cacheControl is needed. Stamp listing-facing fields into customMetadata so the /weeks archive renders
+  // each week's date range + total without a per-week fetch (dates raw `YYYY-MM-DD`; totalEur stringified).
   await persistReport(env.REPORTS, key, stored, {
-    immutable: true,
     customMetadata: {
       totalEur: String(data.total.totalEur),
       monday: target.mondayIso,

@@ -16,8 +16,10 @@ export function DigestFooter({
   generatedAt?: string | null;
   refreshedAt?: string | null;
 }) {
+  // No role="contentinfo" — the page's SiteFooter already owns that landmark; a second one degrades AT
+  // landmark navigation. This is an in-`<main>` provenance note, not the page footer.
   return (
-    <footer className="digest-footer" role="contentinfo">
+    <footer className="digest-footer">
       <p className="small muted">
         {DATA_SOURCE_LICENSE}
         {asOf ? ` · данни към ${date(asOf)}` : ''}
