@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { money } from '@sigma/shared';
 import { WeeklyGhostBars, type DayValue } from './WeeklyGhostBars';
 
 const week: DayValue[] = [
@@ -50,6 +51,24 @@ describe('WeeklyGhostBars', () => {
   it('shows an em-dash for a day with no previous-week value', () => {
     const html = render({ current: week, previous: [prevWeek[0]] });
     expect(html).toContain('<td>—</td>');
+  });
+
+  it('pairs the two series by day LABEL, not array index, when one series has a gap', () => {
+    // current has no „Вт"; previous has all three days. Index-pairing would put previous „Вт" (1500)
+    // under current „Ср" — label-pairing keeps „Ср" paired with previous „Ср" (500) and lists „Вт" as a
+    // prior-week-only row with the current side em-dashed. money() is not the code under test — using it
+    // for the expected cells avoids hardcoding the NBSP formatting.
+    const html = render({
+      current: [
+        { label: 'Пн', value: 100 },
+        { label: 'Ср', value: 300 },
+      ],
+      previous: prevWeek, // Пн=800, Вт=1500, Ср=500
+    });
+    expect(html).toContain(`<td>Пн</td><td>${money(100)}</td><td>${money(800)}</td>`);
+    expect(html).toContain(`<td>Ср</td><td>${money(300)}</td><td>${money(500)}</td>`);
+    // „Вт" is previous-only → appended row, current side em-dashed.
+    expect(html).toContain(`<td>Вт</td><td>—</td><td>${money(1500)}</td>`);
   });
 
   it('renders nothing for an empty week', () => {

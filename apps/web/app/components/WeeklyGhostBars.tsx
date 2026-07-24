@@ -30,11 +30,14 @@ export function WeeklyGhostBars({
 }) {
   if (current.length === 0) return null;
   const n = current.length;
-  // INVARIANT (#81 review, note 3): `current` and `previous` are paired by ARRAY INDEX, not by day
-  // label. This is correct only because both are the same fixed 7 Mon..Sun slots (getWeeklyDailySpend
-  // zero-fills each week to Mon..Sun before they reach here). Do not reuse this component with two
-  // series whose indices are not day-of-week aligned — pair by label first if you do.
+  // Pair the two series by LABEL, not array index (#81 review): the binder drops null-valued days per
+  // series, so a mid-series gap in one week could otherwise shift the index pairing (a prior-week „Вт"
+  // rendered under the current-week „Ср"). Looking prev up by label keeps each ghost bar under its own
+  // day for any input, not only the digest's zero-filled 7 Mon..Sun slots. Assumes unique labels within
+  // a series (true for day names); a duplicate label would collapse in the map, which is acceptable for
+  // this chart's use. `prevByLabel` maps day label → prior-week value.
   const prev = previous ?? [];
+  const prevByLabel = new Map(prev.map((d) => [String(d.label), d.value]));
   const max = Math.max(1, ...current.map((d) => d.value), ...prev.map((d) => d.value));
   const slot = W / n;
   const ghostW = slot * 0.62; // wider, sits behind
@@ -63,7 +66,7 @@ export function WeeklyGhostBars({
         <line x1={0} y1={baseline} x2={W} y2={baseline} className="grid" />
         {current.map((d, i) => {
           const cx = i * slot + slot / 2;
-          const prevVal = prev[i]?.value ?? null;
+          const prevVal = prevByLabel.get(String(d.label)) ?? null;
           const curH = barHeight(d.value);
           return (
             <g key={i}>
@@ -104,15 +107,23 @@ export function WeeklyGhostBars({
           </tr>
         </thead>
         <tbody>
-          {/* Drive off the LONGER series so a prior week with a day the current week lacks isn't dropped
-              from the accessible table (mirrors the exporters). In the digest both are 7 aligned slots. */}
-          {Array.from({ length: Math.max(current.length, prev.length) }, (_, i) => (
-            <tr key={i}>
-              <td>{current[i]?.label ?? prev[i]?.label ?? ''}</td>
-              <td>{current[i] ? money(current[i]!.value) : '—'}</td>
-              <td>{prev[i] ? money(prev[i]!.value) : '—'}</td>
-            </tr>
-          ))}
+          {/* Rows keyed by LABEL (matching the chart): current days in order, then any prior-week-only
+              day appended. A day missing from either week em-dashes that side — never mispaired, never
+              dropped. In the digest both weeks are the same 7 Mon..Sun labels. */}
+          {(() => {
+            const curByLabel = new Map(current.map((d) => [String(d.label), d.value]));
+            const labels = [
+              ...current.map((d) => String(d.label)),
+              ...prev.map((d) => String(d.label)).filter((l) => !curByLabel.has(l)),
+            ];
+            return labels.map((label) => (
+              <tr key={label}>
+                <td>{label}</td>
+                <td>{curByLabel.has(label) ? money(curByLabel.get(label)!) : '—'}</td>
+                <td>{prevByLabel.has(label) ? money(prevByLabel.get(label)!) : '—'}</td>
+              </tr>
+            ));
+          })()}
         </tbody>
       </table>
     </>

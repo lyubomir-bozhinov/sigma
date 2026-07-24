@@ -121,8 +121,11 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   // path + deploy tag, not data version). Caching serves a stale page/list for the whole
   // stale-while-revalidate window. Rendering fresh is a single R2 read/list — cheap enough to always be
   // correct (#81).
-  const bypassEdgeCache = DIGEST_PATH.test(new URL(request.url).pathname);
-  const key = request.method === 'GET' && !bypassEdgeCache ? cacheKey(request, DEPLOY_TAG) : null;
+  // Only GETs are edge-cached, so skip the URL parse + digest-path test entirely for other methods.
+  const key =
+    request.method === 'GET' && !DIGEST_PATH.test(new URL(request.url).pathname)
+      ? cacheKey(request, DEPLOY_TAG)
+      : null;
   if (key) {
     const cached = await edgeCache.match(key);
     if (cached) {

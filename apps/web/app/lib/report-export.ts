@@ -18,6 +18,26 @@ function mdTable(headers: string[], rows: string[][]): string {
   ].join('\n');
 }
 
+type Weekbars = Extract<ResolvedReport['blocks'][number], { type: 'weekbars' }>;
+
+// Pair the two daily series by LABEL, not array index (#81 review): the binder drops null-valued days
+// per series, so index-pairing could render a prior-week day under the wrong current-week day. Rows are
+// the current days in order, then any prior-week-only day appended; a day missing from either week
+// em-dashes that side. Shared by the Markdown + Word exporters (and mirrors WeeklyGhostBars).
+function weekbarsRows(block: Weekbars): { label: string; current: string; previous: string }[] {
+  const cur = new Map(block.current.map((d) => [String(d.label ?? ''), d.value]));
+  const prev = new Map(block.previous.map((d) => [String(d.label ?? ''), d.value]));
+  const labels = [
+    ...block.current.map((d) => String(d.label ?? '')),
+    ...block.previous.map((d) => String(d.label ?? '')).filter((l) => !cur.has(l)),
+  ];
+  return labels.map((label) => ({
+    label,
+    current: cur.has(label) ? money(cur.get(label)!) : '—',
+    previous: prev.has(label) ? money(prev.get(label)!) : '—',
+  }));
+}
+
 export function reportToMarkdown(report: ResolvedReport): string {
   const lines: string[] = [`# ${report.title}`, ''];
   if (report.question) lines.push(`_${report.question}_`, '');
@@ -93,24 +113,15 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       }
-      case 'weekbars': {
-        // Drive the row count off the LONGER series so neither week's trailing days are dropped. In the
-        // digest both are 7 aligned slots, but this exporter is generic — align defensively, em-dash the
-        // missing side (symmetric with the current>previous case), never silently under-report.
-        const n = Math.max(block.current.length, block.previous.length);
+      case 'weekbars':
         lines.push(
           mdTable(
             ['Ден', 'Тази седмица', 'Миналата седмица'],
-            Array.from({ length: n }, (_, i) => [
-              String(block.current[i]?.label ?? block.previous[i]?.label ?? ''),
-              block.current[i] ? money(block.current[i]!.value) : '—',
-              block.previous[i] ? money(block.previous[i]!.value) : '—',
-            ]),
+            weekbarsRows(block).map((r) => [r.label, r.current, r.previous]),
           ),
           '',
         );
         break;
-      }
       default:
         // Exhaustiveness guard: a new ResolvedBlock type must add a case here (and in the docx switch)
         // rather than silently vanish from the export — this is what let `weekbars` slip before (#81).
@@ -369,8 +380,7 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
       }
 
       case 'weekbars': {
-        // Mirror the Markdown branch: row count off the longer series, em-dash the missing side.
-        const n = Math.max(block.current.length, block.previous.length);
+        // Mirror the Markdown branch: pair by label (weekbarsRows), em-dash the missing side.
         children.push(
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
@@ -385,15 +395,12 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
                     }),
                 ),
               }),
-              ...Array.from(
-                { length: n },
-                (_, i) =>
+              ...weekbarsRows(block).map(
+                (r) =>
                   new TableRow({
-                    children: [
-                      String(block.current[i]?.label ?? block.previous[i]?.label ?? ''),
-                      block.current[i] ? money(block.current[i]!.value) : '—',
-                      block.previous[i] ? money(block.previous[i]!.value) : '—',
-                    ].map((v) => new TableCell({ children: [new Paragraph({ text: v })] })),
+                    children: [r.label, r.current, r.previous].map(
+                      (v) => new TableCell({ children: [new Paragraph({ text: v })] }),
+                    ),
                   }),
               ),
             ],
