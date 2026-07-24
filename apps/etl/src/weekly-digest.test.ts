@@ -202,6 +202,12 @@ function fakeBucket(puts: PutCall[]): R2Bucket {
       puts.push({ key, body, opts });
       return null as unknown as R2Object;
     },
+    // The re-issue path reads the prior artifact to preserve its original createdAt; serve the newest
+    // put for the key (null when nothing has been written yet — a first publish).
+    get: async (key: string) => {
+      const prior = puts.filter((p) => p.key === key).at(-1);
+      return prior ? ({ text: async () => prior.body } as unknown as R2Object) : null;
+    },
   } as unknown as R2Bucket;
 }
 
@@ -575,11 +581,18 @@ describe('generateWeeklyDigest — gate matrix', () => {
     expect(upserts[0]!.status).toBe('fallback');
   });
 
-  it('reissue: a second run for an already-written week is stamped "коригирано"', async () => {
+  it('reissue: preserves the original createdAt, stamps refreshedAt, and is „коригирано" (§10.4)', async () => {
     const data = happyPathData();
     data.existingDigestRow = true;
     const upserts: UpsertRow[] = [];
     const puts: PutCall[] = [];
+    // Seed a prior artifact with an ORIGINAL publish time so the re-issue can read + preserve it.
+    const ORIGINAL_CREATED = '2026-06-01T07:00:00.000Z';
+    puts.push({
+      key: `weeks/${TARGET.iso}.json`,
+      body: JSON.stringify({ createdAt: ORIGINAL_CREATED }),
+      opts: undefined,
+    });
 
     await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
       now: NOW,
@@ -588,6 +601,25 @@ describe('generateWeeklyDigest — gate matrix', () => {
 
     expect(upserts).toHaveLength(1);
     expect(upserts[0]!.status).toBe('коригирано');
+    // The newest put is the re-issued artifact: original publish time kept, re-issue time recorded.
+    const reissued = JSON.parse(puts.at(-1)!.body);
+    expect(reissued.createdAt).toBe(ORIGINAL_CREATED);
+    expect(reissued.refreshedAt).toBe(NOW.toISOString());
+  });
+
+  it('first publish carries no refreshedAt (createdAt = now)', async () => {
+    const data = happyPathData(); // no existing row → first publish
+    const upserts: UpsertRow[] = [];
+    const puts: PutCall[] = [];
+
+    await generateWeeklyDigest(baseEnv(fakeWeeklyDb(data, upserts), fakeBucket(puts)), {
+      now: NOW,
+      generate: mockGenerate('Кратко резюме на седмицата.'),
+    });
+
+    const stored = JSON.parse(puts.at(-1)!.body);
+    expect(stored.createdAt).toBe(NOW.toISOString());
+    expect(stored.refreshedAt).toBeUndefined();
   });
 
   it('narrative invalid after every regen attempt: AI-free fallback is persisted, no unbound prose numbers', async () => {

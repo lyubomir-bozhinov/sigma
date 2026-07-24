@@ -694,6 +694,14 @@ export function bindReport(
       case 'weekbars': {
         const cur = requireResult(b.currentId, at);
         const prev = requireResult(b.previousId, at);
+        // INVARIANT: `current` and `previous` are paired by ARRAY INDEX downstream (the ghost chart + the
+        // exporters), so the two result sets MUST be the same fixed-length, same-order slots (the weekly
+        // digest's producer zero-fills both to 7 aligned Mon..Sun days — getWeeklyDailySpend). This series
+        // builder drops null-valued rows PER SERIES, so a caller that lets one series have a mid-list null
+        // the other lacks would shift the index pairing. Consumers already defend against a length skew
+        // (the exporters/sr-only table drive off the longer series + em-dash the gap), but a reuser of
+        // `weekbars` with non-zero-filled series must pair by label first. Not aligned here to keep the
+        // binder a pure passthrough of the bound results.
         const series = (
           r: QueryResult | null,
         ): { label: string | number | null; value: number }[] => {

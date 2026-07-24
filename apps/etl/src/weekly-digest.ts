@@ -16,6 +16,7 @@ import {
   MAX_RATIO_MAGNITUDE,
   persistReport,
   priorIsoWeek,
+  readStoredReport,
   verifyReport,
   type CellFormat,
   type CellRef,
@@ -788,7 +789,17 @@ export async function generateWeeklyDigest(
     .bind(target.iso)
     .first<{ iso_week: string }>();
 
-  const refreshedAt = now.toISOString();
+  const nowIso = now.toISOString();
+  const key = `weeks/${target.iso}.json`;
+  // On an in-place re-issue (spec §10.4), PRESERVE the original publish time and record a separate
+  // `refreshedAt` so the D1-free serve path can show „публикувано {original} · коригирано на {now}".
+  // Read it off the prior R2 artifact (the serve path can't read the D1 status row); if the prior object
+  // is unreadable, fall back to `now` (no false correction note). A first publish carries no refreshedAt.
+  const priorCreatedAt = existing
+    ? ((await readStoredReport(env.REPORTS, key))?.createdAt ?? null)
+    : null;
+  const createdAt = priorCreatedAt ?? nowIso;
+  const refreshedAt = existing ? nowIso : undefined;
   // A narrative that BOUND but was then fully stripped by the verifier leaves an artifact with no
   // surviving model prose — the same content class as the AI-free fallback, so it must carry the same
   // labels. Keying on `narrativeMd` alone would advertise a model-authored digest whose model text is
@@ -800,7 +811,8 @@ export async function generateWeeklyDigest(
 
   const stored = buildStoredReport({
     id: target.iso,
-    createdAt: refreshedAt,
+    createdAt,
+    ...(refreshedAt ? { refreshedAt } : {}),
     report: verified.report,
     question: DIGEST_QUESTION,
     sources: results.map((r) => ({ handle: r.handle, tool: 'weekly_digest_query' })),
@@ -816,7 +828,6 @@ export async function generateWeeklyDigest(
     },
   });
 
-  const key = `weeks/${target.iso}.json`;
   // Stamp listing-facing fields into R2 customMetadata so the /weeks archive index renders the week's
   // date range + total without a per-week object fetch (it lists customMetadata only). Dates are raw
   // `YYYY-MM-DD` (the consumer formats them); totalEur is stringified (R2 metadata is string→string).
@@ -839,7 +850,7 @@ export async function generateWeeklyDigest(
          status = excluded.status,
          total_eur = excluded.total_eur`,
     )
-      .bind(target.iso, asOf, refreshedAt, status, data.total.totalEur)
+      .bind(target.iso, asOf, nowIso, status, data.total.totalEur)
       .run();
   } catch (error) {
     logError('etl_digest_upsert_failed', {

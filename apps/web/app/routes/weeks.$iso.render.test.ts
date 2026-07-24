@@ -69,6 +69,11 @@ describe('/weeks/:iso page (golden)', () => {
     expect(html).toContain('href="/weeks"');
   });
 
+  it('a first-publish week shows „публикувано" but no „коригирано" note', () => {
+    expect(html).toContain('публикувано');
+    expect(html).not.toContain('коригирано');
+  });
+
   it('renders the weekly ghost-bar chart (§3.4)', () => {
     expect(html).toContain('ghost-bars-svg');
     expect(html).toContain('gb-ghost'); // the prior-week ghost series
@@ -102,5 +107,17 @@ describe('/weeks/:iso page (golden)', () => {
     expect(html).toContain('Принтирай / PDF'); // print → PDF
     expect(html).toContain('Word'); // .docx download
     expect(html).toContain('Markdown'); // .md download
+  });
+});
+
+describe('/weeks/:iso page — re-issued week (§10.4)', () => {
+  // A corrected week: the loader passes `refreshedAt`, so the footer surfaces the „коригирано" note.
+  const reissued = { ...loaderData, refreshedAt: '2026-06-25T09:00:00.000Z' };
+  const html = renderToStaticMarkup(
+    createElement(MemoryRouter, null, createElement(WeekDigest, { loaderData: reissued } as never)),
+  );
+
+  it('shows the „коригирано на {date}" correction note', () => {
+    expect(html).toContain('коригирано на 25.06.2026');
   });
 });

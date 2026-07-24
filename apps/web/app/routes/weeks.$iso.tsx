@@ -48,7 +48,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Strip provenance (SQL, model, prompt version) before it reaches the client hydration JSON — mirror
   // the /reports/:id posture. Only the non-sensitive data-freshness date is surfaced (footer).
   const asOf = stored.provenance.freshness[0]?.asOf ?? null;
-  return { iso, report: stored.report, asOf, generatedAt: stored.createdAt };
+  // `refreshedAt` (present only on an in-place §10.4 re-issue) drives the footer's „коригирано" note.
+  return {
+    iso,
+    report: stored.report,
+    asOf,
+    generatedAt: stored.createdAt,
+    refreshedAt: stored.refreshedAt ?? null,
+  };
 }
 
 // A heading for each digest section that isn't self-labelling, so a reader knows what each chart/table
@@ -65,7 +72,7 @@ function digestCaptions(blocks: ResolvedBlock[]): (string | null)[] {
 }
 
 export default function WeekDigest({ loaderData }: Route.ComponentProps) {
-  const { iso, report, asOf, generatedAt } = loaderData;
+  const { iso, report, asOf, generatedAt, refreshedAt } = loaderData;
   return (
     <>
       <Breadcrumbs
@@ -81,7 +88,7 @@ export default function WeekDigest({ loaderData }: Route.ComponentProps) {
         <ReportToolbar report={report} />
         <ReportBlockRenderer blocks={report.blocks} captions={digestCaptions(report.blocks)} />
         <DigestExplore iso={iso} />
-        <DigestFooter asOf={asOf} generatedAt={generatedAt} />
+        <DigestFooter asOf={asOf} generatedAt={generatedAt} refreshedAt={refreshedAt} />
       </main>
     </>
   );
