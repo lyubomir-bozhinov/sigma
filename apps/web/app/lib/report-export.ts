@@ -18,6 +18,26 @@ function mdTable(headers: string[], rows: string[][]): string {
   ].join('\n');
 }
 
+type Weekbars = Extract<ResolvedReport['blocks'][number], { type: 'weekbars' }>;
+
+// Pair the two daily series by LABEL, not array index (#81 review): the binder drops null-valued days
+// per series, so index-pairing could render a prior-week day under the wrong current-week day. Rows are
+// the current days in order, then any prior-week-only day appended; a day missing from either week
+// em-dashes that side. Shared by the Markdown + Word exporters (and mirrors WeeklyGhostBars).
+function weekbarsRows(block: Weekbars): { label: string; current: string; previous: string }[] {
+  const cur = new Map(block.current.map((d) => [String(d.label ?? ''), d.value]));
+  const prev = new Map(block.previous.map((d) => [String(d.label ?? ''), d.value]));
+  const labels = [
+    ...block.current.map((d) => String(d.label ?? '')),
+    ...block.previous.map((d) => String(d.label ?? '')).filter((l) => !cur.has(l)),
+  ];
+  return labels.map((label) => ({
+    label,
+    current: cur.has(label) ? money(cur.get(label)!) : '—',
+    previous: prev.has(label) ? money(prev.get(label)!) : '—',
+  }));
+}
+
 export function reportToMarkdown(report: ResolvedReport): string {
   const lines: string[] = [`# ${report.title}`, ''];
   if (report.question) lines.push(`_${report.question}_`, '');
@@ -93,6 +113,19 @@ export function reportToMarkdown(report: ResolvedReport): string {
         );
         break;
       }
+      case 'weekbars':
+        lines.push(
+          mdTable(
+            ['Ден', 'Тази седмица', 'Миналата седмица'],
+            weekbarsRows(block).map((r) => [r.label, r.current, r.previous]),
+          ),
+          '',
+        );
+        break;
+      default:
+        // Exhaustiveness guard: a new ResolvedBlock type must add a case here (and in the docx switch)
+        // rather than silently vanish from the export — this is what let `weekbars` slip before (#81).
+        block satisfies never;
     }
   }
 
@@ -345,6 +378,40 @@ export async function reportToDocxBlob(report: ResolvedReport): Promise<Blob> {
         );
         break;
       }
+
+      case 'weekbars': {
+        // Mirror the Markdown branch: pair by label (weekbarsRows), em-dash the missing side.
+        children.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: ['Ден', 'Тази седмица', 'Миналата седмица'].map(
+                  (h) =>
+                    new TableCell({
+                      children: [
+                        new Paragraph({ children: [new TextRun({ text: h, bold: true })] }),
+                      ],
+                    }),
+                ),
+              }),
+              ...weekbarsRows(block).map(
+                (r) =>
+                  new TableRow({
+                    children: [r.label, r.current, r.previous].map(
+                      (v) => new TableCell({ children: [new Paragraph({ text: v })] }),
+                    ),
+                  }),
+              ),
+            ],
+          }),
+        );
+        break;
+      }
+
+      default:
+        // Exhaustiveness guard (mirror of reportToMarkdown): a new block type must be handled here.
+        block satisfies never;
     }
 
     children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
