@@ -219,6 +219,28 @@ describe('свързани-лица SQL (real SQLite)', () => {
     });
   });
 
+  it('an ЕИК carried by >1 bidder row sums that ЕИК’s in-window contracts ONCE per (official,ЕИК) — no €-inflation (libel)', () => {
+    withDb((dbPath) => {
+      // ydimitrof #226 (related-persons.ts:87): the contemporaneous subquery joins on eik_normalized = il.eik,
+      // so if an ЕИК is carried by MORE THAN ONE bidder row it sums the company’s in-window contracts across
+      // BOTH rows — the correct company total — while the outer projection still returns exactly ONE row for
+      // (official, ЕИК). A regression that multiplied per bidder row would double this libel-sensitive €.
+      // A SECOND bidder record carries the SAME eik_normalized '111'; Иван’s window 2019–2023 captures
+      // c:1(€10M,2020) + c:2(€20M,2023) on the original row and c:1b(€4M,2021) on the duplicate = €34M / 3.
+      sqlite(
+        dbPath,
+        `INSERT INTO bidders (id, name, bulstat, eik_normalized, eik_valid, kind) VALUES
+           ('eik:111b','ТРЕЙС ГРУП ХОЛД АД (дубликат)',NULL,'111',1,'company');
+         INSERT INTO contracts (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, amount_eur) VALUES
+           ('c:1b','t:1','eik:111b',4000000,'EUR','2021-06-01','Д-1Б',4000000);`,
+      );
+      const trace = rows(dbPath, lit(OFFICIAL_SQL, 'person:ivan')).filter((r) => r.eik === '111');
+      expect(trace).toHaveLength(1); // exactly one (Иван, 111) row — not one per bidder record
+      expect(Number(trace[0]!.contemporaneous_value_eur)).toBe(34000000);
+      expect(Number(trace[0]!.contemporaneous_contract_count)).toBe(3);
+    });
+  });
+
   it('collapses by eik, not bidder_id — a family link is dropped even when its self sibling resolves to a DIFFERENT bidder row (correct-by-construction)', () => {
     withDb((dbPath) => {
       // The loader keys every valid winner as id='eik:'||eik (INSERT OR IGNORE), so eik→bidder_id is 1:1 today
