@@ -20,7 +20,7 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const migration0 = resolve(root, 'packages/db/migrations/0000_init.sql');
-const migration2 = resolve(root, 'packages/db/migrations/0002_related_persons_foundation.sql');
+const migration2 = resolve(root, 'packages/db/migrations/0003_related_persons_foundation.sql');
 
 function sqlite(dbPath: string, sql: string): string {
   return execFileSync('sqlite3', [dbPath], { input: sql, encoding: 'utf8' }).trim();
