@@ -35,7 +35,7 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
 }
 
 // All eligible published links (private + family). ~292 today; small enough to load whole and paginate
-// in the client, so the summary totals the full set rather than one page. ponytail: hard ceiling 1000 —
+// in the client, so the summary totals the full set rather than one page. NB: hard ceiling 1000 —
 // switch to keyset LIMIT/OFFSET (see companies.tsx) if the eligible set ever nears it.
 const LEADERBOARD_MAX = 1000;
 const PER_PAGE = 100;
