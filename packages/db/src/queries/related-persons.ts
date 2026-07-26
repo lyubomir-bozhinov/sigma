@@ -86,9 +86,19 @@ export const LINK_SELECT = `SELECT il.link_key, il.person_id, p.name AS official
       AS contemporaneous_contract_count,
     (SELECT SUM(cc.amount_eur) ${CONTRACT_JOIN} WHERE bb.eik_normalized = il.eik AND ${IN_WINDOW})
       AS contemporaneous_value_eur,
-    (SELECT d.source_url FROM declared_interests di JOIN declarations d ON d.id = di.declaration_id
-     WHERE d.person_id = il.person_id AND di.entity_key = il.entity_key
-     ORDER BY d.declared_year DESC LIMIT 1) AS source_url
+    -- source_url is the official's OWN public declaration. For a family_ownership link that document names /
+    -- identifies the relative whose stake this is — one click de-anonymises the „свързано лице" the surface
+    -- promises never to name (invariant 2 / ADR-0023). NULL it for family links; self links keep it (the
+    -- source names the office-holder themselves — correct provenance, ConflictCards renders it as „декларация").
+    -- source_url is the official's OWN public declaration. For a family_ownership link that document names /
+    -- identifies the relative whose stake this is — one click de-anonymises the „свързано лице" the surface
+    -- promises never to name (invariant 2 / ADR-0023). NULL it for family links; self links keep it (the
+    -- source names the office-holder themselves — correct provenance, ConflictCards renders it as „декларация").
+    CASE WHEN il.interest_class = 'family_ownership' THEN NULL ELSE
+      (SELECT d.source_url FROM declared_interests di JOIN declarations d ON d.id = di.declaration_id
+       WHERE d.person_id = il.person_id AND di.entity_key = il.entity_key
+       ORDER BY d.declared_year DESC LIMIT 1)
+    END AS source_url
   FROM interest_links il
   JOIN persons p ON p.id = il.person_id
   JOIN bidders b ON b.id = il.bidder_id

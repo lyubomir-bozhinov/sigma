@@ -138,6 +138,29 @@ describe('свързани-лица SQL (real SQLite)', () => {
     });
   });
 
+  it('a family_ownership link never exposes its declaration source_url — even when one resolves (de-anon, libel)', () => {
+    withDb((dbPath) => {
+      // nedda76 #226: the source_url subquery joins on the OFFICIAL's own declaration. For Кмет's FAMILY
+      // link that document names the relative whose stake it is; ConflictCards renders it as a clickable
+      // „декларация" → one click de-anonymises the „свързано лице". Give Кмет a real declaration that WOULD
+      // resolve (without the CASE guard this row's source_url becomes the URL — the leak). The guard NULLs
+      // it for family links while self links (Иван) keep theirs.
+      sqlite(
+        dbPath,
+        `INSERT INTO declarations (id, person_id, xml_file, control_hash, folder_year, declared_year, template, category, institution, position, source_url) VALUES
+           ('decl:k','person:kmet','k.xml','H2','2021','2020','assets','','ОБЩИНА','', 'https://register.cacbg.bg/2021/k.xml');
+         INSERT INTO declared_interests (id, declaration_id, entity_raw, entity_key, kind, detail, timing, seat) VALUES
+           ('di:k','decl:k','ЕВРОСТРОЙ 21 ЕООД','ЕВРОСТРОЙ 21 ЕООД','shares','','annual','');`,
+      );
+      const board = rows(dbPath, lit(LEADERBOARD_SQL, 100));
+      const kmet = board.find((r) => r.official === 'Кмет Тестов');
+      const ivan = board.find((r) => r.official === 'Иван Минев');
+      expect(kmet!.relation).toBe('related'); // family link surfaces...
+      expect(kmet!.source_url).toBeNull(); // ...but its declaration URL is withheld (relative unnamed)
+      expect(ivan!.source_url).toBe('https://register.cacbg.bg/2024/i.xml'); // self link keeps provenance
+    });
+  });
+
   it('ranks by the CONTEMPORANEOUS conflict-window value, not the lifetime total, when the nexus tier ties', () => {
     withDb((dbPath) => {
       // Two officials in the SAME nexus tier (own_institution='none', contemporaneous=1) whose lifetime and
