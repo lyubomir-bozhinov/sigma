@@ -29,6 +29,27 @@ const TRANSCRIPT_READY =
 export const appendTranscript = (prev: string, next: string): string =>
   prev === '' ? next : /\s$/.test(prev) ? `${prev}${next}` : `${prev} ${next}`;
 
+// Icon-first controls (house SVGs, no icon lib) — the accessible name lives on the button's aria-label,
+// so the icon-only affordance is fully reachable by AT and keeps the test contract ("Изпрати"/"Спри"/…).
+const SEND_ICON = (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+    <path fill="currentColor" d="M12 4 5 11h4v7h6v-7h4z" />
+  </svg>
+);
+const STOP_ICON = (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+    <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
+  </svg>
+);
+const CLEAR_ICON = (
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+    <path
+      fill="currentColor"
+      d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4z"
+    />
+  </svg>
+);
+
 /**
  * The message input. Owns its own textarea value (the chat hook owns the message list, not the draft).
  * Enter sends; Shift+Enter inserts a newline. Voice input records a clip, transcribes it, and appends the
@@ -101,35 +122,54 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
       <label className="sr-only" htmlFor={inputId}>
         Съобщение до асистента
       </label>
-      <textarea
-        ref={inputRef}
-        id={inputId}
-        className="assistant-composer__input"
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value);
-          setTranscriptReady(false); // editing dismisses the "ready" cue
-        }}
-        onKeyDown={onKeyDown}
-        placeholder="Напишете въпрос…"
-        rows={1}
-        disabled={busy}
-      />
-      <div className="assistant-composer__actions">
-        <AssistantComposerMic voice={voice} />
-        <div className="assistant-composer__actions-end">
+      {/* One rounded surface holds the input and its controls (like ChatGPT/Claude): the accent focus
+          ring is on the box via :focus-within, so tabbing into the textarea lights the whole control. */}
+      <div className="assistant-composer__box">
+        <textarea
+          ref={inputRef}
+          id={inputId}
+          className="assistant-composer__input"
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            setTranscriptReady(false); // editing dismisses the "ready" cue
+          }}
+          onKeyDown={onKeyDown}
+          placeholder="Напишете въпрос…"
+          rows={1}
+          disabled={busy}
+        />
+        {/* Right-aligned control cluster: mic, then the optional Clear, then the primary Send/Stop —
+            all compact icon buttons so the row stays uncrowded in the narrow dock. */}
+        <div className="assistant-composer__actions">
+          <AssistantComposerMic voice={voice} />
           {canSend ? (
-            <button type="button" className="assistant-composer__clear" onClick={clearDraft}>
-              Изчисти
+            <button
+              type="button"
+              className="assistant-composer__clear"
+              onClick={clearDraft}
+              aria-label="Изчисти"
+            >
+              {CLEAR_ICON}
             </button>
           ) : null}
           {busy ? (
-            <button type="button" className="assistant-composer__stop" onClick={onStop}>
-              Спри
+            <button
+              type="button"
+              className="assistant-composer__stop"
+              onClick={onStop}
+              aria-label="Спри"
+            >
+              {STOP_ICON}
             </button>
           ) : (
-            <button type="submit" className="assistant-composer__send" disabled={!canSend}>
-              Изпрати
+            <button
+              type="submit"
+              className="assistant-composer__send"
+              disabled={!canSend}
+              aria-label="Изпрати"
+            >
+              {SEND_ICON}
             </button>
           )}
         </div>

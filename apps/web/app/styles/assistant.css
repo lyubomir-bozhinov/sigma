@@ -332,15 +332,31 @@ html.assistant-ready .assistant-dock--panel {
   padding: var(--s-3);
   border-top: 1px solid var(--rule);
 }
+/* One rounded surface wrapping the textarea + control row — the modern single-field composer.
+   The border and the focus treatment live here (not on the textarea), so the whole control reads
+   as one unit and lights a single accent ring when any child is focused. */
+.assistant-composer__box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.assistant-composer__box:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .assistant-composer__input {
   width: 100%;
   min-height: 2.5rem;
   max-height: 8rem;
   overflow-y: auto;
   resize: none;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--rule);
-  background: var(--paper);
+  padding: var(--s-1) var(--s-2);
+  border: none;
+  background: transparent;
   color: var(--ink);
   font: inherit;
 }
@@ -350,50 +366,47 @@ html.assistant-ready .assistant-dock--panel {
   color: var(--ink-soft);
   opacity: 1;
 }
-/* Match the house focus ring (accent outline) instead of the UA default blue — text inputs aren't
-   covered by the generic :focus-visible fallback, so each one styles its own, like .hero-search input. */
+/* The textarea no longer rings on its own — the wrapping box handles focus (see __box:focus-within),
+   so there's a single accent ring for the whole control instead of a double outline. */
 .assistant-composer__input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
 }
-/* Action row beneath the full-width input: mic on the left, the primary Send/Stop on the right. */
+/* Control row inside the box: mic, optional Clear, then the primary Send/Stop — all packed to the
+   right (there's no left-hand "+" affordance), matching the ChatGPT/Claude inline cluster. */
 .assistant-composer__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--s-2);
 }
+/* Compact circular icon buttons. One size/shape for mic, Clear, Send and Stop so the cluster reads as
+   a tidy row of controls; colour is what differentiates the primary Send. */
 .assistant-composer__mic,
+.assistant-composer__clear,
 .assistant-composer__send,
 .assistant-composer__stop {
   flex: none;
-  padding: var(--s-2) var(--s-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
   border: 1px solid var(--rule);
+  border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
-  font: inherit;
   cursor: pointer;
 }
+/* Primary action — accent fill so "send" is unmistakably the main control. */
 .assistant-composer__send {
   background: var(--accent);
   color: var(--paper);
   border-color: var(--accent);
 }
-/* Right-side control cluster: the optional Clear next to the primary Send/Stop. */
-.assistant-composer__actions-end {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-}
 /* Secondary (ghost) action — quieter than Send so it never competes with the primary. */
 .assistant-composer__clear {
-  flex: none;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--rule);
   background: none;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
 }
 .assistant-composer__send:disabled {
   opacity: 0.5;
@@ -402,14 +415,6 @@ html.assistant-ready .assistant-dock--panel {
 .assistant-composer__mic:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-/* Centre the icon; symmetric padding → a square-ish toggle (Preflight makes the svg display:block, so
-   without this the icon + anything beside it would stack and left-align). */
-.assistant-composer__mic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--s-2);
 }
 
 .assistant-composer__mic-group {
@@ -496,6 +501,14 @@ html.a11y-textonly body:has(.assistant-dock--panel) {
   .assistant-launcher {
     right: var(--s-4);
     bottom: var(--s-4);
+  }
+  /* Bigger touch targets on the full-screen mobile sheet — ~44px, above the 24px desktop floor. */
+  .assistant-composer__mic,
+  .assistant-composer__clear,
+  .assistant-composer__send,
+  .assistant-composer__stop {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 }
 

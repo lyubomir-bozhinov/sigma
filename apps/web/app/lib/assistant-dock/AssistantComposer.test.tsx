@@ -107,6 +107,25 @@ describe('AssistantComposer', () => {
     // Voice state must never disable the textarea — a user who can't use the mic can always type.
     expect(screen.getByLabelText('Съобщение до асистента')).toBeEnabled();
   });
+
+  it('wraps the input and controls in a single focus-within box', () => {
+    const { container } = render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    const box = container.querySelector('.assistant-composer__box');
+
+    // The unified surface must contain both the textarea and its control row (one accent focus ring).
+    expect(box).not.toBeNull();
+    expect(box?.querySelector('.assistant-composer__input')).not.toBeNull();
+    expect(box?.querySelector('.assistant-composer__actions')).not.toBeNull();
+  });
+
+  it('renders Send as an icon-only button (name via aria-label, glyph via svg)', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    const send = screen.getByRole('button', { name: 'Изпрати' });
+
+    // Icon-first: accessible name comes from aria-label, so there is no visible text label.
+    expect(send).toHaveTextContent('');
+    expect(send.querySelector('svg')).not.toBeNull();
+  });
 });
 
 describe('appendTranscript', () => {
