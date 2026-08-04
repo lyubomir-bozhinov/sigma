@@ -76,7 +76,11 @@ export function renderScorecard(sc: Scorecard): string {
   lines.push('| # | Категория | Verdict | Baseline | Rgr | Бележки |');
   lines.push('|---|---|---|---|---|---|');
   sc.results.forEach((r, i) => {
-    const note = r.failures.length > 0 ? r.failures.join('; ') : `${r.passed}/${r.total}`;
+    // `|` in a failure detail (e.g. an alternation regex) would break the Markdown table row.
+    const note = (r.failures.length > 0 ? r.failures.join('; ') : `${r.passed}/${r.total}`).replace(
+      /\|/g,
+      '\\|',
+    );
     lines.push(
       `| ${i + 1} | ${r.category} | ${ICON[r.verdict]} | ${r.baseline ? ICON[r.baseline] : '—'} | ${r.regressed ? '⬇️' : ''} | ${note} |`,
     );

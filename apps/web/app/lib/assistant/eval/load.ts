@@ -18,7 +18,7 @@ export function assembleCases(groups: CaseGroup[]): EvalCase[] {
     for (const def of defs) {
       // Runtime shape guard: a catalog file that bypasses the CaseDef type (untyped export) can't slip a
       // malformed case through to a later `undefined.map` crash — fail loudly, in place, with the file.
-      if (typeof def.id !== 'string' || !def.id || !Array.isArray(def.checks)) {
+      if (!def || typeof def.id !== 'string' || !def.id || !Array.isArray(def.checks)) {
         throw new Error(`malformed eval case in ${category}.cases.ts: ${JSON.stringify(def)}`);
       }
       if (seen.has(def.id)) throw new Error(`duplicate eval case id: ${def.id}`);

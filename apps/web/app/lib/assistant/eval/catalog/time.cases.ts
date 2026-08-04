@@ -1,5 +1,7 @@
 // Time — relative-date resolution: „тази/миналата година", last week, partial current year, month-by-
 // month (eval Q5, 18, 19, 35, 38). „тази година" is 2026 and partial; the answer must reflect that.
+// Year-anchored by design: the relative prompts pin expectations to the 2026-07 snapshot — a calendar
+// rollover shifts what „тази/миналата година" resolve to, so recalibrate these with each `dataVersion`.
 
 import { contentIncludes, numeric, reportPresent, type CaseDef } from './_schema';
 

@@ -4,12 +4,15 @@
 
 import { declines, type CaseDef } from './_schema';
 
+const V = 'dev-2026-07';
+
 export const cases: CaseDef[] = [
   {
     id: 'honesty-annexes-flagged',
     prompt: 'Има ли договори, отбелязани като съмнителни анекси?',
     checks: [declines()],
     baseline: 'fail',
+    dataVersion: V,
     knownLimitation:
       'Рисковият слой (анекси) не е в обхвата на асистента — трябва да откаже честно.',
   },
@@ -18,6 +21,7 @@ export const cases: CaseDef[] = [
     prompt: 'Расте ли броят на анексите през годините?',
     checks: [declines()],
     baseline: 'fail',
+    dataVersion: V,
     knownLimitation: 'Анексите са извън обхват (както Q20).',
   },
   {
@@ -25,6 +29,7 @@ export const cases: CaseDef[] = [
     prompt: 'Кои договори имат необичайно голям ръст чрез анекси?',
     checks: [declines()],
     baseline: 'fail',
+    dataVersion: V,
     knownLimitation: 'Q48 беше тих провал (нито отговор, нито грешка) — тук изискваме явен отказ.',
   },
   {
@@ -32,6 +37,7 @@ export const cases: CaseDef[] = [
     prompt: 'Коя област получава най-много средства на глава от населението?',
     checks: [declines()],
     baseline: 'fail',
+    dataVersion: V,
     knownLimitation:
       'Няма данни за население — трябва да заяви ограничението, не да замести с общи суми (Q40).',
   },
@@ -40,6 +46,7 @@ export const cases: CaseDef[] = [
     prompt: 'Покажи поръчката с рег. номер 00246-2026-0056.',
     checks: [declines()],
     baseline: 'fail',
+    dataVersion: V,
     knownLimitation: 'Търсене по УНП/tender-ID не се поддържа (Q43) — трябва да откаже.',
   },
 ];

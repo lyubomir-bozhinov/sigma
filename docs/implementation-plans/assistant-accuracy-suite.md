@@ -87,7 +87,7 @@ apps/web/app/lib/assistant/eval/
     cassette.ts                # record/replay a captured UIMessageChunk stream (harness self-test)
   load.ts                      # glob *.cases.ts → EvalCase[]; unique-id + registered-kind checks
   scorecard.ts                 # flat ✅/⚠️/❌ table (+ baseline compare; trend deferred)
-  eval.live.test.ts            # Tier A — collected ONLY by vitest.eval.config.ts (dispatch lane)
+  catalog.eval-live.test.ts    # Tier A — collected ONLY by vitest.eval.config.ts (dispatch lane)
   README.md
 # Tier B lives as ordinary tests next to the code they lock:
   golden/fixtures/9x-neg-grand-total-on-multirow.golden.json  + a negative-path it() in reports.golden.test.ts
@@ -169,7 +169,7 @@ export interface RunOutput {
   `scorecard.test.ts` renders the flat table + baseline compare.
 - Implement `runner/drive.ts` (POST UIMessage body + `Content-Type` + spoofed `Sec-Fetch-Site`; read
   chunks via the `ai` SDK / `assistant-contract/stream.ts`; **no `assistant-dock/*` import**),
-  `runner/cassette.ts`, `scorecard.ts`. `eval.live.test.ts` collected only by the eval config.
+  `runner/cassette.ts`, `scorecard.ts`. `catalog.eval-live.test.ts` collected only by the eval config.
 
 ### Phase 4 — fill the catalog — ~1 day
 - ~80–100 cases across ~12 categories, each `live` case with `baseline` + `dataVersion`. SQL-symptom
@@ -178,7 +178,7 @@ export interface RunOutput {
 
 ### Phase 5 — CI wiring — ~0.5 day (new surface, not a wire-up)
 - Tier B rides existing `test` / `test:golden` steps (per-build, blocking).
-- `vitest.eval.config.ts` (include `eval.live.test.ts`), excluded from the node project; `test:eval:live`.
+- `vitest.eval.config.ts` (include `*.eval-live.test.ts`), excluded from the node project; `test:eval:live`.
 - New `.github/workflows/assistant-eval.yml`: **`workflow_dispatch:` only**, input `SIGMA_EVAL_URL`
   (a turnstile-off target), case-count cap, publishes the scorecard artifact, **non-blocking**. No cron.
 
