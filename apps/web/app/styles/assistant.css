@@ -416,6 +416,20 @@ html.assistant-ready .assistant-dock--panel {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Hover feedback so the composer controls match every other control in the dock (launcher, collapse,
+   new-chat, report actions). Guarded to real pointers so a tap on touch doesn't leave a stuck hover. */
+@media (hover: hover) {
+  .assistant-composer__mic:hover:not(:disabled),
+  .assistant-composer__clear:hover,
+  .assistant-composer__stop:hover {
+    background: var(--paper-warm);
+    border-color: var(--ink-mid);
+  }
+  /* The primary Send is already an accent fill — deepen it slightly instead of washing it lighter. */
+  .assistant-composer__send:hover:not(:disabled):not([aria-disabled='true']) {
+    filter: brightness(0.92);
+  }
+}
 
 .assistant-composer__mic-group {
   display: inline-flex;
