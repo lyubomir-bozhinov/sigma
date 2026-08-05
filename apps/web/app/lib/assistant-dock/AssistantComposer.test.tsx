@@ -78,10 +78,29 @@ describe('AssistantComposer', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it('disables the input while busy', () => {
+  it('makes the input read-only (not disabled) while busy', () => {
     render(<AssistantComposer onSend={noop} onStop={noop} busy={true} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
 
-    expect(screen.getByLabelText('Съобщение до асистента')).toBeDisabled();
+    // readOnly + aria-disabled blocks edits while keeping the textarea focusable, so Enter-to-send
+    // never drops the keyboard user to <body>. The disabled attr would eject focus.
+    expect(input).toHaveAttribute('readonly');
+    expect(input).toHaveAttribute('aria-disabled', 'true');
+    expect(input).not.toBeDisabled();
+  });
+
+  it('keeps focus in the textarea when the turn goes busy after send', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
+
+    await user.type(input, 'въпрос{Enter}');
+    expect(onSend).toHaveBeenCalledWith('въпрос');
+
+    // The parent flips busy=true for the in-flight turn — focus must stay in the composer.
+    rerender(<AssistantComposer onSend={onSend} onStop={noop} busy={true} />);
+    expect(input).toHaveFocus();
   });
 
   it('shows the Stop button while busy', () => {

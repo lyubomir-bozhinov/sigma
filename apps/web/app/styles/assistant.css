@@ -371,6 +371,12 @@ html.assistant-ready .assistant-dock--panel {
 .assistant-composer__input:focus-visible {
   outline: none;
 }
+/* In-flight turn: the textarea is readOnly (keeps focus, see TSX) but must still LOOK inert, matching
+   the dimmed disabled state it replaced. */
+.assistant-composer__input[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 /* Control row inside the box: mic, optional Clear, then the primary Send/Stop — all packed to the
    right (there's no left-hand "+" affordance), matching the ChatGPT/Claude inline cluster. */
 .assistant-composer__actions {

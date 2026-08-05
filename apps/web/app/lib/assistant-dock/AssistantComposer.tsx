@@ -139,7 +139,11 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
           onKeyDown={onKeyDown}
           placeholder="Напишете въпрос…"
           rows={1}
-          disabled={busy}
+          // readOnly (not disabled) while a turn is in flight: Enter-to-send must not eject the keyboard
+          // user — a disabled textarea drops focus to <body> on send and never restores it. readOnly keeps
+          // focus in the composer; edits are still blocked, and submit() is inert while busy (canSend false).
+          readOnly={busy}
+          aria-disabled={busy}
         />
         {/* Right-aligned control cluster: the optional Clear grows in on the LEFT, so mic and the primary
             Send/Stop stay adjacent and never shift (no layout hop when Clear mounts). Clear appears only
