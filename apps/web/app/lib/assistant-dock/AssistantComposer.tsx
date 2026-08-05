@@ -169,7 +169,10 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
             <button
               type="submit"
               className="assistant-composer__send"
-              disabled={!canSend}
+              // aria-disabled (not the disabled attr) so an empty/busy draft keeps Send in the tab order —
+              // a keyboard/AT user must be able to discover it. submit() is the single no-op guard (it
+              // early-returns unless canSend), so the reachable-but-inert button can never send early.
+              aria-disabled={!canSend}
               aria-label="Изпрати"
             >
               {SEND_ICON}

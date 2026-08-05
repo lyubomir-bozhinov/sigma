@@ -408,7 +408,10 @@ html.assistant-ready .assistant-dock--panel {
 .assistant-composer__clear {
   background: none;
 }
-.assistant-composer__send:disabled {
+/* Inert Send keeps the disabled *look* via aria-disabled (it stays focusable/tab-reachable — see the
+   TSX note; the disabled attr would drop it from the tab order). */
+.assistant-composer__send:disabled,
+.assistant-composer__send[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
 }

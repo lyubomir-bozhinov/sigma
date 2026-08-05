@@ -56,10 +56,26 @@ describe('AssistantComposer', () => {
     expect(input).toHaveValue('ред1\nред2');
   });
 
-  it('disables send when the field is empty', () => {
+  it('marks send inert but keeps it focusable when the field is empty', () => {
     render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    const send = screen.getByRole('button', { name: 'Изпрати' });
 
-    expect(screen.getByRole('button', { name: 'Изпрати' })).toBeDisabled();
+    // aria-disabled, NOT the disabled attr — the control stays in the tab order so a keyboard/AT user
+    // can still discover it (WCAG: don't remove the primary action from focus just because it's inert).
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toBeDisabled();
+    send.focus();
+    expect(send).toHaveFocus();
+  });
+
+  it('does not send from an empty draft even though Send is reachable', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+
+    await user.click(screen.getByRole('button', { name: 'Изпрати' }));
+
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it('disables the input while busy', () => {
