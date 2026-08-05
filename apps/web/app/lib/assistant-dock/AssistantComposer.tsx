@@ -41,11 +41,13 @@ const STOP_ICON = (
     <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
   </svg>
 );
+// An eraser (not a ✕) — deliberately distinct from the header's stroked close ✕ so "wipe the dictated
+// draft" never reads as "put the assistant away"; the two controls sit only rows apart in the dock.
 const CLEAR_ICON = (
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
     <path
       fill="currentColor"
-      d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4z"
+      d="M16.24 3.56 21.19 8.5a1.9 1.9 0 0 1 0 2.84L12 20.53a3.35 3.35 0 0 1-4.75 0L2.81 16.1a1.9 1.9 0 0 1 0-2.84L13.16 3.56a1.9 1.9 0 0 1 3.08 0ZM4.22 15.58l3.54 3.53a1.35 1.35 0 0 0 2.83 0l3.53-3.53-4.95-4.95Z"
     />
   </svg>
 );
@@ -139,11 +141,11 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
           rows={1}
           disabled={busy}
         />
-        {/* Right-aligned control cluster: mic, then the optional Clear, then the primary Send/Stop —
-            all compact icon buttons so the row stays uncrowded in the narrow dock. */}
+        {/* Right-aligned control cluster: the optional Clear grows in on the LEFT, so mic and the primary
+            Send/Stop stay adjacent and never shift (no layout hop when Clear mounts). Clear appears only
+            after a voice transcript lands — its purpose is restarting a bad dictation; typists use ⌘A⌫. */}
         <div className="assistant-composer__actions">
-          <AssistantComposerMic voice={voice} />
-          {canSend ? (
+          {transcriptReady && !busy ? (
             <button
               type="button"
               className="assistant-composer__clear"
@@ -153,6 +155,7 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
               {CLEAR_ICON}
             </button>
           ) : null}
+          <AssistantComposerMic voice={voice} />
           {busy ? (
             <button
               type="button"

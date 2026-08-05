@@ -1,10 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssistantComposer, appendTranscript } from './AssistantComposer';
 
+// Drive the voice hook deterministically: capture the composer's onTranscript so a test can land a
+// transcript without a real mic (jsdom has no getUserMedia/MediaRecorder). State stays 'idle' so the
+// mic renders in its resting form — exactly what these composer-layout tests need.
+const voiceMock = vi.hoisted(() => ({ latest: null as ((text: string) => void) | null }));
+vi.mock('./useVoiceInput', () => ({
+  useVoiceInput: (onTranscript: (text: string) => void) => {
+    voiceMock.latest = onTranscript;
+    return {
+      state: { status: 'idle' as const },
+      startedAt: null,
+      endingSoon: false,
+      start: () => {},
+      stop: () => {},
+    };
+  },
+}));
+
+/** Simulate a finished voice transcript landing in the draft (sets text + the transcript-ready cue). */
+const landTranscript = (text: string) => act(() => voiceMock.latest?.(text));
+
 afterEach(() => {
   cleanup();
+  voiceMock.latest = null;
 });
 
 const noop = () => {};
@@ -90,15 +111,28 @@ describe('AssistantComposer', () => {
     expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
   });
 
-  it('shows Clear once the draft has text and empties it on click', async () => {
+  it('does not show Clear for a typed draft (only after a voice transcript)', async () => {
+    const user = userEvent.setup();
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+
+    // Typists have ⌘A⌫; Clear exists to restart a bad dictation, so typing alone must not surface it.
+    await user.type(screen.getByLabelText('Съобщение до асистента'), 'ръчно написан текст');
+
+    expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
+  });
+
+  it('shows Clear once a voice transcript lands and empties the draft on click', async () => {
     const user = userEvent.setup();
     render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
     const input = screen.getByLabelText('Съобщение до асистента');
 
-    await user.type(input, 'някакъв текст');
+    landTranscript('транскрибиран текст');
+    expect(input).toHaveValue('транскрибиран текст');
+
     await user.click(screen.getByRole('button', { name: 'Изчисти' }));
 
     expect(input).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
   });
 
   it('keeps the textarea usable when NOT in a chat turn (never a dead mic)', () => {
@@ -125,6 +159,36 @@ describe('AssistantComposer', () => {
     // Icon-first: accessible name comes from aria-label, so there is no visible text label.
     expect(send).toHaveTextContent('');
     expect(send.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders Stop as an icon-only button', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={true} />);
+    const stop = screen.getByRole('button', { name: 'Спри' });
+
+    expect(stop).toHaveTextContent('');
+    expect(stop.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders Clear as an icon-only button', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    landTranscript('глас');
+    const clear = screen.getByRole('button', { name: 'Изчисти' });
+
+    expect(clear).toHaveTextContent('');
+    expect(clear.querySelector('svg')).not.toBeNull();
+  });
+
+  it('orders the cluster Clear → mic → Send so mic and Send stay adjacent', () => {
+    const { container } = render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    landTranscript('глас'); // Clear only exists after a transcript
+
+    const actions = container.querySelector('.assistant-composer__actions');
+    const labels = Array.from(actions?.querySelectorAll('button') ?? []).map((b) =>
+      b.getAttribute('aria-label'),
+    );
+
+    // Clear grows in on the left; mic and Send remain the last two, always adjacent (no layout hop).
+    expect(labels).toEqual(['Изчисти', 'Гласово въвеждане', 'Изпрати']);
   });
 });
 
