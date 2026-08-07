@@ -152,12 +152,21 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   // share ONE key. Because a non-ok response is never put, the 404 form can't poison the encoded entry
   // (#221/#213). Don't drop this gate without re-keying on the raw pathname — the „never caches a non-ok
   // response" test in app.cache.test.ts guards it.
+  // On the ephemeral preview/dev workers (*.workers.dev), Cloudflare's platform HTML cache keys by URL
+  // only and is NOT deploy-aware, so an s-maxage document lingers across redeploys — but each redeploy
+  // purges the previous build's hashed assets, so the stale page 404s on its `root-*.js` and the app never
+  // boots. Force `no-store` on HTML documents there so the platform can't hold them; hashed assets stay
+  // immutable-cached, and the production custom domain keeps its normal s-maxage HTML caching.
+  const suppressHtmlCache =
+    new URL(request.url).hostname.endsWith('.workers.dev') && isHtml(response);
   const cacheable =
     key !== null &&
     response.ok &&
     isAnonymous(request, response) &&
+    !suppressHtmlCache &&
     /s-maxage=\d/.test(response.headers.get('Cache-Control') ?? '');
   const hardened = await hardenResponse(response, cacheable);
+  if (suppressHtmlCache) hardened.headers.set('Cache-Control', 'no-store');
   if (cacheable) ctx.waitUntil(edgeCache.put(key, hardened.clone()));
   hardened.headers.set('X-Edge-Cache', cacheable ? 'MISS' : 'BYPASS');
   return hardened;

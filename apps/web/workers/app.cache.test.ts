@@ -96,7 +96,11 @@ async function get(url: string) {
   const res = await worker.fetch(new Request(url), {}, ctx);
   const body = await res.clone().text();
   await Promise.all(waits); // let edgeCache.put (ctx.waitUntil) settle before the next request
-  return { edge: res.headers.get('X-Edge-Cache'), body };
+  return {
+    edge: res.headers.get('X-Edge-Cache'),
+    cacheControl: res.headers.get('Cache-Control'),
+    body,
+  };
 }
 
 describe('app.ts edge cache middleware', () => {
@@ -124,5 +128,28 @@ describe('app.ts edge cache middleware', () => {
     expect(first.edge).toBe('BYPASS');
     const second = await get('https://x/contracts/missing');
     expect(second.edge).toBe('BYPASS');
+  });
+});
+
+// The preview/dev workers are served from *.workers.dev, where Cloudflare's platform HTML cache keys by
+// URL only and isn't deploy-aware — so an s-maxage document lingers across redeploys while its hashed
+// `root-*.js` gets purged, 404ing the page. app.ts forces `no-store` on HTML there so the platform can't
+// hold it; production (custom domain) keeps its normal s-maxage caching.
+describe('app.ts preview HTML cache suppression (*.workers.dev)', () => {
+  it('forces no-store on HTML and never caches it on *.workers.dev', async () => {
+    const first = await get('https://sigma-pr-1.midt-platforms.workers.dev/contracts');
+    expect(first.edge).toBe('BYPASS'); // not stored in the worker edge cache
+    expect(first.cacheControl).toBe('no-store'); // and the platform can't cache it either
+
+    const second = await get('https://sigma-pr-1.midt-platforms.workers.dev/contracts');
+    expect(second.edge).toBe('BYPASS'); // stays a miss on every request — no stale HTML after redeploy
+  });
+
+  it('leaves HTML caching intact on the production custom domain', async () => {
+    // A non-.workers.dev host stands in for the custom domain — behaviour must be unchanged.
+    expect((await get('https://sigma.example/contracts')).edge).toBe('MISS');
+    const cached = await get('https://sigma.example/contracts');
+    expect(cached.edge).toBe('HIT');
+    expect(cached.cacheControl).toContain('s-maxage=1800');
   });
 });
