@@ -282,33 +282,47 @@
   }
 }
 
-/* The third-party accessibility launcher (.a11y-tools, loaded async from /assets/accessibility/) pins its
-   container bottom-right with the 50px button offset ~420px down inside it, so it floats over the assistant
-   dock's compose field. Re-anchor it to a FIXED top on the right edge so it clears the composer; on desktop,
-   when the dock panel is open, pull it left of the 400px panel so it clears the conversation too.
+/* The third-party accessibility launcher (.a11y-tools) is placed bottom-right, like production /flows, with
+   its disclosure panel growing UPWARD from the button (see the collapse rules below). When the assistant
+   dock is open it would overlap the compose field, so on desktop we step it left of the 400px dock panel;
+   when the dock is collapsed it returns to the corner. On mobile it sits above the collapsed chat launcher
+   pill so the two don't stack.
 
-   CRITICAL (usability): the anchor must NOT be vertically-centred. Centring (top:50% + translateY(-50%))
-   plus the collapse below means opening the menu changes the container height (button→panel), which
-   recentres the container and jerks the button ~250px away mid-hover — a moving target that made the
-   launcher genuinely hard to click (verified: real hover/click failed as "not stable"). A fixed `top` keeps
-   the button still while the panel grows downward from it. `transition:none` removes the animated
-   reposition window for the same reason. `!important` beats the async widget stylesheet. */
+   CRITICAL (usability): the anchor must NOT change position when the menu opens. An earlier centred anchor
+   (top:50% + translateY(-50%)) combined with the collapse changed the container height on open, recentred
+   it, and jerked the button ~250px away mid-hover — a moving target that made the launcher genuinely hard
+   to click (verified: real hover/click failed as "not stable"). Anchoring the button to the container's
+   BOTTOM keeps it still while the panel grows above it; `transition:none` removes the animated reposition
+   window. `!important` beats the async widget stylesheet. */
 html .a11y-tools__button {
   background-color: var(--accent);
   border-color: var(--accent);
-  top: 0 !important;
-  bottom: auto !important;
+  /* Button anchored to the container's BOTTOM so the disclosure panel grows UPWARD above it (production
+     style) while the button itself never moves when the menu opens. */
+  top: auto !important;
+  bottom: 0 !important;
   transition: none !important;
 }
 html .a11y-tools {
-  top: 96px !important;
-  bottom: auto !important;
+  /* Default: bottom-right corner, like production /flows. */
+  top: auto !important;
+  bottom: 20px !important;
+  right: 12px !important;
   transform: none !important;
   transition: none !important;
 }
+/* Desktop, chat dock open: step left of the 400px dock so the launcher and its upward menu clear the
+   composer and the conversation. (The dock is the only thing on the right; when it's collapsed the widget
+   returns to the bottom-right corner.) */
 @media (min-width: 761px) {
   body:has(.assistant-dock--panel) .a11y-tools {
-    right: var(--assistant-panel-w) !important;
+    right: calc(var(--assistant-panel-w) + 12px) !important;
+  }
+}
+/* Mobile: sit above the collapsed chat launcher pill (also bottom-right) so the two don't stack. */
+@media (max-width: 760px) {
+  html .a11y-tools {
+    bottom: 84px !important;
   }
 }
 /* The third-party widget ships its options panel ALWAYS expanded (a 300×545 grey block that covers the
@@ -316,7 +330,7 @@ html .a11y-tools {
    to the launcher button at rest, opened only when AccessibilityWidget.tsx sets `.is-open` on click /
    Enter / Space (with aria-expanded, Escape + click-outside to close). `visibility:hidden` on the collapsed
    panel also drops its controls from the tab order, so keyboard users don't Tab through an invisible menu;
-   they reveal it via the button. The panel grows DOWNWARD from the fixed-top button (which never moves),
+   they reveal it via the button. The panel grows UPWARD from the bottom-anchored button (which never moves),
    and `max-height` + scroll keep a tall menu inside short viewports. Scoped to :not(.a11y-textonly): text-
    only mode relinearises the widget inline and the panel MUST stay visible, so the collapse never applies. */
 html:not(.a11y-textonly) .a11y-tools__nav {
