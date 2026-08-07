@@ -13,8 +13,11 @@ const voice = (state: VoiceState, over: Partial<VoiceInput> = {}): VoiceInput =>
   state,
   startedAt: null,
   endingSoon: false,
+  level: 0.4,
   start: () => {},
   stop: () => {},
+  finishAndSend: () => {},
+  cancel: () => {},
   ...over,
 });
 

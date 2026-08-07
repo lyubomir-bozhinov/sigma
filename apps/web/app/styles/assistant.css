@@ -163,16 +163,24 @@ html.assistant-ready .assistant-dock--panel {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Positioning context for the absolutely-placed "jump to latest" pill (see __scroll-btn). */
+  position: relative;
 }
 
 .assistant-transcript {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Don't chain the scroll to the page behind the dock once the conversation hits its top/bottom — matches
+     the ChatGPT/Claude sheet behaviour this dock is styled after. */
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: var(--s-4);
   padding: var(--s-4);
+  /* The container is a programmatic focus target for the jump-to-latest pill (tabIndex=-1); it's never
+     tab-reached, so a focus ring around the whole log would be noise — suppress it. */
+  outline: none;
 }
 .assistant-turn {
   display: flex;
@@ -183,6 +191,69 @@ html.assistant-ready .assistant-dock--panel {
   margin: 0;
   color: var(--ink-soft);
   font-style: italic;
+}
+/* Typing indicator — three pulsing dots while the assistant is starting a reply (before any phase line). */
+.assistant-transcript__typing {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0;
+  padding: var(--s-1) 0;
+}
+.assistant-transcript__typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-soft);
+  animation: assistant-typing 1.2s ease-in-out infinite;
+}
+.assistant-transcript__typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.assistant-transcript__typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes assistant-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-transcript__typing span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+/* "Jump to latest" pill — floats bottom-centre of the message area when the reader has scrolled up. */
+.assistant-transcript__scroll-btn {
+  position: absolute;
+  bottom: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-mid);
+  cursor: pointer;
+  box-shadow: 0 1px 4px oklch(18% 0.012 70 / 0.18);
+}
+@media (hover: hover) {
+  .assistant-transcript__scroll-btn:hover {
+    color: var(--accent);
+    border-color: var(--ink-mid);
+  }
 }
 .assistant-transcript__error {
   margin: 0;
@@ -287,18 +358,32 @@ html.assistant-ready .assistant-dock--panel {
   flex-direction: column;
   gap: var(--s-2);
 }
+/* Starter prompts as tappable suggestion cards (ChatGPT/Claude style): rounded, warm-filled, with an
+   accent hover — friendlier than a plain bordered row and clearer that each is an action. */
 .assistant-empty__prompt {
   width: 100%;
   text-align: left;
   padding: var(--s-3);
   border: 1px solid var(--rule);
-  background: var(--paper);
+  border-radius: 10px;
+  background: var(--paper-warm);
   color: var(--ink);
   font: inherit;
+  line-height: 1.4;
   cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    transform 0.06s;
 }
-.assistant-empty__prompt:hover {
-  border-color: var(--ink);
+@media (hover: hover) {
+  .assistant-empty__prompt:hover {
+    border-color: var(--accent);
+    background: var(--paper);
+  }
+}
+.assistant-empty__prompt:active {
+  transform: translateY(1px);
 }
 
 .assistant-panel__error {
@@ -332,15 +417,31 @@ html.assistant-ready .assistant-dock--panel {
   padding: var(--s-3);
   border-top: 1px solid var(--rule);
 }
+/* One rounded surface wrapping the textarea + control row — the modern single-field composer.
+   The border and the focus treatment live here (not on the textarea), so the whole control reads
+   as one unit and lights a single accent ring when any child is focused. */
+.assistant-composer__box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.assistant-composer__box:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .assistant-composer__input {
   width: 100%;
   min-height: 2.5rem;
   max-height: 8rem;
   overflow-y: auto;
   resize: none;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--rule);
-  background: var(--paper);
+  padding: var(--s-1) var(--s-2);
+  border: none;
+  background: transparent;
   color: var(--ink);
   font: inherit;
 }
@@ -350,52 +451,62 @@ html.assistant-ready .assistant-dock--panel {
   color: var(--ink-soft);
   opacity: 1;
 }
-/* Match the house focus ring (accent outline) instead of the UA default blue — text inputs aren't
-   covered by the generic :focus-visible fallback, so each one styles its own, like .hero-search input. */
+/* The textarea no longer rings on its own — the wrapping box handles focus (see __box:focus-within),
+   so there's a single accent ring for the whole control instead of a double outline. */
 .assistant-composer__input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
 }
-/* Action row beneath the full-width input: mic on the left, the primary Send/Stop on the right. */
+/* In-flight turn: the textarea is readOnly (keeps focus, see TSX) but must still LOOK inert, matching
+   the dimmed disabled state it replaced. */
+.assistant-composer__input[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Control row inside the box: mic, optional Clear, then the primary Send/Stop — all packed to the
+   right (there's no left-hand "+" affordance), matching the ChatGPT/Claude inline cluster. */
 .assistant-composer__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--s-2);
 }
+/* Compact circular icon buttons. One size/shape for mic, Clear, Send and Stop so the cluster reads as
+   a tidy row of controls; colour is what differentiates the primary Send. */
 .assistant-composer__mic,
+.assistant-composer__clear,
 .assistant-composer__send,
-.assistant-composer__stop {
+.assistant-composer__stop,
+.assistant-composer__mic-cancel,
+.assistant-composer__mic-send {
   flex: none;
-  padding: var(--s-2) var(--s-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
   border: 1px solid var(--rule);
+  border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
-  font: inherit;
   cursor: pointer;
 }
-.assistant-composer__send {
+/* Primary actions — accent fill so "send" is unmistakably the main control (composer Send + the
+   finish-&-send button shown while recording). */
+.assistant-composer__send,
+.assistant-composer__mic-send {
   background: var(--accent);
   color: var(--paper);
   border-color: var(--accent);
 }
-/* Right-side control cluster: the optional Clear next to the primary Send/Stop. */
-.assistant-composer__actions-end {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-}
 /* Secondary (ghost) action — quieter than Send so it never competes with the primary. */
 .assistant-composer__clear {
-  flex: none;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--rule);
   background: none;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
 }
-.assistant-composer__send:disabled {
+/* Inert Send keeps the disabled *look* via aria-disabled (it stays focusable/tab-reachable — see the
+   TSX note; the disabled attr would drop it from the tab order). */
+.assistant-composer__send:disabled,
+.assistant-composer__send[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -403,13 +514,21 @@ html.assistant-ready .assistant-dock--panel {
   opacity: 0.4;
   cursor: not-allowed;
 }
-/* Centre the icon; symmetric padding → a square-ish toggle (Preflight makes the svg display:block, so
-   without this the icon + anything beside it would stack and left-align). */
-.assistant-composer__mic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--s-2);
+/* Hover feedback so the composer controls match every other control in the dock (launcher, collapse,
+   new-chat, report actions). Guarded to real pointers so a tap on touch doesn't leave a stuck hover. */
+@media (hover: hover) {
+  .assistant-composer__mic:hover:not(:disabled),
+  .assistant-composer__clear:hover,
+  .assistant-composer__stop:hover,
+  .assistant-composer__mic-cancel:hover {
+    background: var(--paper-warm);
+    border-color: var(--ink-mid);
+  }
+  /* Accent-filled sends deepen on hover instead of washing lighter. */
+  .assistant-composer__send:hover:not(:disabled):not([aria-disabled='true']),
+  .assistant-composer__mic-send:hover {
+    filter: brightness(0.92);
+  }
 }
 
 .assistant-composer__mic-group {
@@ -418,8 +537,8 @@ html.assistant-ready .assistant-dock--panel {
   gap: var(--s-2);
 }
 
-/* Recording state: the toggle inverts; an aria-hidden pure-CSS equalizer + timer sit beside it (frozen
-   under prefers-reduced-motion via the global rule). The mic-status <p> is a separate polite live region. */
+/* Recording state: the toggle inverts; an aria-hidden equalizer + timer + cancel sit beside it. The
+   mic-status <p> is a separate polite live region. */
 .assistant-composer__mic[aria-pressed='true'] {
   background: var(--accent);
   color: var(--paper);
@@ -435,31 +554,24 @@ html.assistant-ready .assistant-dock--panel {
   height: 20px;
   color: var(--accent);
 }
+/* Amplitude-reactive bars: each height = the live mic level (--mic-level, set on the viz from the
+   analyser RMS) × the bar's own coefficient (--bar-coef, set per bar in the TSX) → an equalizer that
+   tracks the voice instead of a fixed loop. The transition tweens the ~4Hz level samples into smooth
+   motion; clamp keeps a visible floor and a full-height ceiling. */
 .assistant-composer__mic-bar {
   width: 3px;
   height: 100%;
   background: currentColor;
   border-radius: 2px;
-  transform: scaleY(0.35);
   transform-origin: center;
-  animation: assistant-mic-eq 900ms ease-in-out infinite;
+  transform: scaleY(clamp(0.12, calc(var(--mic-level, 0.4) * var(--bar-coef, 1)), 1));
+  transition: transform 140ms ease-out;
 }
-.assistant-composer__mic-bar:nth-child(3n) {
-  animation-delay: 150ms;
-}
-.assistant-composer__mic-bar:nth-child(3n + 1) {
-  animation-delay: 300ms;
-}
-.assistant-composer__mic-bar:nth-child(4n) {
-  animation-delay: 450ms;
-}
-@keyframes assistant-mic-eq {
-  0%,
-  100% {
-    transform: scaleY(0.35);
-  }
-  50% {
-    transform: scaleY(1);
+/* Reduced motion: no live tweening — a static equalizer silhouette from the per-bar coefficients. */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-composer__mic-bar {
+    transition: none;
+    transform: scaleY(var(--bar-coef, 0.5));
   }
 }
 .assistant-composer__mic-status {
@@ -496,6 +608,17 @@ html.a11y-textonly body:has(.assistant-dock--panel) {
   .assistant-launcher {
     right: var(--s-4);
     bottom: var(--s-4);
+  }
+  /* Bigger touch targets on the full-screen mobile sheet — ~44px, above the 24px desktop floor. */
+  .assistant-composer__mic,
+  .assistant-composer__clear,
+  .assistant-composer__send,
+  .assistant-composer__stop,
+  .assistant-composer__mic-cancel,
+  .assistant-composer__mic-send,
+  .assistant-transcript__scroll-btn {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 }
 

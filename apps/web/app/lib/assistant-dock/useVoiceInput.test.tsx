@@ -125,7 +125,7 @@ describe('useVoiceInput', () => {
 
     clock = 2000; // 2s of recording — clears the min-duration gate
     act(() => result.current.stop());
-    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('здравей'));
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('здравей', false));
     expect(result.current.state.status).toBe('idle');
   });
 
@@ -166,7 +166,7 @@ describe('useVoiceInput', () => {
     });
 
     // No manual stop() was called — silence alone ended the recording and drove transcription.
-    expect(onTranscript).toHaveBeenCalledWith('здравей');
+    expect(onTranscript).toHaveBeenCalledWith('здравей', false);
     expect(result.current.state.status).toBe('idle');
     vi.useRealTimers();
   });
@@ -233,6 +233,82 @@ describe('useVoiceInput', () => {
     expect(result.current.state).toMatchObject({ status: 'error', kind: 'capture' });
     expect(onTranscript).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('times out a never-answered permission prompt and releases a late stream', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+    const track = { stop: vi.fn() };
+    let resolveGum: (s: MediaStream) => void = () => {};
+    const gum = new Promise<MediaStream>((r) => (resolveGum = r));
+    setGetUserMedia(vi.fn().mockReturnValue(gum)); // prompt never answered
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceInput(onTranscript));
+
+    act(() => result.current.start());
+    expect(result.current.state.status).toBe('requesting');
+
+    // No answer within REQUEST_TIMEOUT_MS (10s) → actionable error instead of a stuck 'requesting' mic.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(result.current.state).toMatchObject({ status: 'error', kind: 'timeout' });
+
+    // A prompt answered AFTER the timeout must not start recording — the superseded stream is released.
+    await act(async () => {
+      resolveGum({ getTracks: () => [track] } as unknown as MediaStream);
+      await gum;
+    });
+    expect(track.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toMatchObject({ status: 'error', kind: 'timeout' });
+    expect(onTranscript).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('finishAndSend transcribes and hands back the text with sendNow=true', async () => {
+    let clock = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => clock);
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+    setGetUserMedia(vi.fn().mockResolvedValue(fakeStream()));
+    stubAudioContext(0.3);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'здравей' }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceInput(onTranscript));
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state.status).toBe('recording'));
+
+    clock = 2000;
+    act(() => result.current.finishAndSend());
+    // Same transcribe path as stop(), but the result is flagged to be sent directly, not appended.
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('здравей', true));
+    expect(result.current.state.status).toBe('idle');
+  });
+
+  it('cancel discards the in-progress recording without transcribing (returns to idle)', async () => {
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+    setGetUserMedia(vi.fn().mockResolvedValue(fakeStream()));
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceInput(onTranscript));
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state.status).toBe('recording'));
+
+    act(() => result.current.cancel());
+
+    // Discarded: back to idle, the clip is never uploaded and no transcript is produced.
+    expect(result.current.state.status).toBe('idle');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(onTranscript).not.toHaveBeenCalled();
   });
 
   it('surfaces a transcription error when the endpoint fails', async () => {

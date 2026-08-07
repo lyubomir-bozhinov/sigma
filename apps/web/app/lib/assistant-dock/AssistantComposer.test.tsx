@@ -1,10 +1,37 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssistantComposer, appendTranscript } from './AssistantComposer';
 
+// Drive the voice hook deterministically: capture the composer's onTranscript so a test can land a
+// transcript without a real mic (jsdom has no getUserMedia/MediaRecorder). State stays 'idle' so the
+// mic renders in its resting form — exactly what these composer-layout tests need.
+const voiceMock = vi.hoisted(() => ({
+  latest: null as ((text: string, sendNow: boolean) => void) | null,
+}));
+vi.mock('./useVoiceInput', () => ({
+  useVoiceInput: (onTranscript: (text: string, sendNow: boolean) => void) => {
+    voiceMock.latest = onTranscript;
+    return {
+      state: { status: 'idle' as const },
+      startedAt: null,
+      endingSoon: false,
+      level: 0.4,
+      start: () => {},
+      stop: () => {},
+      finishAndSend: () => {},
+      cancel: () => {},
+    };
+  },
+}));
+
+/** Simulate a finished voice transcript. `sendNow` mirrors the "finish & send" path (default: review). */
+const landTranscript = (text: string, sendNow = false) =>
+  act(() => voiceMock.latest?.(text, sendNow));
+
 afterEach(() => {
   cleanup();
+  voiceMock.latest = null;
 });
 
 const noop = () => {};
@@ -35,16 +62,67 @@ describe('AssistantComposer', () => {
     expect(input).toHaveValue('ред1\nред2');
   });
 
-  it('disables send when the field is empty', () => {
+  it('marks send inert but keeps it focusable when the field is empty', () => {
     render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    const send = screen.getByRole('button', { name: 'Изпрати' });
 
-    expect(screen.getByRole('button', { name: 'Изпрати' })).toBeDisabled();
+    // aria-disabled, NOT the disabled attr — the control stays in the tab order so a keyboard/AT user
+    // can still discover it (WCAG: don't remove the primary action from focus just because it's inert).
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toBeDisabled();
+    send.focus();
+    expect(send).toHaveFocus();
   });
 
-  it('disables the input while busy', () => {
-    render(<AssistantComposer onSend={noop} onStop={noop} busy={true} />);
+  it('does not send from an empty draft even though Send is reachable', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
 
-    expect(screen.getByLabelText('Съобщение до асистента')).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Изпрати' }));
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('makes the input read-only (not disabled) while busy', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={true} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
+
+    // readOnly + aria-disabled blocks edits while keeping the textarea focusable, so Enter-to-send
+    // never drops the keyboard user to <body>. The disabled attr would eject focus.
+    expect(input).toHaveAttribute('readonly');
+    expect(input).toHaveAttribute('aria-disabled', 'true');
+    expect(input).not.toBeDisabled();
+  });
+
+  it('keeps focus in the textarea when the turn goes busy after send', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
+
+    await user.type(input, 'въпрос{Enter}');
+    expect(onSend).toHaveBeenCalledWith('въпрос');
+
+    // The parent flips busy=true for the in-flight turn — focus must stay in the composer.
+    rerender(<AssistantComposer onSend={onSend} onStop={noop} busy={true} />);
+    expect(input).toHaveFocus();
+  });
+
+  it('moves focus to Stop when the turn goes busy while Send held focus', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+
+    // Activate via the Send button (mouse or keyboard on Send) rather than Enter-in-textarea, so focus is
+    // on Send when it unmounts into Stop. Without focus redirection it would fall to <body>.
+    await user.type(screen.getByLabelText('Съобщение до асистента'), 'въпрос');
+    const send = screen.getByRole('button', { name: 'Изпрати' });
+    send.focus();
+    await user.click(send);
+
+    rerender(<AssistantComposer onSend={onSend} onStop={noop} busy={true} />);
+    expect(screen.getByRole('button', { name: 'Спри' })).toHaveFocus();
   });
 
   it('shows the Stop button while busy', () => {
@@ -90,15 +168,62 @@ describe('AssistantComposer', () => {
     expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
   });
 
-  it('shows Clear once the draft has text and empties it on click', async () => {
+  it('does not show Clear for a typed draft (only after a voice transcript)', async () => {
+    const user = userEvent.setup();
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+
+    // Typists have ⌘A⌫; Clear exists to restart a bad dictation, so typing alone must not surface it.
+    await user.type(screen.getByLabelText('Съобщение до асистента'), 'ръчно написан текст');
+
+    expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
+  });
+
+  it('shows Clear once a voice transcript lands and empties the draft on click', async () => {
     const user = userEvent.setup();
     render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
     const input = screen.getByLabelText('Съобщение до асистента');
 
-    await user.type(input, 'някакъв текст');
+    landTranscript('транскрибиран текст');
+    expect(input).toHaveValue('транскрибиран текст');
+
     await user.click(screen.getByRole('button', { name: 'Изчисти' }));
 
     expect(input).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
+  });
+
+  it('sends a voice transcript directly when finish-&-send is used (sendNow), clearing the draft', () => {
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
+
+    landTranscript('колко договора има', true);
+
+    expect(onSend).toHaveBeenCalledWith('колко договора има');
+    expect(input).toHaveValue(''); // sent, not left in the field
+    expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
+  });
+
+  it('finish-&-send combines an existing typed draft with the transcript before sending', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+
+    await user.type(screen.getByLabelText('Съобщение до асистента'), 'договори за');
+    landTranscript('София 2024', true);
+
+    expect(onSend).toHaveBeenCalledWith('договори за София 2024');
+  });
+
+  it('falls back to appending (never sends) when a turn is already in flight', () => {
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={true} />);
+
+    // A direct-send transcript that lands mid-turn must not fire a send — keep the words for review.
+    landTranscript('нещо казано', true);
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Съобщение до асистента')).toHaveValue('нещо казано');
   });
 
   it('keeps the textarea usable when NOT in a chat turn (never a dead mic)', () => {
@@ -106,6 +231,55 @@ describe('AssistantComposer', () => {
 
     // Voice state must never disable the textarea — a user who can't use the mic can always type.
     expect(screen.getByLabelText('Съобщение до асистента')).toBeEnabled();
+  });
+
+  it('wraps the input and controls in a single focus-within box', () => {
+    const { container } = render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    const box = container.querySelector('.assistant-composer__box');
+
+    // The unified surface must contain both the textarea and its control row (one accent focus ring).
+    expect(box).not.toBeNull();
+    expect(box?.querySelector('.assistant-composer__input')).not.toBeNull();
+    expect(box?.querySelector('.assistant-composer__actions')).not.toBeNull();
+  });
+
+  it('renders Send as an icon-only button (name via aria-label, glyph via svg)', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    const send = screen.getByRole('button', { name: 'Изпрати' });
+
+    // Icon-first: accessible name comes from aria-label, so there is no visible text label.
+    expect(send).toHaveTextContent('');
+    expect(send.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders Stop as an icon-only button', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={true} />);
+    const stop = screen.getByRole('button', { name: 'Спри' });
+
+    expect(stop).toHaveTextContent('');
+    expect(stop.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders Clear as an icon-only button', () => {
+    render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    landTranscript('глас');
+    const clear = screen.getByRole('button', { name: 'Изчисти' });
+
+    expect(clear).toHaveTextContent('');
+    expect(clear.querySelector('svg')).not.toBeNull();
+  });
+
+  it('orders the cluster Clear → mic → Send so mic and Send stay adjacent', () => {
+    const { container } = render(<AssistantComposer onSend={noop} onStop={noop} busy={false} />);
+    landTranscript('глас'); // Clear only exists after a transcript
+
+    const actions = container.querySelector('.assistant-composer__actions');
+    const labels = Array.from(actions?.querySelectorAll('button') ?? []).map((b) =>
+      b.getAttribute('aria-label'),
+    );
+
+    // Clear grows in on the left; mic and Send remain the last two, always adjacent (no layout hop).
+    expect(labels).toEqual(['Изчисти', 'Гласово въвеждане', 'Изпрати']);
   });
 });
 

@@ -75,10 +75,15 @@ describe('AssistantPanel', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the composer while busy', () => {
+  it('makes the composer read-only (not disabled) while busy', () => {
     render(<AssistantPanel {...props({ busy: true })} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
 
-    expect(screen.getByLabelText('Съобщение до асистента')).toBeDisabled();
+    // readOnly + aria-disabled blocks edits while keeping focus in the composer (Enter-to-send must not
+    // eject the keyboard user to <body>); the disabled attr would.
+    expect(input).toHaveAttribute('readonly');
+    expect(input).toHaveAttribute('aria-disabled', 'true');
+    expect(input).not.toBeDisabled();
   });
 
   it('hides the new-chat button when there are no messages', () => {

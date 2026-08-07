@@ -282,22 +282,70 @@
   }
 }
 
-/* The third-party accessibility launcher (.a11y-tools, loaded async from
-   /assets/accessibility/) pins its 50px button at `top: 420px` inside a
-   viewport-tall fixed container, so on phones it floats over the middle-right of
-   the card lists and covers the right-aligned values. Pin it to the bottom-right
-   corner on narrow screens so it clears the content; the fly-out menu still
-   anchors to the same container. `!important` beats the async widget stylesheet
-   regardless of load order. */
+/* The third-party accessibility launcher (.a11y-tools) tracks the chat control, bottom-right, with its
+   disclosure panel growing UPWARD from the button (see the collapse rules below):
+   - chat CLOSED → a little ABOVE the "Асистент" launcher pill (they share the bottom-right corner, so it
+     must not sit on top of it);
+   - chat OPEN (desktop) → beside the open dock panel, just left of its edge at the composer's height.
+
+   CRITICAL (usability): the anchor must NOT change position when the menu opens. An earlier centred anchor
+   (top:50% + translateY(-50%)) combined with the collapse changed the container height on open, recentred
+   it, and jerked the button ~250px away mid-hover — a moving target that made the launcher genuinely hard
+   to click (verified: real hover/click failed as "not stable"). Anchoring the button to the container's
+   BOTTOM keeps it still while the panel grows above it; `transition:none` removes the animated reposition
+   window. `!important` beats the async widget stylesheet. */
 html .a11y-tools__button {
   background-color: var(--accent);
   border-color: var(--accent);
+  /* Button anchored to the container's BOTTOM so the disclosure panel grows UPWARD above it (production
+     style) while the button itself never moves when the menu opens. */
+  top: auto !important;
+  bottom: 0 !important;
+  transition: none !important;
 }
-@media (max-width: 760px) {
-  .a11y-tools__button {
-    top: auto !important;
-    bottom: 0 !important;
+html .a11y-tools {
+  /* Chat CLOSED (or no dock): bottom-right, sitting ABOVE the chat launcher pill so the two don't overlap
+     (the launcher is ~44px tall at the bottom-right corner). */
+  top: auto !important;
+  bottom: 76px !important;
+  right: 16px !important;
+  transform: none !important;
+  transition: none !important;
+}
+/* Desktop, chat OPEN: the launcher is gone and the dock panel fills the right, so move the widget over to
+   sit right beside the panel — just left of its edge, at the composer's height — and drop it back to the
+   bottom (no launcher to clear). */
+@media (min-width: 761px) {
+  body:has(.assistant-dock--panel) .a11y-tools {
+    right: calc(var(--assistant-panel-w) + 16px) !important;
+    bottom: 20px !important;
   }
+}
+/* The third-party widget ships its options panel ALWAYS expanded (a 300×545 grey block that covers the
+   dock — confirmed identical on production). We turn it into a proper click-toggle disclosure: collapsed
+   to the launcher button at rest, opened only when AccessibilityWidget.tsx sets `.is-open` on click /
+   Enter / Space (with aria-expanded, Escape + click-outside to close). `visibility:hidden` on the collapsed
+   panel also drops its controls from the tab order, so keyboard users don't Tab through an invisible menu;
+   they reveal it via the button. The panel grows UPWARD from the bottom-anchored button (which never moves),
+   and `max-height` + scroll keep a tall menu inside short viewports. Scoped to :not(.a11y-textonly): text-
+   only mode relinearises the widget inline and the panel MUST stay visible, so the collapse never applies. */
+html:not(.a11y-textonly) .a11y-tools__nav {
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+}
+html:not(.a11y-textonly) .a11y-tools.is-open .a11y-tools__nav {
+  width: auto !important;
+  height: auto !important;
+  max-height: 80vh !important;
+  overflow-y: auto !important;
+  visibility: visible !important;
+  /* The vendor parks the panel off-screen at `margin-right: -300px` and slides it in by setting it to 0
+     (only on :hover / :focus-within). Our click-toggle must reproduce that shown position itself — without
+     this, `.is-open` released width/height/visibility but the panel stayed off the right edge unless the
+     button happened to be focused. */
+  margin-right: 0 !important;
 }
 
 /* Stacked horizontal bar */

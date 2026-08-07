@@ -1,7 +1,8 @@
 // The accessibility toolbar is a vendored third-party script (Информационно обслужване АД) under
-// public/assets/accessibility/. It has minor keyboard/ARIA rough edges this wrapper can't change
-// without forking the script; they are catalogued in docs/accessibility.md ("Вградена приставка за
-// достъпност — наблюдения"). This wrapper only initialises it and installs survival CSS.
+// public/assets/accessibility/. This wrapper initialises it, installs survival CSS, and upgrades the
+// launcher into a proper keyboard-operable click-toggle disclosure (see enhanceAccessibilityLauncher) —
+// without forking the script. The remaining vendor rough edges are catalogued in docs/accessibility.md
+// ("Вградена приставка за достъпност — наблюдения").
 import { useEffect } from 'react';
 
 type AccessibilityOptions = {
@@ -110,17 +111,106 @@ function deactivateTextOnlyMarker() {
   document.documentElement.classList.remove('a11y-textonly');
 }
 
+// The vendored widget shows its options panel purely on CSS :hover / :focus-within, with the launcher at
+// tabindex="-1" and no open/closed state (see docs/accessibility.md). That's fine to open but not a great,
+// predictable control. This turns the launcher into a proper disclosure WITHOUT forking the vendor script:
+// the button becomes tab-focusable with aria-haspopup/aria-expanded, click/Enter/Space toggle an `.is-open`
+// class (the CSS in layout.css opens the panel only on that class), and Escape / click-outside / focus-out
+// close it and return focus to the button. Returns a cleanup that removes the listeners, or undefined if the
+// launcher isn't in the DOM yet (the caller retries) or was already enhanced.
+let launcherEnhanced = false;
+
+function enhanceAccessibilityLauncher(): (() => void) | undefined {
+  if (launcherEnhanced) return undefined;
+  const container = document.querySelector<HTMLElement>(TOOLBAR_SELECTOR);
+  const button = container?.querySelector<HTMLButtonElement>('.a11y-tools__button');
+  if (!container || !button) return undefined;
+
+  const nav = container.querySelector<HTMLElement>('.a11y-tools__nav');
+  if (nav && !nav.id) nav.id = 'a11y-tools-nav';
+  button.setAttribute('tabindex', '0');
+  button.setAttribute('aria-haspopup', 'true');
+  button.setAttribute('aria-expanded', 'false');
+  if (nav?.id) button.setAttribute('aria-controls', nav.id);
+
+  const isOpen = () => container.classList.contains('is-open');
+  const setOpen = (open: boolean) => {
+    container.classList.toggle('is-open', open);
+    button.setAttribute('aria-expanded', String(open));
+  };
+  const onButtonClick = (event: Event) => {
+    event.preventDefault();
+    setOpen(!isOpen());
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && isOpen()) {
+      // Close only THIS layer — stop the event before it reaches the chat dock's own document-level Escape
+      // handler (which would otherwise collapse the panel too). Registered in the capture phase below so it
+      // runs first; only consumes Escape while the menu is actually open.
+      event.stopPropagation();
+      setOpen(false);
+      button.focus();
+    }
+  };
+  // pointerdown (not click) so a tap that starts outside closes the panel before its own click lands.
+  const onPointerDown = (event: Event) => {
+    if (isOpen() && !container.contains(event.target as Node)) setOpen(false);
+  };
+  // Tabbing out of the widget entirely closes it; moving focus between its own controls does not.
+  const onFocusOut = (event: FocusEvent) => {
+    if (isOpen() && !container.contains(event.relatedTarget as Node)) setOpen(false);
+  };
+
+  button.addEventListener('click', onButtonClick);
+  document.addEventListener('keydown', onKeyDown, true); // capture: run before the dock's bubble-phase Escape
+  document.addEventListener('pointerdown', onPointerDown);
+  container.addEventListener('focusout', onFocusOut);
+  launcherEnhanced = true;
+
+  return () => {
+    button.removeEventListener('click', onButtonClick);
+    document.removeEventListener('keydown', onKeyDown, true);
+    document.removeEventListener('pointerdown', onPointerDown);
+    container.removeEventListener('focusout', onFocusOut);
+    container.classList.remove('is-open');
+    launcherEnhanced = false;
+  };
+}
+
 export function AccessibilityWidget() {
   useEffect(() => {
     let stopped = false;
     let intervalId: number | undefined;
+    let enhanceIntervalId: number | undefined;
+    let launcherCleanup: (() => void) | undefined;
     const startedAt = Date.now();
+
+    // The launcher is created asynchronously by the vendor init, so poll for it and enhance once it exists.
+    const tryEnhanceLauncher = () => {
+      const cleanup = enhanceAccessibilityLauncher();
+      if (cleanup) {
+        launcherCleanup = cleanup;
+      }
+      if (
+        (cleanup || Date.now() - startedAt >= INIT_TIMEOUT_MS) &&
+        enhanceIntervalId !== undefined
+      ) {
+        window.clearInterval(enhanceIntervalId);
+        enhanceIntervalId = undefined;
+      }
+    };
 
     const stop = () => {
       stopped = true;
       if (intervalId !== undefined) {
         window.clearInterval(intervalId);
       }
+      if (enhanceIntervalId !== undefined) {
+        window.clearInterval(enhanceIntervalId);
+        enhanceIntervalId = undefined;
+      }
+      launcherCleanup?.();
+      launcherCleanup = undefined;
       window.removeEventListener('load', tryInitialize);
     };
 
@@ -160,6 +250,10 @@ export function AccessibilityWidget() {
     tryInitialize();
     if (!stopped) {
       intervalId = window.setInterval(tryInitialize, POLL_INTERVAL_MS);
+    }
+    tryEnhanceLauncher();
+    if (!launcherCleanup) {
+      enhanceIntervalId = window.setInterval(tryEnhanceLauncher, POLL_INTERVAL_MS);
     }
 
     return stop;

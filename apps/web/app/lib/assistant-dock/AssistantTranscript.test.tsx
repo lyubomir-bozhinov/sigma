@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
@@ -273,6 +273,138 @@ describe('AssistantTranscript', () => {
     );
 
     expect(screen.queryByText(NO_ANSWER)).not.toBeInTheDocument();
+  });
+});
+
+describe('AssistantTranscript — chat-experience polish', () => {
+  it('shows a typing indicator while awaiting the first reply token (no phase yet)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t1', 'въпрос')]}
+        phase={null}
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).not.toBeNull();
+  });
+
+  it('hides the typing indicator once a phase line is showing (richer cue wins)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t2', 'въпрос')]}
+        phase="querying"
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).toBeNull();
+  });
+
+  it('shows no typing indicator when idle', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t3', 'въпрос')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).toBeNull();
+  });
+
+  it('keeps the typing indicator out of the screen-reader tree (aria-hidden)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t4', 'въпрос')]}
+        phase={null}
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+  });
+
+  it('does not show the jump-to-latest pill while anchored at the bottom', () => {
+    render(
+      <AssistantTranscript
+        messages={[userMessage('t5', 'въпрос')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Към последното съобщение' }),
+    ).not.toBeInTheDocument();
+  });
+
+  // jsdom does no layout, so force an overflow + scrolled-up geometry to mount the pill.
+  const forceScrolledUp = (log: HTMLElement) => {
+    Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(log, 'clientHeight', { configurable: true, value: 200 });
+    log.scrollTop = 0;
+    fireEvent.scroll(log);
+  };
+
+  it('redirects focus into the conversation region when the pill is activated (no drop to <body>)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('p1', 'въпрос'), userMessage('p2', 'още')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+    const log = container.querySelector('.assistant-transcript') as HTMLElement;
+    forceScrolledUp(log);
+
+    const pill = screen.getByRole('button', { name: 'Към последното съобщение' });
+    fireEvent.click(pill);
+
+    // The pill unmounts on re-anchor; focus must land on the log region, not fall to <body>.
+    expect(log).toHaveFocus();
+    expect(
+      screen.queryByRole('button', { name: 'Към последното съобщение' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('clears the pill when the transcript shrinks back below its overflow', () => {
+    const { container, rerender } = render(
+      <AssistantTranscript
+        messages={[userMessage('s1', 'а'), userMessage('s2', 'б')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+    const log = container.querySelector('.assistant-transcript') as HTMLElement;
+    forceScrolledUp(log);
+    expect(screen.getByRole('button', { name: 'Към последното съобщение' })).toBeInTheDocument();
+
+    // Content no longer overflows → the messages effect must re-derive detachment and drop the pill,
+    // even though no scroll event fired.
+    Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 150 });
+    rerender(
+      <AssistantTranscript
+        messages={[userMessage('s1', 'а')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Към последното съобщение' }),
+    ).not.toBeInTheDocument();
   });
 });
 

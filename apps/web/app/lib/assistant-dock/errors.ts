@@ -49,6 +49,9 @@ export const VOICE_ERROR_COPY = {
   capture: 'Записът не бе възможен. Можете да напишете въпроса си.',
   unsupported: 'Гласовото въвеждане не се поддържа от този браузър. Напишете въпроса си.',
   noSpeech: 'Не разпознах реч. Опитайте отново или напишете въпроса си.',
+  // The permission prompt was never answered (ignored dialog, embedded webview) — surface an actionable
+  // line instead of leaving the mic stuck in "requesting…" with no way out.
+  timeout: 'Микрофонът не отговори. Проверете разрешенията за микрофон или напишете въпроса си.',
   transcription:
     'Разпознаването на говор не бе успешно. Можете да напишете въпроса си, или опитайте отново.',
 } as const;
