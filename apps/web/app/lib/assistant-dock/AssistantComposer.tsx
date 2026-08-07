@@ -65,13 +65,33 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stopRef = useRef<HTMLButtonElement>(null);
+  // Latest draft + busy, readable from the (stable) transcript callback without stale-closure churn.
+  const textRef = useRef('');
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    textRef.current = text;
+  });
 
-  // A finished transcript appends to the draft (with a separating space). Focus deliberately STAYS on the
-  // mic button — moving it to the textarea would cut off the screen-reader announcement (a11y contract).
-  const handleTranscript = useCallback((transcript: string) => {
-    setText((prev) => appendTranscript(prev, transcript));
-    setTranscriptReady(true);
-  }, []);
+  // A finished transcript either appends to the draft for review (default) or — when the user chose
+  // "finish & send" — sends directly. Direct send falls back to appending if a chat turn is in flight, so
+  // the words are never lost. On the review path, focus deliberately STAYS on the mic button (moving it to
+  // the textarea would cut off the screen-reader announcement — a11y contract).
+  const handleTranscript = useCallback(
+    (transcript: string, sendNow: boolean) => {
+      const combined = appendTranscript(textRef.current, transcript);
+      if (sendNow && !busyRef.current && combined.trim() !== '') {
+        onSend(combined.trim());
+        setText('');
+        textRef.current = '';
+        setTranscriptReady(false);
+        return;
+      }
+      setText(combined);
+      textRef.current = combined;
+      setTranscriptReady(true);
+    },
+    [onSend],
+  );
   const voice = useVoiceInput(handleTranscript);
 
   // Wipe the whole draft in one action — easier than select-all-delete for motor/cognitive users who
@@ -103,11 +123,12 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
   // keyboard/AT user is never ejected from the composer. The Enter-to-send path keeps focus in the
   // readOnly textarea, so a still-focused element (activeElement ≠ <body>) is left untouched — this only
   // rescues the case where the swap actually dropped focus. Guarded to the real busy transition (not first
-  // mount) so nothing is auto-focused on load.
-  const busyRef = useRef(busy);
+  // mount) so nothing is auto-focused on load. (busyRef is declared at the top, shared with handleTranscript.)
+  const prevBusyRef = useRef(busy);
   useEffect(() => {
-    const swapped = busyRef.current !== busy;
     busyRef.current = busy;
+    const swapped = prevBusyRef.current !== busy;
+    prevBusyRef.current = busy;
     if (!swapped || document.activeElement !== document.body) return;
     if (busy) stopRef.current?.focus();
     else inputRef.current?.focus();

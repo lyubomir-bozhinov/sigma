@@ -50,8 +50,10 @@ export interface VoiceInput {
   level: number;
   /** Start recording — MUST be called from a click handler (keeps getUserMedia out of an effect). */
   start: () => void;
-  /** Stop recording and transcribe. */
+  /** Stop recording and transcribe → append to the draft for review (the default, a11y-safe path). */
   stop: () => void;
+  /** Stop, transcribe, and send in one step — the transcript reaches onTranscript with `sendNow=true`. */
+  finishAndSend: () => void;
   /** Discard the in-progress recording without transcribing — the "cancel" affordance while recording. */
   cancel: () => void;
 }
@@ -110,7 +112,7 @@ function pickMime(): string | undefined {
   return MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m));
 }
 
-export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput {
+export function useVoiceInput(onTranscript: (text: string, sendNow: boolean) => void): VoiceInput {
   const [state, setState] = useState<VoiceState>({ status: 'idle' });
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [endingSoon, setEndingSoon] = useState(false);
@@ -137,6 +139,10 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const monitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSpeechAtRef = useRef(0); // 0 = no speech heard yet; else the ms of the last speech window
+  // Set by finishAndSend() before the stop, read once in transcribe() to route the result: true → send it
+  // directly, false → append to the draft for review (the default). Survives teardown (which runs before
+  // transcribe); cleared on start/fail/cancel so it never leaks into the next recording.
+  const sendOnFinishRef = useRef(false);
 
   // Stop the mic tracks and timers (but NOT the recorded chunks). Idempotent.
   const teardown = useCallback(() => {
@@ -162,6 +168,7 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     (kind: VoiceErrorKind) => {
       teardown();
       chunksRef.current = [];
+      sendOnFinishRef.current = false; // an errored clip is never sent — fall back to the editable field
       setState({ status: 'error', kind, message: VOICE_ERROR_COPY[kind] });
     },
     [teardown],
@@ -204,7 +211,8 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       const data = (await res.json()) as { text?: unknown };
       const text = typeof data.text === 'string' ? data.text.trim() : '';
       if (text === '') return fail('noSpeech');
-      onTranscript(text);
+      onTranscript(text, sendOnFinishRef.current);
+      sendOnFinishRef.current = false;
       setState({ status: 'idle' });
     } catch (err) {
       if (isAbortError(err) && !timedOut) return; // unmount abort — not an error to surface
@@ -218,6 +226,17 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') recorder.stop(); // → onstop → teardown + transcribe
+  }, []);
+
+  // "Finish & send": same stop→transcribe path, but flag the result to be sent directly (not appended for
+  // review). The flag is read once in transcribe(); every safety rail (min-duration, VAD, no-speech,
+  // transport errors) still applies first, so a garbled or empty clip is never sent.
+  const finishAndSend = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      sendOnFinishRef.current = true;
+      recorder.stop();
+    }
   }, []);
   // The cap timeout (armed in start) needs the latest stop without re-arming — read it via a ref.
   const stopRef = useRef(stop);
@@ -276,6 +295,7 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       if (recorder.state !== 'inactive') recorder.stop();
     }
     startGenRef.current++; // invalidate any in-flight getUserMedia (cancel pressed during 'requesting')
+    sendOnFinishRef.current = false; // a discarded clip is never sent
     teardown();
     chunksRef.current = [];
     setState({ status: 'idle' });
@@ -292,6 +312,7 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       return fail('unsupported');
     }
+    sendOnFinishRef.current = false; // every recording starts in the review-then-send default
     setState({ status: 'requesting' });
     // Tag this attempt; if the permission prompt is never answered, the timeout invalidates the tag and
     // fails out, and a late-resolving getUserMedia (below) sees the mismatch and releases its stream.
@@ -364,5 +385,5 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     };
   }, [teardown]);
 
-  return { state, startedAt, endingSoon, level, start, stop, cancel };
+  return { state, startedAt, endingSoon, level, start, stop, finishAndSend, cancel };
 }

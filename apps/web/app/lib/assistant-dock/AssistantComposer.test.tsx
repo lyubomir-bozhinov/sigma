@@ -6,9 +6,11 @@ import { AssistantComposer, appendTranscript } from './AssistantComposer';
 // Drive the voice hook deterministically: capture the composer's onTranscript so a test can land a
 // transcript without a real mic (jsdom has no getUserMedia/MediaRecorder). State stays 'idle' so the
 // mic renders in its resting form — exactly what these composer-layout tests need.
-const voiceMock = vi.hoisted(() => ({ latest: null as ((text: string) => void) | null }));
+const voiceMock = vi.hoisted(() => ({
+  latest: null as ((text: string, sendNow: boolean) => void) | null,
+}));
 vi.mock('./useVoiceInput', () => ({
-  useVoiceInput: (onTranscript: (text: string) => void) => {
+  useVoiceInput: (onTranscript: (text: string, sendNow: boolean) => void) => {
     voiceMock.latest = onTranscript;
     return {
       state: { status: 'idle' as const },
@@ -17,13 +19,15 @@ vi.mock('./useVoiceInput', () => ({
       level: 0.4,
       start: () => {},
       stop: () => {},
+      finishAndSend: () => {},
       cancel: () => {},
     };
   },
 }));
 
-/** Simulate a finished voice transcript landing in the draft (sets text + the transcript-ready cue). */
-const landTranscript = (text: string) => act(() => voiceMock.latest?.(text));
+/** Simulate a finished voice transcript. `sendNow` mirrors the "finish & send" path (default: review). */
+const landTranscript = (text: string, sendNow = false) =>
+  act(() => voiceMock.latest?.(text, sendNow));
 
 afterEach(() => {
   cleanup();
@@ -186,6 +190,40 @@ describe('AssistantComposer', () => {
 
     expect(input).toHaveValue('');
     expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
+  });
+
+  it('sends a voice transcript directly when finish-&-send is used (sendNow), clearing the draft', () => {
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+    const input = screen.getByLabelText('Съобщение до асистента');
+
+    landTranscript('колко договора има', true);
+
+    expect(onSend).toHaveBeenCalledWith('колко договора има');
+    expect(input).toHaveValue(''); // sent, not left in the field
+    expect(screen.queryByRole('button', { name: 'Изчисти' })).not.toBeInTheDocument();
+  });
+
+  it('finish-&-send combines an existing typed draft with the transcript before sending', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+
+    await user.type(screen.getByLabelText('Съобщение до асистента'), 'договори за');
+    landTranscript('София 2024', true);
+
+    expect(onSend).toHaveBeenCalledWith('договори за София 2024');
+  });
+
+  it('falls back to appending (never sends) when a turn is already in flight', () => {
+    const onSend = vi.fn();
+    render(<AssistantComposer onSend={onSend} onStop={noop} busy={true} />);
+
+    // A direct-send transcript that lands mid-turn must not fire a send — keep the words for review.
+    landTranscript('нещо казано', true);
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Съобщение до асистента')).toHaveValue('нещо казано');
   });
 
   it('keeps the textarea usable when NOT in a chat turn (never a dead mic)', () => {

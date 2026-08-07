@@ -125,7 +125,7 @@ describe('useVoiceInput', () => {
 
     clock = 2000; // 2s of recording — clears the min-duration gate
     act(() => result.current.stop());
-    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('здравей'));
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('здравей', false));
     expect(result.current.state.status).toBe('idle');
   });
 
@@ -166,7 +166,7 @@ describe('useVoiceInput', () => {
     });
 
     // No manual stop() was called — silence alone ended the recording and drove transcription.
-    expect(onTranscript).toHaveBeenCalledWith('здравей');
+    expect(onTranscript).toHaveBeenCalledWith('здравей', false);
     expect(result.current.state.status).toBe('idle');
     vi.useRealTimers();
   });
@@ -263,6 +263,33 @@ describe('useVoiceInput', () => {
     expect(result.current.state).toMatchObject({ status: 'error', kind: 'timeout' });
     expect(onTranscript).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it('finishAndSend transcribes and hands back the text with sendNow=true', async () => {
+    let clock = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => clock);
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+    setGetUserMedia(vi.fn().mockResolvedValue(fakeStream()));
+    stubAudioContext(0.3);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'здравей' }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceInput(onTranscript));
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state.status).toBe('recording'));
+
+    clock = 2000;
+    act(() => result.current.finishAndSend());
+    // Same transcribe path as stop(), but the result is flagged to be sent directly, not appended.
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('здравей', true));
+    expect(result.current.state.status).toBe('idle');
   });
 
   it('cancel discards the in-progress recording without transcribing (returns to idle)', async () => {

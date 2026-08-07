@@ -33,6 +33,13 @@ const CANCEL_ICON = (
     />
   </svg>
 );
+// "Finish & send" glyph — a paper-plane, distinct from the composer's arrow-up Send and from the
+// stop/cancel controls: one press ends the recording and sends the transcript directly.
+const SEND_ICON = (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+    <path fill="currentColor" d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" />
+  </svg>
+);
 // Per-bar height coefficients (13 bars): a symmetric mound so the level-scaled meter reads as an
 // equalizer, not one flat block. Each bar's height = --mic-level × its coefficient (see assistant.css).
 const BAR_COEFFICIENTS = [0.35, 0.5, 0.65, 0.8, 0.95, 1, 0.9, 1, 0.95, 0.8, 0.65, 0.5, 0.35];
@@ -43,7 +50,7 @@ const BAR_COEFFICIENTS = [0.35, 0.5, 0.65, 0.8, 0.95, 1, 0.9, 1, 0.95, 0.8, 0.65
  * button beside it. The composer owns the status live-region; this stays just the inline controls.
  */
 export const AssistantComposerMic = ({ voice }: AssistantComposerMicProps) => {
-  const { state, startedAt, level, start, stop, cancel } = voice;
+  const { state, startedAt, level, start, stop, finishAndSend, cancel } = voice;
   const seconds = useElapsedSeconds(startedAt); // local tick — re-renders only the mic, not the composer
   const recording = state.status === 'recording';
   const busy = state.status === 'requesting' || state.status === 'transcribing';
@@ -88,6 +95,16 @@ export const AssistantComposerMic = ({ voice }: AssistantComposerMicProps) => {
           onClick={() => cancel()}
         >
           {CANCEL_ICON}
+        </button>
+      ) : null}
+      {recording ? (
+        <button
+          type="button"
+          className="assistant-composer__mic-send"
+          aria-label="Приключи и изпрати"
+          onClick={() => finishAndSend()}
+        >
+          {SEND_ICON}
         </button>
       ) : null}
     </div>

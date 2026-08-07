@@ -473,7 +473,8 @@ html.assistant-ready .assistant-dock--panel {
 .assistant-composer__clear,
 .assistant-composer__send,
 .assistant-composer__stop,
-.assistant-composer__mic-cancel {
+.assistant-composer__mic-cancel,
+.assistant-composer__mic-send {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -487,8 +488,10 @@ html.assistant-ready .assistant-dock--panel {
   color: var(--ink);
   cursor: pointer;
 }
-/* Primary action — accent fill so "send" is unmistakably the main control. */
-.assistant-composer__send {
+/* Primary actions — accent fill so "send" is unmistakably the main control (composer Send + the
+   finish-&-send button shown while recording). */
+.assistant-composer__send,
+.assistant-composer__mic-send {
   background: var(--accent);
   color: var(--paper);
   border-color: var(--accent);
@@ -518,8 +521,9 @@ html.assistant-ready .assistant-dock--panel {
     background: var(--paper-warm);
     border-color: var(--ink-mid);
   }
-  /* The primary Send is already an accent fill — deepen it slightly instead of washing it lighter. */
-  .assistant-composer__send:hover:not(:disabled):not([aria-disabled='true']) {
+  /* Accent-filled sends deepen on hover instead of washing lighter. */
+  .assistant-composer__send:hover:not(:disabled):not([aria-disabled='true']),
+  .assistant-composer__mic-send:hover {
     filter: brightness(0.92);
   }
 }
@@ -608,6 +612,7 @@ html.a11y-textonly body:has(.assistant-dock--panel) {
   .assistant-composer__send,
   .assistant-composer__stop,
   .assistant-composer__mic-cancel,
+  .assistant-composer__mic-send,
   .assistant-transcript__scroll-btn {
     width: 2.75rem;
     height: 2.75rem;

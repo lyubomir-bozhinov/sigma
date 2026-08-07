@@ -13,6 +13,7 @@ const fakeVoice = (state: VoiceState, over: Partial<VoiceInput> = {}): VoiceInpu
   level: 0.4,
   start: vi.fn(),
   stop: vi.fn(),
+  finishAndSend: vi.fn(),
   cancel: vi.fn(),
   ...over,
 });
@@ -63,6 +64,26 @@ describe('AssistantComposerMic', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Откажи записа' }));
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('recording: shows a finish-&-send button that calls finishAndSend (not stop)', async () => {
+    const stop = vi.fn();
+    const finishAndSend = vi.fn();
+    render(
+      <AssistantComposerMic
+        voice={fakeVoice({ status: 'recording' }, { stop, finishAndSend, startedAt: 1000 })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Приключи и изпрати' }));
+    expect(finishAndSend).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('idle: no finish-&-send button (recording-only affordance)', () => {
+    render(<AssistantComposerMic voice={fakeVoice({ status: 'idle' })} />);
+
+    expect(screen.queryByRole('button', { name: 'Приключи и изпрати' })).not.toBeInTheDocument();
   });
 
   it('recording: the visualizer height tracks the live level via a CSS variable', () => {
