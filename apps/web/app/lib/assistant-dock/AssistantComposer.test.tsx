@@ -14,8 +14,10 @@ vi.mock('./useVoiceInput', () => ({
       state: { status: 'idle' as const },
       startedAt: null,
       endingSoon: false,
+      level: 0.4,
       start: () => {},
       stop: () => {},
+      cancel: () => {},
     };
   },
 }));

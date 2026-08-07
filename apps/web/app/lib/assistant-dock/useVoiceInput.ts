@@ -10,6 +10,16 @@ import { nextTurnstileToken, withTurnstileHeader } from './turnstile-token';
 
 const ENDPOINT = '/assistant/transcribe';
 const TRANSCRIBE_TIMEOUT_MS = 20_000; // a hung request must surface an error, not hang in a dead mic
+// A getUserMedia permission prompt that's never answered (ignored dialog, embedded webview) leaves the
+// mic stuck in 'requesting' forever — bound it so an unanswered prompt fails into an actionable error.
+const REQUEST_TIMEOUT_MS = 10_000;
+// Live level → visualizer height. Map RMS (speech ≈ 0.05–0.3) onto 0..1 with a gain, a floor so bars are
+// never fully collapsed, and a ceiling of 1. Drives the amplitude-reactive equalizer (no extra capture —
+// reuses the silence-monitor's analyser reads).
+const LEVEL_GAIN = 5;
+const LEVEL_FLOOR = 0.12;
+const DEFAULT_LEVEL = 0.4; // resting height before/without live analysis (Web Audio absent → fail-open)
+const toLevel = (rms: number): number => Math.min(1, Math.max(LEVEL_FLOOR, rms * LEVEL_GAIN));
 const MAX_RECORDING_MS = 60_000; // hard cap — the server byte cap is the real bound; this bounds cost/UX.
 const WARNING_LEAD_MS = 10_000; // flip endingSoon this long before the cap → the "10 seconds left" status
 // Below this a clip is an accidental tap — the cheap first gate before we bother decoding audio.
@@ -36,10 +46,14 @@ export interface VoiceInput {
   startedAt: number | null;
   /** True in the final ~10s before the cap — drives the composer's "10 seconds left" status (coarse, not per-tick). */
   endingSoon: boolean;
+  /** Live mic level, 0..1 (sampled from the recording analyser) — drives the reactive visualizer height. */
+  level: number;
   /** Start recording — MUST be called from a click handler (keeps getUserMedia out of an effect). */
   start: () => void;
   /** Stop recording and transcribe. */
   stop: () => void;
+  /** Discard the in-progress recording without transcribing — the "cancel" affordance while recording. */
+  cancel: () => void;
 }
 
 const isAbortError = (e: unknown): boolean =>
@@ -100,14 +114,19 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const [state, setState] = useState<VoiceState>({ status: 'idle' });
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [endingSoon, setEndingSoon] = useState(false);
+  const [level, setLevel] = useState(DEFAULT_LEVEL);
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const capTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const startedAtRef = useRef(0);
+  // Bumped on every start() and on the request-timeout — a stale getUserMedia resolution (one that lands
+  // after we timed out or a newer attempt superseded it) sees a mismatched id and releases its stream.
+  const startGenRef = useRef(0);
   const mimeRef = useRef('audio/webm');
   const mountedRef = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -118,9 +137,11 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const teardown = useCallback(() => {
     if (capTimerRef.current) clearTimeout(capTimerRef.current);
     if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    if (reqTimerRef.current) clearTimeout(reqTimerRef.current);
     if (monitorRef.current) clearInterval(monitorRef.current);
     capTimerRef.current = null;
     warnTimerRef.current = null;
+    reqTimerRef.current = null;
     monitorRef.current = null;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
@@ -129,6 +150,7 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     streamRef.current = null;
     setStartedAt(null);
     setEndingSoon(false);
+    setLevel(DEFAULT_LEVEL);
   }, []);
 
   const fail = useCallback(
@@ -224,6 +246,9 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       const rms = Math.sqrt(sum / buf.length);
       const now = Date.now();
 
+      // Same read feeds the reactive visualizer — the bar heights track the spoken level, no extra capture.
+      setLevel(toLevel(rms));
+
       if (rms >= SPEECH_RMS_THRESHOLD) {
         lastSpeechAtRef.current = now;
       } else if (
@@ -234,6 +259,22 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       }
     }, SILENCE_MONITOR_MS);
   }, []);
+
+  // Discard the in-progress recording WITHOUT transcribing — the "cancel" affordance. Null the recorder
+  // callbacks first so its stop() can't re-enter transcribe, then tear down and drop the chunks. Cheaper
+  // and clearer than letting a stop() run the VAD/no-speech path just to throw the clip away.
+  const cancel = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (recorder) {
+      recorder.onstop = null;
+      recorder.onerror = null;
+      if (recorder.state !== 'inactive') recorder.stop();
+    }
+    startGenRef.current++; // invalidate any in-flight getUserMedia (cancel pressed during 'requesting')
+    teardown();
+    chunksRef.current = [];
+    setState({ status: 'idle' });
+  }, [teardown]);
 
   const start = useCallback(() => {
     if (
@@ -247,11 +288,23 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       return fail('unsupported');
     }
     setState({ status: 'requesting' });
+    // Tag this attempt; if the permission prompt is never answered, the timeout invalidates the tag and
+    // fails out, and a late-resolving getUserMedia (below) sees the mismatch and releases its stream.
+    const gen = ++startGenRef.current;
+    reqTimerRef.current = setTimeout(() => {
+      reqTimerRef.current = null;
+      if (startGenRef.current !== gen || !mountedRef.current) return;
+      startGenRef.current++; // supersede the still-pending request so its resolution self-releases
+      fail('timeout');
+    }, REQUEST_TIMEOUT_MS);
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
-        // Unmounted while the permission prompt was open — stop this orphaned stream, or the mic stays live.
-        if (!mountedRef.current) {
+        if (reqTimerRef.current) clearTimeout(reqTimerRef.current);
+        reqTimerRef.current = null;
+        // Superseded (timed out / newer attempt) or unmounted while the prompt was open — stop this
+        // orphaned stream, or the mic stays live.
+        if (startGenRef.current !== gen || !mountedRef.current) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -287,9 +340,11 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
         startSilenceMonitor(stream);
       })
       .catch((err) => {
-        // Mirror the resolve path's mount guard: if getUserMedia rejects after unmount (permission
-        // prompt dismissed post-unmount), don't run fail()/setState on a torn-down component.
-        if (!mountedRef.current) return;
+        if (reqTimerRef.current) clearTimeout(reqTimerRef.current);
+        reqTimerRef.current = null;
+        // Mirror the resolve path's guard: if the request was superseded (timed out) or getUserMedia
+        // rejects after unmount, don't run fail()/setState on a stale attempt or a torn-down component.
+        if (startGenRef.current !== gen || !mountedRef.current) return;
         fail(classifyMediaError(err));
       });
   }, [state.status, fail, transcribe, teardown, startSilenceMonitor]);
@@ -304,5 +359,5 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     };
   }, [teardown]);
 
-  return { state, startedAt, endingSoon, start, stop };
+  return { state, startedAt, endingSoon, level, start, stop, cancel };
 }
