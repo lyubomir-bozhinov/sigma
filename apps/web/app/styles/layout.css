@@ -282,12 +282,11 @@
   }
 }
 
-/* The third-party accessibility launcher (.a11y-tools) is placed bottom-right, like production /flows, with
-   its disclosure panel growing UPWARD from the button (see the collapse rules below). When the assistant
-   dock is open on desktop we move it to the bottom-LEFT corner — the vendor menu always opens up-and-right,
-   so bottom-left makes the panel open into the free content area instead of onto the dock. When the dock is
-   collapsed it returns to the bottom-right corner. On mobile it sits above the chat launcher pill so the
-   two don't stack.
+/* The third-party accessibility launcher (.a11y-tools) tracks the chat control, bottom-right, with its
+   disclosure panel growing UPWARD from the button (see the collapse rules below):
+   - chat CLOSED → a little ABOVE the "Асистент" launcher pill (they share the bottom-right corner, so it
+     must not sit on top of it);
+   - chat OPEN (desktop) → beside the open dock panel, just left of its edge at the composer's height.
 
    CRITICAL (usability): the anchor must NOT change position when the menu opens. An earlier centred anchor
    (top:50% + translateY(-50%)) combined with the collapse changed the container height on open, recentred
@@ -305,32 +304,21 @@ html .a11y-tools__button {
   transition: none !important;
 }
 html .a11y-tools {
-  /* Default: bottom-right corner, like production /flows. */
+  /* Chat CLOSED (or no dock): bottom-right, sitting ABOVE the chat launcher pill so the two don't overlap
+     (the launcher is ~44px tall at the bottom-right corner). */
   top: auto !important;
-  bottom: 20px !important;
-  right: 12px !important;
+  bottom: 76px !important;
+  right: 16px !important;
   transform: none !important;
   transition: none !important;
 }
-/* Desktop, chat dock open: move to the bottom-LEFT corner. The vendor menu always opens up-and-to-the-
-   right of the button, so anchoring bottom-right-of-content would throw the open panel onto the dock;
-   bottom-left makes it open into the free left content area instead — fully clear of the dock and the
-   composer. Left-anchor the button (override the vendor `left:-60px`) so it stays put when the panel opens.
-   When the dock is collapsed the widget returns to the bottom-right corner (rule above). */
+/* Desktop, chat OPEN: the launcher is gone and the dock panel fills the right, so move the widget over to
+   sit right beside the panel — just left of its edge, at the composer's height — and drop it back to the
+   bottom (no launcher to clear). */
 @media (min-width: 761px) {
   body:has(.assistant-dock--panel) .a11y-tools {
-    right: auto !important;
-    left: 12px !important;
-  }
-  body:has(.assistant-dock--panel) .a11y-tools__button {
-    left: 0 !important;
-    right: auto !important;
-  }
-}
-/* Mobile: sit above the collapsed chat launcher pill (also bottom-right) so the two don't stack. */
-@media (max-width: 760px) {
-  html .a11y-tools {
-    bottom: 84px !important;
+    right: calc(var(--assistant-panel-w) + 16px) !important;
+    bottom: 20px !important;
   }
 }
 /* The third-party widget ships its options panel ALWAYS expanded (a 300×545 grey block that covers the
