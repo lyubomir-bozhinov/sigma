@@ -14,9 +14,9 @@ contracts, house design language, or the weak-model / step-budget constraints.
 - **House tokens only.** No webfonts, no icon library, no CSS framework. Reuse `--accent`, `--paper*`,
   `--ink*`, `--rule`, `--s-*` spacing. Inline SVGs like the existing `MIC_ICON` / `STOP_ICON`.
 - **Bulgarian copy**, matching the existing register. New strings live beside the components.
-- **Weak model / budget.** The assistant is a ~31B model on a tight step budget
-  ([[assistant-weak-model-constraints]]). No feature here may add model round-trips. Full
-  conversational voice (TTS back) is explicitly **out of the default scope** — see Phase 4.
+- **Weak model / budget.** The assistant is a ~31B model on a tight step budget (see the assistant
+  weak-model constraints). No feature here may add model round-trips. Full conversational voice
+  (TTS back) is explicitly **out of the default scope** — see Phase 4.
 - **Scope discipline (AGENTS.md).** One logical change per PR; don't touch report-page or ETL code.
 
 ## Reference patterns we're matching
@@ -52,6 +52,14 @@ Verified live against the PR-17 preview on 2026-07-29 (idle / typed / requesting
 appears; `AssistantComposer.test.tsx` still green (update DOM-structure assertions only).
 
 ## Phase 2 — Icon-first Send / Stop + inline mic (look + feel)
+
+> **Deviation note (as shipped in PR #87).** Review folded in three changes to the spec below: (1) **Send**
+> uses `aria-disabled` (not the `disabled` attr) so it stays tab-reachable while inert; the textarea goes
+> `readOnly` while busy so Enter-to-send never ejects the keyboard user, and focus is redirected across the
+> Send↔Stop swap. (2) **Clear** is an **eraser glyph** (not a ✕ — it must not rhyme with the header close ✕)
+> and surfaces **only after a voice transcript lands** (`transcriptReady && !busy`), not for a typed draft
+> (typists use ⌘A⌫). (3) The cluster order is **Clear → mic → Send** so mic and Send stay adjacent with no
+> layout hop. A Phase-3 implementer should follow the shipped behaviour, not the original bullets.
 
 **Files:** `AssistantComposer.tsx`, `AssistantComposerMic.tsx`, `assistant.css`.
 
@@ -101,7 +109,7 @@ VAD auto-stop, 60s cap, and Turnstile-token tests stay green.
 ChatGPT's second affordance (speak ↔ hear spoken replies). **Not** in the default rollout.
 
 - Would need Bulgarian **TTS** + streaming **STT** + barge-in + a full-panel voice UI, and adds
-  model/latency load the current ~31B/budget setup can't absorb ([[assistant-weak-model-constraints]]).
+  model/latency load the current ~31B/budget setup can't absorb (see the assistant weak-model constraints).
 - **Recommendation:** keep as a documented future initiative with its own cost/latency budget and a
   separate design doc. Do **not** build speculatively. If pursued, gate behind capability + an explicit
   opt-in, and reuse the Phase-3 recording UI as the entry animation.
