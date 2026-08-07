@@ -284,20 +284,27 @@
 
 /* The third-party accessibility launcher (.a11y-tools, loaded async from /assets/accessibility/) pins its
    container bottom-right with the 50px button offset ~420px down inside it, so it floats over the assistant
-   dock's compose field. Re-anchor the container to the vertical middle of the right edge (button offset
-   neutralised) so it clears the composer; on desktop, when the dock panel is open, pull it left of the
-   400px panel so it overlaps neither the input nor the conversation. The fly-out menu anchors to the same
-   container, so it moves with it. `!important` beats the async widget stylesheet regardless of load order. */
+   dock's compose field. Re-anchor it to a FIXED top on the right edge so it clears the composer; on desktop,
+   when the dock panel is open, pull it left of the 400px panel so it clears the conversation too.
+
+   CRITICAL (usability): the anchor must NOT be vertically-centred. Centring (top:50% + translateY(-50%))
+   plus the collapse below means opening the menu changes the container height (button→panel), which
+   recentres the container and jerks the button ~250px away mid-hover — a moving target that made the
+   launcher genuinely hard to click (verified: real hover/click failed as "not stable"). A fixed `top` keeps
+   the button still while the panel grows downward from it. `transition:none` removes the animated
+   reposition window for the same reason. `!important` beats the async widget stylesheet. */
 html .a11y-tools__button {
   background-color: var(--accent);
   border-color: var(--accent);
   top: 0 !important;
   bottom: auto !important;
+  transition: none !important;
 }
 html .a11y-tools {
-  top: 50% !important;
+  top: 96px !important;
   bottom: auto !important;
-  transform: translateY(-50%) !important;
+  transform: none !important;
+  transition: none !important;
 }
 @media (min-width: 761px) {
   body:has(.assistant-dock--panel) .a11y-tools {
@@ -306,11 +313,10 @@ html .a11y-tools {
 }
 /* The third-party widget ships its options panel ALWAYS expanded (a 300×545 grey block that covers the
    dock — confirmed identical on production). Collapse it to just the launcher button at rest; it opens on
-   hover / focus / click via the widget's own :focus-within, so the controls stay reachable (the button
-   remains visible and keyboard-focusable — Tab to it and the panel opens). Collapsing it also lets the
-   container shrink to the button, so the mid-height anchor above actually centres the button. */
-/* Scoped to :not(.a11y-textonly): in text-only mode the widget is relinearised inline and the panel MUST
-   stay visible, so the collapse never applies there. */
+   hover / focus / click via the widget's own :focus-within, so the controls stay reachable. The panel grows
+   DOWNWARD from the fixed-top button (which never moves), and `max-height` + scroll keep a tall menu inside
+   short viewports. Scoped to :not(.a11y-textonly): text-only mode relinearises the widget inline and the
+   panel MUST stay visible, so the collapse never applies there. */
 html:not(.a11y-textonly) .a11y-tools__nav {
   width: 0 !important;
   height: 0 !important;
@@ -320,7 +326,8 @@ html:not(.a11y-textonly) .a11y-tools:hover .a11y-tools__nav,
 html:not(.a11y-textonly) .a11y-tools:focus-within .a11y-tools__nav {
   width: auto !important;
   height: auto !important;
-  overflow: visible !important;
+  max-height: 80vh !important;
+  overflow-y: auto !important;
 }
 
 /* Stacked horizontal bar */
