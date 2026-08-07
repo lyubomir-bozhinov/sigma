@@ -312,22 +312,25 @@ html .a11y-tools {
   }
 }
 /* The third-party widget ships its options panel ALWAYS expanded (a 300×545 grey block that covers the
-   dock — confirmed identical on production). Collapse it to just the launcher button at rest; it opens on
-   hover / focus / click via the widget's own :focus-within, so the controls stay reachable. The panel grows
-   DOWNWARD from the fixed-top button (which never moves), and `max-height` + scroll keep a tall menu inside
-   short viewports. Scoped to :not(.a11y-textonly): text-only mode relinearises the widget inline and the
-   panel MUST stay visible, so the collapse never applies there. */
+   dock — confirmed identical on production). We turn it into a proper click-toggle disclosure: collapsed
+   to the launcher button at rest, opened only when AccessibilityWidget.tsx sets `.is-open` on click /
+   Enter / Space (with aria-expanded, Escape + click-outside to close). `visibility:hidden` on the collapsed
+   panel also drops its controls from the tab order, so keyboard users don't Tab through an invisible menu;
+   they reveal it via the button. The panel grows DOWNWARD from the fixed-top button (which never moves),
+   and `max-height` + scroll keep a tall menu inside short viewports. Scoped to :not(.a11y-textonly): text-
+   only mode relinearises the widget inline and the panel MUST stay visible, so the collapse never applies. */
 html:not(.a11y-textonly) .a11y-tools__nav {
   width: 0 !important;
   height: 0 !important;
   overflow: hidden !important;
+  visibility: hidden !important;
 }
-html:not(.a11y-textonly) .a11y-tools:hover .a11y-tools__nav,
-html:not(.a11y-textonly) .a11y-tools:focus-within .a11y-tools__nav {
+html:not(.a11y-textonly) .a11y-tools.is-open .a11y-tools__nav {
   width: auto !important;
   height: auto !important;
   max-height: 80vh !important;
   overflow-y: auto !important;
+  visibility: visible !important;
 }
 
 /* Stacked horizontal bar */
