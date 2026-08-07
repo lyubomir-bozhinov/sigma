@@ -171,6 +171,9 @@ html.assistant-ready .assistant-dock--panel {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Don't chain the scroll to the page behind the dock once the conversation hits its top/bottom — matches
+     the ChatGPT/Claude sheet behaviour this dock is styled after. */
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: var(--s-4);

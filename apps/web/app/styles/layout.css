@@ -341,6 +341,11 @@ html:not(.a11y-textonly) .a11y-tools.is-open .a11y-tools__nav {
   max-height: 80vh !important;
   overflow-y: auto !important;
   visibility: visible !important;
+  /* The vendor parks the panel off-screen at `margin-right: -300px` and slides it in by setting it to 0
+     (only on :hover / :focus-within). Our click-toggle must reproduce that shown position itself — without
+     this, `.is-open` released width/height/visibility but the panel stayed off the right edge unless the
+     button happened to be focused. */
+  margin-right: 0 !important;
 }
 
 /* Stacked horizontal bar */

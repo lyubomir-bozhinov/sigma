@@ -144,6 +144,10 @@ function enhanceAccessibilityLauncher(): (() => void) | undefined {
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape' && isOpen()) {
+      // Close only THIS layer — stop the event before it reaches the chat dock's own document-level Escape
+      // handler (which would otherwise collapse the panel too). Registered in the capture phase below so it
+      // runs first; only consumes Escape while the menu is actually open.
+      event.stopPropagation();
       setOpen(false);
       button.focus();
     }
@@ -158,14 +162,14 @@ function enhanceAccessibilityLauncher(): (() => void) | undefined {
   };
 
   button.addEventListener('click', onButtonClick);
-  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keydown', onKeyDown, true); // capture: run before the dock's bubble-phase Escape
   document.addEventListener('pointerdown', onPointerDown);
   container.addEventListener('focusout', onFocusOut);
   launcherEnhanced = true;
 
   return () => {
     button.removeEventListener('click', onButtonClick);
-    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keydown', onKeyDown, true);
     document.removeEventListener('pointerdown', onPointerDown);
     container.removeEventListener('focusout', onFocusOut);
     container.classList.remove('is-open');

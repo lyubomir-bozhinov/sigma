@@ -65,12 +65,14 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stopRef = useRef<HTMLButtonElement>(null);
-  // Latest draft + busy, readable from the (stable) transcript callback without stale-closure churn.
+  // Latest draft + busy, readable from the (stable) transcript callback without a stale one-render window.
+  // Assigned DURING render (idempotent ref writes) so handleTranscript never reads the previous render's
+  // value — the finish-&-send misroute where a transcript landing on the busy→idle frame was demoted to a
+  // draft instead of sent (a prior post-paint effect updated busyRef too late).
   const textRef = useRef('');
   const busyRef = useRef(busy);
-  useEffect(() => {
-    textRef.current = text;
-  });
+  textRef.current = text;
+  busyRef.current = busy;
 
   // A finished transcript either appends to the draft for review (default) or — when the user chose
   // "finish & send" — sends directly. Direct send falls back to appending if a chat turn is in flight, so
@@ -126,7 +128,6 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
   // mount) so nothing is auto-focused on load. (busyRef is declared at the top, shared with handleTranscript.)
   const prevBusyRef = useRef(busy);
   useEffect(() => {
-    busyRef.current = busy;
     const swapped = prevBusyRef.current !== busy;
     prevBusyRef.current = busy;
     if (!swapped || document.activeElement !== document.body) return;
