@@ -276,6 +276,78 @@ describe('AssistantTranscript', () => {
   });
 });
 
+describe('AssistantTranscript — chat-experience polish', () => {
+  it('shows a typing indicator while awaiting the first reply token (no phase yet)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t1', 'въпрос')]}
+        phase={null}
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).not.toBeNull();
+  });
+
+  it('hides the typing indicator once a phase line is showing (richer cue wins)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t2', 'въпрос')]}
+        phase="querying"
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).toBeNull();
+  });
+
+  it('shows no typing indicator when idle', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t3', 'въпрос')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).toBeNull();
+  });
+
+  it('keeps the typing indicator out of the screen-reader tree (aria-hidden)', () => {
+    const { container } = render(
+      <AssistantTranscript
+        messages={[userMessage('t4', 'въпрос')]}
+        phase={null}
+        busy={true}
+        aborted={false}
+      />,
+    );
+
+    expect(container.querySelector('.assistant-transcript__typing')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+  });
+
+  it('does not show the jump-to-latest pill while anchored at the bottom', () => {
+    render(
+      <AssistantTranscript
+        messages={[userMessage('t5', 'въпрос')]}
+        phase={null}
+        busy={false}
+        aborted={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Към последното съобщение' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 // WCAG 4.1.3: the polite log announces settled content; the in-flight message is silenced (its text
 // mutates on every token batch) and turn completion is announced once via a separate status region.
 describe('AssistantTranscript — live region for streamed tokens', () => {

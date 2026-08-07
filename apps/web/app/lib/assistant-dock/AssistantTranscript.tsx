@@ -56,6 +56,13 @@ const NO_ANSWER_FALLBACK =
 // between the scroll event and the re-render. A small constant (~2 lines), not a derived value.
 const STICK_THRESHOLD_PX = 40;
 
+// The "jump to latest" affordance shown when the reader has scrolled up away from the live bottom.
+const DOWN_ICON = (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+    <path fill="currentColor" d="M12 15 6 9h12z" />
+  </svg>
+);
+
 /**
  * The scrolling conversation log. Per message it renders the prose (AssistantMessage) and, for a
  * finished report, a ReportChip; a "preparing report" line bridges the gap while the report is composed.
@@ -124,11 +131,31 @@ export const AssistantTranscript = ({
     }
   }, [messages]);
 
+  // Whether the reader has scrolled up off the live bottom — drives the "jump to latest" pill. A ref alone
+  // can't show/hide a button (no re-render), so mirror it into state; React bails when the boolean is
+  // unchanged, so this stays cheap despite firing on every scroll event.
+  const [detached, setDetached] = useState(false);
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
+    stickToBottom.current = atBottom;
+    setDetached(!atBottom);
   };
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    stickToBottom.current = true;
+    setDetached(false);
+  };
+
+  // Waiting for the assistant to start: show a typing indicator only when there's no phase line yet (the
+  // phase line — "Търся в данните…" — is the richer cue once it arrives). aria-hidden: the settle/status
+  // live regions own announcements, so the dots are purely visual and never spam a screen reader.
+  const last = messages[messages.length - 1];
+  const awaitingReply =
+    busy && (!last || last.role === 'user' || messageText(last) === '');
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -202,7 +229,24 @@ export const AssistantTranscript = ({
           );
         })}
         <AssistantPhaseLine phase={phase} />
+        {awaitingReply && phase === null ? (
+          <p className="assistant-transcript__typing" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </p>
+        ) : null}
       </div>
+      {detached ? (
+        <button
+          type="button"
+          className="assistant-transcript__scroll-btn"
+          aria-label="Към последното съобщение"
+          onClick={scrollToBottom}
+        >
+          {DOWN_ICON}
+        </button>
+      ) : null}
     </>
   );
 };

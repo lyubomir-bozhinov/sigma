@@ -163,6 +163,8 @@ html.assistant-ready .assistant-dock--panel {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Positioning context for the absolutely-placed "jump to latest" pill (see __scroll-btn). */
+  position: relative;
 }
 
 .assistant-transcript {
@@ -183,6 +185,69 @@ html.assistant-ready .assistant-dock--panel {
   margin: 0;
   color: var(--ink-soft);
   font-style: italic;
+}
+/* Typing indicator — three pulsing dots while the assistant is starting a reply (before any phase line). */
+.assistant-transcript__typing {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0;
+  padding: var(--s-1) 0;
+}
+.assistant-transcript__typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-soft);
+  animation: assistant-typing 1.2s ease-in-out infinite;
+}
+.assistant-transcript__typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.assistant-transcript__typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes assistant-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-transcript__typing span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+/* "Jump to latest" pill — floats bottom-centre of the message area when the reader has scrolled up. */
+.assistant-transcript__scroll-btn {
+  position: absolute;
+  bottom: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-mid);
+  cursor: pointer;
+  box-shadow: 0 1px 4px oklch(18% 0.012 70 / 0.18);
+}
+@media (hover: hover) {
+  .assistant-transcript__scroll-btn:hover {
+    color: var(--accent);
+    border-color: var(--ink-mid);
+  }
 }
 .assistant-transcript__error {
   margin: 0;
@@ -287,18 +352,32 @@ html.assistant-ready .assistant-dock--panel {
   flex-direction: column;
   gap: var(--s-2);
 }
+/* Starter prompts as tappable suggestion cards (ChatGPT/Claude style): rounded, warm-filled, with an
+   accent hover — friendlier than a plain bordered row and clearer that each is an action. */
 .assistant-empty__prompt {
   width: 100%;
   text-align: left;
   padding: var(--s-3);
   border: 1px solid var(--rule);
-  background: var(--paper);
+  border-radius: 10px;
+  background: var(--paper-warm);
   color: var(--ink);
   font: inherit;
+  line-height: 1.4;
   cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    transform 0.06s;
 }
-.assistant-empty__prompt:hover {
-  border-color: var(--ink);
+@media (hover: hover) {
+  .assistant-empty__prompt:hover {
+    border-color: var(--accent);
+    background: var(--paper);
+  }
+}
+.assistant-empty__prompt:active {
+  transform: translateY(1px);
 }
 
 .assistant-panel__error {
