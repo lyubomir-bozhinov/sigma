@@ -284,9 +284,10 @@
 
 /* The third-party accessibility launcher (.a11y-tools) is placed bottom-right, like production /flows, with
    its disclosure panel growing UPWARD from the button (see the collapse rules below). When the assistant
-   dock is open it would overlap the compose field, so on desktop we step it left of the 400px dock panel;
-   when the dock is collapsed it returns to the corner. On mobile it sits above the collapsed chat launcher
-   pill so the two don't stack.
+   dock is open on desktop we move it to the bottom-LEFT corner — the vendor menu always opens up-and-right,
+   so bottom-left makes the panel open into the free content area instead of onto the dock. When the dock is
+   collapsed it returns to the bottom-right corner. On mobile it sits above the chat launcher pill so the
+   two don't stack.
 
    CRITICAL (usability): the anchor must NOT change position when the menu opens. An earlier centred anchor
    (top:50% + translateY(-50%)) combined with the collapse changed the container height on open, recentred
@@ -311,12 +312,19 @@ html .a11y-tools {
   transform: none !important;
   transition: none !important;
 }
-/* Desktop, chat dock open: step left of the 400px dock so the launcher and its upward menu clear the
-   composer and the conversation. (The dock is the only thing on the right; when it's collapsed the widget
-   returns to the bottom-right corner.) */
+/* Desktop, chat dock open: move to the bottom-LEFT corner. The vendor menu always opens up-and-to-the-
+   right of the button, so anchoring bottom-right-of-content would throw the open panel onto the dock;
+   bottom-left makes it open into the free left content area instead — fully clear of the dock and the
+   composer. Left-anchor the button (override the vendor `left:-60px`) so it stays put when the panel opens.
+   When the dock is collapsed the widget returns to the bottom-right corner (rule above). */
 @media (min-width: 761px) {
   body:has(.assistant-dock--panel) .a11y-tools {
-    right: calc(var(--assistant-panel-w) + 12px) !important;
+    right: auto !important;
+    left: 12px !important;
+  }
+  body:has(.assistant-dock--panel) .a11y-tools__button {
+    left: 0 !important;
+    right: auto !important;
   }
 }
 /* Mobile: sit above the collapsed chat launcher pill (also bottom-right) so the two don't stack. */
