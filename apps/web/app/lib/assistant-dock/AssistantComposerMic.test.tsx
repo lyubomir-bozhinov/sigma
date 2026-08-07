@@ -67,7 +67,9 @@ describe('AssistantComposerMic', () => {
 
   it('recording: the visualizer height tracks the live level via a CSS variable', () => {
     const { container } = render(
-      <AssistantComposerMic voice={fakeVoice({ status: 'recording' }, { level: 0.8, startedAt: 1000 })} />,
+      <AssistantComposerMic
+        voice={fakeVoice({ status: 'recording' }, { level: 0.8, startedAt: 1000 })}
+      />,
     );
 
     const viz = container.querySelector<HTMLElement>('.assistant-composer__mic-viz');

@@ -388,9 +388,7 @@ describe('AssistantTranscript — chat-experience polish', () => {
     );
     const log = container.querySelector('.assistant-transcript') as HTMLElement;
     forceScrolledUp(log);
-    expect(
-      screen.getByRole('button', { name: 'Към последното съобщение' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Към последното съобщение' })).toBeInTheDocument();
 
     // Content no longer overflows → the messages effect must re-derive detachment and drop the pill,
     // even though no scroll event fired.

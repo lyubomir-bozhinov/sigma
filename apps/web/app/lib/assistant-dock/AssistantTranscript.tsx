@@ -158,8 +158,7 @@ export const AssistantTranscript = ({
   // phase line — "Търся в данните…" — is the richer cue once it arrives). aria-hidden: the settle/status
   // live regions own announcements, so the dots are purely visual and never spam a screen reader.
   const last = messages[messages.length - 1];
-  const awaitingReply =
-    busy && (!last || last.role === 'user' || messageText(last) === '');
+  const awaitingReply = busy && (!last || last.role === 'user' || messageText(last) === '');
 
   useEffect(() => {
     const el = scrollRef.current;
