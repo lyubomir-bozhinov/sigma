@@ -103,6 +103,22 @@ describe('AssistantComposer', () => {
     expect(input).toHaveFocus();
   });
 
+  it('moves focus to Stop when the turn goes busy while Send held focus', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(<AssistantComposer onSend={onSend} onStop={noop} busy={false} />);
+
+    // Activate via the Send button (mouse or keyboard on Send) rather than Enter-in-textarea, so focus is
+    // on Send when it unmounts into Stop. Without focus redirection it would fall to <body>.
+    await user.type(screen.getByLabelText('Съобщение до асистента'), 'въпрос');
+    const send = screen.getByRole('button', { name: 'Изпрати' });
+    send.focus();
+    await user.click(send);
+
+    rerender(<AssistantComposer onSend={onSend} onStop={noop} busy={true} />);
+    expect(screen.getByRole('button', { name: 'Спри' })).toHaveFocus();
+  });
+
   it('shows the Stop button while busy', () => {
     render(<AssistantComposer onSend={noop} onStop={noop} busy={true} />);
 

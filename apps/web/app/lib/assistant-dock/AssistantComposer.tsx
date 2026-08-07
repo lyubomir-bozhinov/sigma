@@ -16,7 +16,8 @@ interface AssistantComposerProps {
   onSend: (text: string) => void;
   /** Cancel the in-flight turn. */
   onStop: () => void;
-  /** A turn is in flight (status 'submitted' | 'streaming') — disable input, swap Send for Stop. */
+  /** A turn is in flight (status 'submitted' | 'streaming') — the input goes readOnly (still focusable,
+   *  so Enter-to-send doesn't eject the keyboard user) and Send swaps to Stop. */
   busy: boolean;
 }
 
@@ -63,6 +64,7 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
   const [transcriptReady, setTranscriptReady] = useState(false);
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const stopRef = useRef<HTMLButtonElement>(null);
 
   // A finished transcript appends to the draft (with a separating space). Focus deliberately STAYS on the
   // mic button — moving it to the textarea would cut off the screen-reader announcement (a11y contract).
@@ -95,6 +97,21 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
+
+  // Send and Stop swap when `busy` flips, so whichever one held focus unmounts and the browser drops
+  // focus to <body>. Redirect it to the control that replaced it (busy → Stop, idle → the textarea) so a
+  // keyboard/AT user is never ejected from the composer. The Enter-to-send path keeps focus in the
+  // readOnly textarea, so a still-focused element (activeElement ≠ <body>) is left untouched — this only
+  // rescues the case where the swap actually dropped focus. Guarded to the real busy transition (not first
+  // mount) so nothing is auto-focused on load.
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    const swapped = busyRef.current !== busy;
+    busyRef.current = busy;
+    if (!swapped || document.activeElement !== document.body) return;
+    if (busy) stopRef.current?.focus();
+    else inputRef.current?.focus();
+  }, [busy]);
 
   // One source of truth for "can this draft be sent" — reused by submit, the Send button, and Clear.
   const trimmed = text.trim();
@@ -143,7 +160,9 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
           // user — a disabled textarea drops focus to <body> on send and never restores it. readOnly keeps
           // focus in the composer; edits are still blocked, and submit() is inert while busy (canSend false).
           readOnly={busy}
-          aria-disabled={busy}
+          // `|| undefined` omits the attribute when idle — React renders aria-* booleans literally, so a
+          // bare `aria-disabled={false}` would emit aria-disabled="false" DOM noise on every idle render.
+          aria-disabled={busy || undefined}
         />
         {/* Right-aligned control cluster: the optional Clear grows in on the LEFT, so mic and the primary
             Send/Stop stay adjacent and never shift (no layout hop when Clear mounts). Clear appears only
@@ -162,6 +181,7 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
           <AssistantComposerMic voice={voice} />
           {busy ? (
             <button
+              ref={stopRef}
               type="button"
               className="assistant-composer__stop"
               onClick={onStop}
@@ -176,7 +196,8 @@ export const AssistantComposer = ({ onSend, onStop, busy }: AssistantComposerPro
               // aria-disabled (not the disabled attr) so an empty/busy draft keeps Send in the tab order —
               // a keyboard/AT user must be able to discover it. submit() is the single no-op guard (it
               // early-returns unless canSend), so the reachable-but-inert button can never send early.
-              aria-disabled={!canSend}
+              // `|| undefined` omits the attribute when enabled (no aria-disabled="false" DOM noise).
+              aria-disabled={!canSend || undefined}
               aria-label="Изпрати"
             >
               {SEND_ICON}
