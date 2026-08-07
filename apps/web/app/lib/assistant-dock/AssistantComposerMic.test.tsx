@@ -86,6 +86,17 @@ describe('AssistantComposerMic', () => {
     expect(screen.queryByRole('button', { name: 'Приключи и изпрати' })).not.toBeInTheDocument();
   });
 
+  it('recording: orders the buttons discard → stop → send (stop beside send, discard away from it)', () => {
+    const { container } = render(
+      <AssistantComposerMic voice={fakeVoice({ status: 'recording' }, { startedAt: 1000 })} />,
+    );
+
+    const labels = Array.from(container.querySelectorAll('button')).map((b) =>
+      b.getAttribute('aria-label'),
+    );
+    expect(labels).toEqual(['Откажи записа', 'Спри записа', 'Приключи и изпрати']);
+  });
+
   it('recording: the visualizer height tracks the live level via a CSS variable', () => {
     const { container } = render(
       <AssistantComposerMic

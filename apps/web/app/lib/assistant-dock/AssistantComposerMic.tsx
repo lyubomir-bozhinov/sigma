@@ -57,16 +57,19 @@ export const AssistantComposerMic = ({ voice }: AssistantComposerMicProps) => {
 
   return (
     <div className="assistant-composer__mic-group">
-      <button
-        type="button"
-        className="assistant-composer__mic"
-        aria-label={recording ? 'Спри записа' : 'Гласово въвеждане'}
-        aria-pressed={recording}
-        disabled={busy}
-        onClick={() => (recording ? stop() : start())}
-      >
-        {recording ? STOP_ICON : MIC_ICON}
-      </button>
+      {/* Recording layout: discard (destructive) on the far left — away from Send to avoid mis-taps —
+          then the timer + level meter, then the two "commit" actions grouped on the right: Stop (→ review)
+          immediately beside Приключи и изпрати (→ send). Idle: only the mic toggle renders (leftmost). */}
+      {recording ? (
+        <button
+          type="button"
+          className="assistant-composer__mic-cancel"
+          aria-label="Откажи записа"
+          onClick={() => cancel()}
+        >
+          {CANCEL_ICON}
+        </button>
+      ) : null}
       {recording ? (
         <span className="assistant-composer__mic-timer" aria-hidden="true">
           {formatElapsedTime(seconds)}
@@ -87,16 +90,16 @@ export const AssistantComposerMic = ({ voice }: AssistantComposerMicProps) => {
           ))}
         </span>
       ) : null}
-      {recording ? (
-        <button
-          type="button"
-          className="assistant-composer__mic-cancel"
-          aria-label="Откажи записа"
-          onClick={() => cancel()}
-        >
-          {CANCEL_ICON}
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="assistant-composer__mic"
+        aria-label={recording ? 'Спри записа' : 'Гласово въвеждане'}
+        aria-pressed={recording}
+        disabled={busy}
+        onClick={() => (recording ? stop() : start())}
+      >
+        {recording ? STOP_ICON : MIC_ICON}
+      </button>
       {recording ? (
         <button
           type="button"
