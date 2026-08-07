@@ -175,6 +175,9 @@ html.assistant-ready .assistant-dock--panel {
   flex-direction: column;
   gap: var(--s-4);
   padding: var(--s-4);
+  /* The container is a programmatic focus target for the jump-to-latest pill (tabIndex=-1); it's never
+     tab-reached, so a focus ring around the whole log would be noise — suppress it. */
+  outline: none;
 }
 .assistant-turn {
   display: flex;
@@ -604,7 +607,8 @@ html.a11y-textonly body:has(.assistant-dock--panel) {
   .assistant-composer__clear,
   .assistant-composer__send,
   .assistant-composer__stop,
-  .assistant-composer__mic-cancel {
+  .assistant-composer__mic-cancel,
+  .assistant-transcript__scroll-btn {
     width: 2.75rem;
     height: 2.75rem;
   }

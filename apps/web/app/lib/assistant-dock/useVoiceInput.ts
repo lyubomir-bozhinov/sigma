@@ -114,6 +114,11 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const [state, setState] = useState<VoiceState>({ status: 'idle' });
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [endingSoon, setEndingSoon] = useState(false);
+  // Deliberate tradeoff: unlike the elapsed-seconds tick (kept mic-local so it never re-renders the
+  // composer), `level` lives here, so a recording re-renders the composer at the monitor cadence (~4/s).
+  // Accepted — it's a short-lived interaction and the re-render is a no-op diff (same props on the
+  // textarea/buttons); the CSS transition smooths the coarse cadence. Lifting it to a mic-local analyser
+  // subscription would remove the re-render but cost the current simple, testable `--mic-level` wiring.
   const [level, setLevel] = useState(DEFAULT_LEVEL);
 
   const streamRef = useRef<MediaStream | null>(null);

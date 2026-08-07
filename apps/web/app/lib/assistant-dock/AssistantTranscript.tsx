@@ -148,6 +148,10 @@ export const AssistantTranscript = ({
     el.scrollTop = el.scrollHeight;
     stickToBottom.current = true;
     setDetached(false);
+    // The pill unmounts as `detached` flips false, so a keyboard user who activated it would otherwise be
+    // dropped to <body>. Move focus into the conversation region (tabIndex=-1) — the same focus-across-
+    // unmount fix the composer applies to the Send↔Stop swap.
+    el.focus();
   };
 
   // Waiting for the assistant to start: show a typing indicator only when there's no phase line yet (the
@@ -164,6 +168,12 @@ export const AssistantTranscript = ({
     // when the reader was already near the bottom, so scrolling up to read history isn't interrupted.
     const justSent = messages[messages.length - 1]?.role === 'user';
     if (justSent || stickToBottom.current) el.scrollTop = el.scrollHeight;
+    // Re-derive detachment after the content changes so the pill can't linger over a transcript that
+    // shrank back below its overflow (e.g. a shorter turn) while the reader was scrolled up. `detached`
+    // otherwise only updates on scroll events, which wouldn't fire here.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
+    stickToBottom.current = atBottom;
+    setDetached(!atBottom);
   }, [messages]);
 
   return (
@@ -178,6 +188,9 @@ export const AssistantTranscript = ({
         role="log"
         aria-live="polite"
         aria-label="Разговор с асистента"
+        // -1: not in the tab order, but a programmatic focus target for the jump-to-latest pill (so
+        // activating the pill doesn't drop a keyboard user to <body> when the pill unmounts).
+        tabIndex={-1}
       >
         {messages.map((message, index) => {
           // Withhold the result for the still-streaming (last) message: its emit_report can settle
