@@ -282,21 +282,26 @@
   }
 }
 
-/* The third-party accessibility launcher (.a11y-tools, loaded async from
-   /assets/accessibility/) pins its 50px button at `top: 420px` inside a
-   viewport-tall fixed container, so on phones it floats over the middle-right of
-   the card lists and covers the right-aligned values. Pin it to the bottom-right
-   corner on narrow screens so it clears the content; the fly-out menu still
-   anchors to the same container. `!important` beats the async widget stylesheet
-   regardless of load order. */
+/* The third-party accessibility launcher (.a11y-tools, loaded async from /assets/accessibility/) pins its
+   container bottom-right with the 50px button offset ~420px down inside it, so it floats over the assistant
+   dock's compose field. Re-anchor the container to the vertical middle of the right edge (button offset
+   neutralised) so it clears the composer; on desktop, when the dock panel is open, pull it left of the
+   400px panel so it overlaps neither the input nor the conversation. The fly-out menu anchors to the same
+   container, so it moves with it. `!important` beats the async widget stylesheet regardless of load order. */
 html .a11y-tools__button {
   background-color: var(--accent);
   border-color: var(--accent);
+  top: 0 !important;
+  bottom: auto !important;
 }
-@media (max-width: 760px) {
-  .a11y-tools__button {
-    top: auto !important;
-    bottom: 0 !important;
+html .a11y-tools {
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+}
+@media (min-width: 761px) {
+  body:has(.assistant-dock--panel) .a11y-tools {
+    right: var(--assistant-panel-w) !important;
   }
 }
 
