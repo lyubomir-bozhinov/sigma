@@ -10,7 +10,9 @@ import {
 } from '@sigma/ingest';
 import refreshSliceSql from '../../../scripts/refresh-slice.sql';
 import workStagingSchemaSql from '../../../scripts/work-staging-schema.sql';
+import { PROMPTS_CRON, REFRESH_CRON } from './crons';
 import { computeWorkerCatchupPlan, ingestBucketWindow, type CatchupPlan } from './eop';
+import { generateSuggestedPrompts } from './suggested-prompts';
 import { runServedIntegrityGate } from './integrity';
 
 export interface Env {
@@ -94,6 +96,12 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
     let results: Awaited<ReturnType<typeof ingestBucketWindow>> = [];
     let staged = 0;
     let derived = 0;
+    // The runtime logs an error ("...your Worker's code had hung...") on every *successful* instance
+    // of this Workflow, at the instant run() returns - measured across runs of 5 and 30 steps, see
+    // docs/etl.md. "No errors in the dashboard" is therefore not a health signal here, so a refresh
+    // that actually finished has to say so itself. Logged from the finally, after the staging drop,
+    // so it only ever claims success for a run that survived its own cleanup.
+    let outcome: RefreshResult | null = null;
 
     try {
       await step.do('create-transient-staging', async () =>
@@ -109,7 +117,8 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
 
       if (staged === 0) {
         console.warn(JSON.stringify({ level: 'warn', event: 'etl_zero_ingest', fetchedAt, plan }));
-        return { ...plan, days: results.length, staged: 0, derived: 0 };
+        outcome = { ...plan, days: results.length, staged: 0, derived: 0 };
+        return outcome;
       }
 
       // FX rates BEFORE the derive (#158): the CLI paths run scripts/load-fx.mjs first, but this
@@ -160,6 +169,27 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
         refreshDerivedContractCount(this.env.DB),
       );
 
+      // Keep the dock's starter chips in step with the freshly-derived slice. The weekly PROMPTS_CRON is a
+      // coarse fallback; regenerating here means the chip numbers track each 6-hourly refresh instead of
+      // lagging up to a week behind the data the assistant recomputes live. That skew is the S3 defect: a
+      // chip computed on partial data showed „140 договора за 21,6 млн €" while the live query returned
+      // 278 / 61,5 млн for the SAME window once late-arriving contracts backfilled. Best-effort — the slice
+      // is already committed, so a prompts failure is logged, not fatal to the refresh.
+      await step.do('refresh-suggested-prompts', async () => {
+        try {
+          await generateSuggestedPrompts(this.env.DB);
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_prompts_failed',
+              phase: 'refresh',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      });
+
       // Reconciliation gate (#97) on the served D1 the refresh just wrote — the CLI paths gate every
       // derive, but this steady-state path did not. POST-COMMIT alarm: the slice is already applied
       // and served, so a violation fails the step + surfaces in observability, it does not un-serve
@@ -180,17 +210,47 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
         }
       });
 
-      return { ...plan, days: results.length, staged, derived };
+      outcome = { ...plan, days: results.length, staged, derived };
+      return outcome;
     } finally {
       await step.do('drop-transient-staging', async () => dropTransientStaging(this.env.DB));
+      if (outcome) {
+        console.log(JSON.stringify({ level: 'info', event: 'etl_refresh_complete', ...outcome }));
+      }
     }
   }
 }
 
 export default {
-  // Cron entrypoint: kick one durable refresh run. No public route or HTTP trigger is configured.
-  async scheduled(_controller, env): Promise<void> {
-    const instance = await env.REFRESH.create();
-    console.log(JSON.stringify({ level: 'info', event: 'etl_scheduled_refresh', id: instance.id }));
+  // Cron entrypoint. Two triggers share this worker: the 6-hourly data refresh kicks a durable
+  // Workflow run; the weekly cron rebuilds the assistant starter prompts. Branch on the cron string
+  // (named constants above) — an unrecognised cron logs `etl_unknown_cron` rather than misrouting.
+  async scheduled(controller, env, ctx): Promise<void> {
+    if (controller.cron === PROMPTS_CRON) {
+      // Surface a failure as a structured event rather than an anonymous unhandled rejection. The job
+      // degrades safely (the prior rows stay served), so this is observability, not a fatal path.
+      ctx.waitUntil(
+        generateSuggestedPrompts(env.DB).catch((error) =>
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'etl_prompts_failed',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        ),
+      );
+      return;
+    }
+    if (controller.cron === REFRESH_CRON) {
+      const instance = await env.REFRESH.create();
+      console.log(
+        JSON.stringify({ level: 'info', event: 'etl_scheduled_refresh', id: instance.id }),
+      );
+      return;
+    }
+    console.log(
+      JSON.stringify({ level: 'warn', event: 'etl_unknown_cron', cron: controller.cron }),
+    );
   },
 } satisfies ExportedHandler<Env>;

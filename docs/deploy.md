@@ -132,6 +132,44 @@ Custom token-ът се нуждае само от тези **Account**-ниво 
 > няма отговор от Cloudflare. Затова смекчаването е **минимални scope-ове + expiry + ротация**, не
 > keyless auth. Преразгледайте, ако Cloudflare пусне OIDC.
 
+### Секрети на асистента (за всяка среда)
+
+Асистентът чете няколко secret-а от Worker binding-и (никога от `wrangler.jsonc` — те се задават с
+`wrangler secret put <ИМЕ> --env <target>` или като GitHub Environment secret, source of truth е
+секретът):
+
+- `ASSISTANT_API_KEY` — ключът към BgGPT провайдъра (през AI Gateway). Без него ендпойнтът връща 503.
+- `TURNSTILE_SECRET` — двойка на публичния `TURNSTILE_SITE_KEY`; докато не е зададен, edge gate-ът е
+  no-op (dev/preview/staging). Виж §7/§8.
+- `ASSISTANT_HMAC_KEY` — ключ за подписване на транскрипта (§9.3, [ADR-0040](adr/0040-transcript-hmac-signing.md)
+  / [ADR-0041](adr/0041-transcript-hmac-enforcement.md)). ≥256-битов случаен низ. Сървърът подписва всяко
+  свое съобщение и отхвърля всяко неавтентично при следващия ход. Това е **чисто вътрешен** ключ (никога не
+  напуска Cloudflare, няма човешка стойност), затова се провизира **автоматично от CI**, точно като
+  `LOG_IP_KEY`: `scripts/ensure-worker-secret.mjs` го генерира **само ако липсва** и го оставя непроменен при
+  redeploy (ротирането му при всеки deploy би обезсилило наведнъж всеки in-flight клиентски транскрипт).
+  Wire-нат е в `deploy.yml` (production/staging) и `preview.yml` (previews), така че на всяка среда, на която
+  асистентът е включен, ключът присъства без ръчна намеса. **Fail-closed на стабилните публични среди
+  (`production` + `staging`):** ако `ENVIRONMENT` е `production` или `staging` и ключът все пак липсва (напр.
+  CI стъпката е прескочена), ендпойнтът връща 503 — отказва да работи с непроверим транскрипт. **Ephemeral
+  preview-ите остават fail-open** (може да вървят само-UI без ключа), както и локалният dev.
+  - **Локален dev:** генерирай веднъж в `.dev.vars` (не се committ-ва):
+    ```sh
+    echo "ASSISTANT_HMAC_KEY=$(openssl rand -hex 32)" >> apps/web/.dev.vars
+    ```
+  - **Ръчен override / ротация** (иначе не е нужно — CI поема): `openssl rand -hex 32 | pnpm exec wrangler
+    secret put ASSISTANT_HMAC_KEY --env production`.
+- `ASSISTANT_HMAC_KEY_PREVIOUS` — задава се **само по време на ротация**. Verify приема и стария, и
+  новия ключ; подписва се само с текущия. Извежда се (unset) щом всички стари подписани съобщения са
+  изтекли от клиентската история (прозорец от порядъка на дни).
+
+> **`ENVIRONMENT` binding.** Fail-closed gate-ът се управлява от runtime променливата `ENVIRONMENT`
+> (не от build-константата `import.meta.env.PROD`, която е `true` и за staging). Deploy слоят
+> (`scripts/wrangler-render.mjs`) я stamp-ва per-target от GitHub Environment променливата
+> `SIGMA_ENVIRONMENT`: `production` / `staging` → fail-closed; `preview` (hard-coded в `preview.yml`) /
+> `development` (committнат default) / unset → fail-open. Т.е. на публичните среди задай `SIGMA_ENVIRONMENT`
+> = `production`/`staging`; CI stamp-ва `ENVIRONMENT` **и** провизира `ASSISTANT_HMAC_KEY` в един и същ
+> deploy, така че gate-ът е активен без ръчни стъпки.
+
 ## 1. Provisioning на D1 (за всяка среда, локално)
 
 Всяка среда получава **собствена** база. `SIGMA_D1_NAME` избира името (по подразбиране `sigma`):
@@ -183,8 +221,17 @@ domain таблиците и преизчислява rollup-ите + FTS.
 > [scripts/precompute.sql](../scripts/precompute.sql) — не изпращайте FTS съдържание през dump.
 
 > Промени в схемата след първото зареждане се прилагат out-of-band, за всяка среда:
-> `SIGMA_D1_NAME=sigma-stage wrangler d1 migrations apply sigma-stage --remote`. Деплоите не мигрират
-> и не презареждат данни.
+> `SIGMA_D1_NAME=sigma-stage wrangler d1 migrations apply sigma-stage --remote`. Деплоите **не презареждат
+> данни**.
+>
+> **Уточнение (беше неточно):** тук пишеше и „деплоите не мигрират". Вече не е вярно —
+> [deploy.yml](../.github/workflows/deploy.yml) прилага изрично `0003`, `0009` и `0010` с
+> `d1 execute --file` при всеки деплой. Причината е, че ledger-ът на wrangler на тези бази е празен
+> (базовата схема е създадена out-of-band), тъй че `d1 migrations apply` би се сблъскал с `0000`. И трите
+> са безопасни за повторно прилагане: `CREATE … IF NOT EXISTS` и, при `0010`, тригери и индекси, които
+> се пресъздават до същото състояние. Отделно от тях има и стъпки, които сондират таблицата и добавят
+> само липсващите колони — за `0002` и за колоните на анексите. Останалите схемни промени наистина си
+> остават out-of-band.
 
 ## 3. Конфигуриране на GitHub Environments
 
@@ -456,10 +503,10 @@ worker/ETL/workflow никога не се променят.
 > **Нюанс за байт-идентичността на prod.** Деплой-секцията по-горе пази prod рендера байт-идентичен,
 > когато променливите за имена са незададени. `SIGMA_D1_NAME` задава само козметичния `database_name`
 > (binding-ът е по id), а guard-ът срещу презаписване на грешния *worker* идва от
-> `SIGMA_WEB_NAME`/и т.н., не от името на базата — затова насочването на prod към `sigma-green`
-> означава просто `SIGMA_D1_NAME=sigma-green`. Дръжте един prod слот именуван `sigma` (текущата база),
-> за да остане рендерът при незададени променливи байт-идентичен до първия слотов reseed на prod;
-> партньорският слот е `sigma-green`.
+> `SIGMA_WEB_NAME`/и т.н., не от името на базата — затова насочването на prod към даден слот означава
+> просто `SIGMA_D1_NAME=<slot>` (напр. `sigma-blue`). Двата стабилни prod слота са `sigma-blue` и
+> `sigma-green` (виж таблицата по-горе); указателят `SIGMA_D1_ID` мърда между тях при суап. Няма слот
+> с име `sigma` — списъкът се държи в синхрон с `PRODUCTION_SLOTS` в `scripts/ship-related-persons.mjs`.
 
 ### Възприемане на слотовете и извеждане на старите бази от употреба
 

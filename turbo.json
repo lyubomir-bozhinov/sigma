@@ -10,6 +10,10 @@
       "dependsOn": ["^build"]
     },
     "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:golden": {
       "dependsOn": ["^build"]
     },
     "dev": {

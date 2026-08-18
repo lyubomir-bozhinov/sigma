@@ -93,18 +93,20 @@ export async function checkRollupReconciliation(runner) {
   // One combined query, not a dozen round-trips: on D1/wrangler each runner call is a process spawn,
   // so fold every reconciliation number into a single SELECT of scalar subqueries. The join clauses
   // mirror precompute's own rollups exactly (authority_totals = tenders→authorities; company_totals =
-  // bidders AND tenders; flow_pairs = tenders→authorities AND bidders); the two orphan counts are the
-  // exact structural exclusions, asserted to be 0 (normalize gives every contract a parent tender —
-  // synthetic if needed — with a non-null authority, and a bidder row).
+  // bidders AND tenders; flow_pairs = tenders→authorities AND bidders). authority_totals/company_totals
+  // exclude synthetic 'неизвестна' orphan headers (is_synthetic != 1), so their attributed sums match;
+  // flow_pairs + home_totals stay synthetic-inclusive and reconcile against inclusive sums. The two
+  // orphan counts are the exact structural exclusions, asserted to be 0 (normalize gives every contract
+  // a parent tender — synthetic if needed — with a non-null authority, and a bidder row).
   const r =
     (
       await rows(
         runner,
         'SELECT' +
           ' (SELECT COALESCE(SUM(amount_eur), 0) FROM contracts WHERE amount_eur IS NOT NULL) AS clean_total,' +
-          ' (SELECT COALESCE(SUM(c.amount_eur), 0) FROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id WHERE c.amount_eur IS NOT NULL) AS auth_attr,' +
+          ' (SELECT COALESCE(SUM(c.amount_eur), 0) FROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id WHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1) AS auth_attr,' +
           ' (SELECT COALESCE(SUM(spent_eur), 0) FROM authority_totals) AS auth_rollup,' +
-          ' (SELECT COALESCE(SUM(c.amount_eur), 0) FROM contracts c JOIN bidders b ON b.id = c.bidder_id JOIN tenders t ON t.id = c.tender_id WHERE c.amount_eur IS NOT NULL) AS bidder_attr,' +
+          ' (SELECT COALESCE(SUM(c.amount_eur), 0) FROM contracts c JOIN bidders b ON b.id = c.bidder_id JOIN tenders t ON t.id = c.tender_id WHERE c.amount_eur IS NOT NULL AND c.is_synthetic != 1) AS bidder_attr,' +
           ' (SELECT COALESCE(SUM(won_eur), 0) FROM company_totals) AS company_rollup,' +
           ' (SELECT COALESCE(SUM(c.amount_eur), 0) FROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id JOIN bidders b ON b.id = c.bidder_id WHERE c.amount_eur IS NOT NULL) AS flow_attr,' +
           ' (SELECT COALESCE(SUM(won_eur), 0) FROM flow_pairs) AS flow_rollup,' +
@@ -372,6 +374,38 @@ export async function checkStagingReconciliation(runner) {
   };
 }
 
+// 7) Amendment twin dedup (#286). The OCDS→EOP bridge lets an OCDS amendment reach the same contract as
+//    its EOP twin; the prefer-EOP dedup keeps only one per (unp, contract_number) by DELETE-ing OCDS rows
+//    before promotion — the SOLE guard, since promotion is unconditional. On the incremental path a twin
+//    can straddle windows (EOP served earlier, OCDS arriving later), so the slice dedup reconciles against
+//    the served table; this gate is the post-condition of that (and of the full path): no (unp,
+//    contract_number) may carry BOTH an EOP and an OCDS served amendment, or annex_count double-counts.
+export async function checkAmendmentTwins(runner) {
+  const name = 'amendment-twin-dedup';
+  if (!(await tableExists(runner, 'amendments')))
+    return { name, ok: true, skipped: true, detail: 'amendments table absent' };
+  const n = num(
+    await scalar(
+      runner,
+      'SELECT COUNT(*) AS n FROM (' +
+        'SELECT unp, contract_number FROM amendments ' +
+        'WHERE unp IS NOT NULL AND contract_number IS NOT NULL ' +
+        'GROUP BY unp, contract_number ' +
+        "HAVING SUM(source LIKE 'eop:%') > 0 AND SUM(source LIKE 'ocds:%') > 0)",
+      'n',
+    ),
+  );
+  return {
+    name,
+    ok: n === 0,
+    skipped: false,
+    detail:
+      n === 0
+        ? 'no (unp, contract_number) carries both an EOP and an OCDS amendment (prefer-EOP dedup intact)'
+        : `${n} (unp, contract_number) carry both an EOP and an OCDS amendment — prefer-EOP dedup regressed and annex_count double-counts (#286)`,
+  };
+}
+
 export const CHECKS = [
   checkNonEmptyCorpus,
   checkRollupReconciliation,
@@ -380,6 +414,7 @@ export const CHECKS = [
   checkEikValidity,
   checkDateSanity,
   checkStagingReconciliation,
+  checkAmendmentTwins,
 ];
 
 export async function runIntegrityChecks(runner) {
