@@ -28,12 +28,19 @@ import { createTranscriptSigner } from '../../../workers/assistant/transcript-si
 import type { AssistantHmacEnv } from '../../../workers/assistant/transcript-hmac';
 import { classifyStreamError, isGatewayRateLimit } from './stream-errors';
 import { EMIT_REPORT_TOOL, INSUFFICIENT_DATA_MESSAGE } from '../assistant-contract/stream';
-import { EMIT_REPORT_JSON_SCHEMA } from './emit-report-schema';
 import { ASSISTANT_TOOLS, finalizeReport, type ToolContext } from './tools';
 import { buildFallbackReport } from './report-fallback';
-import { verifyReport, type GenerateFn, type VerificationOutcome } from './verifier';
-import type { ResolvedReport } from './report-schema';
-import type { TemporalContext } from './temporal';
+import {
+  EMIT_REPORT_JSON_SCHEMA,
+  verifyReport,
+  buildStoredReport,
+  persistReport as persistStoredReport,
+  type GenerateFn,
+  type VerificationOutcome,
+  type ResolvedReport,
+  type TemporalContext,
+  type SourceFreshness,
+} from '@sigma/report';
 
 export interface AgentEnv {
   /** Provider API key (BgGPT/mamay today). SECRET — `wrangler secret put ASSISTANT_API_KEY`. */
@@ -215,20 +222,27 @@ function hasBareNumbers(text: string): boolean {
 // Rows with any other value are silently dropped rather than leaking an internal bucket name.
 const KNOWN_FRESHNESS_SOURCES = new Set(['admin', 'ocds', 'eop'] as const);
 
-async function fetchFreshness(db: D1Database): Promise<{ source: string; asOf: string }[]> {
+async function fetchFreshness(db: D1Database): Promise<SourceFreshness[]> {
   try {
     const { results } = await db
       .prepare('SELECT source, as_of FROM data_freshness WHERE as_of IS NOT NULL')
       .all<{ source: string; as_of: string }>();
     return (results ?? [])
       .filter((r) => KNOWN_FRESHNESS_SOURCES.has(r.source as 'admin' | 'ocds' | 'eop'))
-      .map((r) => ({ source: r.source, asOf: r.as_of }));
+      .map((r) => ({ source: r.source as 'admin' | 'ocds' | 'eop', asOf: r.as_of }));
   } catch {
     return [];
   }
 }
 
-/** Persist a resolved report to R2 and return its id + createdAt. Returns null on any write failure. */
+/**
+ * Persist a resolved report to R2 and return its id + createdAt. Returns null on any write failure.
+ *
+ * Chat-coupled wrapper around `@sigma/report`'s pure `buildStoredReport` + `persistReport` (#167A
+ * T1 decouple) — this function owns the chat-turn concerns (`ToolContext`, `randomReportId()`, the
+ * `report/{id}.json` key, error swallowing); the shared package owns the `StoredReport` shape and
+ * the R2 write itself, so the ETL weekly-digest producer can reuse both without a `ToolContext`.
+ */
 export async function persistReport(
   ctx: ToolContext,
   report: ResolvedReport,
@@ -237,42 +251,31 @@ export async function persistReport(
 ): Promise<{ reportId: string; createdAt: string } | null> {
   if (!ctx.reports) return null;
   const id = randomReportId();
-  const stored = {
-    schemaVersion: 1,
+  const stored = buildStoredReport({
     id,
-    createdAt: new Date().toISOString(),
     report,
-    provenance: {
-      question: ctx.userQuestion ?? '',
-      sources: ctx.sources,
-      snapshot: ctx.results,
-      freshness: await fetchFreshness(ctx.db),
-      model: modelId,
-      promptVersion: PROMPT_VERSION,
-      // Role-④ audit trail (additive — absent on pre-verifier reports): what the verifier decided and
-      // which claim ids it stripped/flagged, so a published report's missing prose is explainable.
-      ...(verification
-        ? {
-            verification: {
-              status: verification.status,
-              strippedClaimIds: verification.strippedClaimIds,
-              uncertainClaimIds: verification.uncertainClaimIds,
-              // Diagnostic-only; server-side audit trail (report.tsx strips provenance before hydration).
-              ...(verification.errors ? { errors: verification.errors } : {}),
-            },
-          }
-        : {}),
-    },
-  };
+    question: ctx.userQuestion ?? '',
+    sources: ctx.sources,
+    snapshot: ctx.results,
+    freshness: await fetchFreshness(ctx.db),
+    model: modelId,
+    promptVersion: PROMPT_VERSION,
+    // Role-④ audit trail (additive — absent on pre-verifier reports): what the verifier decided and
+    // which claim ids it stripped/flagged, so a published report's missing prose is explainable.
+    ...(verification
+      ? {
+          verification: {
+            status: verification.status,
+            strippedClaimIds: verification.strippedClaimIds,
+            uncertainClaimIds: verification.uncertainClaimIds,
+            // Diagnostic-only; server-side audit trail (report.tsx strips provenance before hydration).
+            ...(verification.errors ? { errors: verification.errors } : {}),
+          },
+        }
+      : {}),
+  });
   try {
-    await ctx.reports.put(`report/${id}.json`, JSON.stringify(stored), {
-      httpMetadata: { contentType: 'application/json' },
-      customMetadata: {
-        title: report.title,
-        question: ctx.userQuestion ?? '',
-        createdAt: stored.createdAt,
-      },
-    });
+    await persistStoredReport(ctx.reports, `report/${id}.json`, stored);
     return { reportId: id, createdAt: stored.createdAt };
   } catch (err) {
     console.error('[assistant] failed to persist report to R2', err);

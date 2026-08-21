@@ -19,6 +19,7 @@
     "@sigma/api-contract": "workspace:*",
     "@sigma/config": "workspace:*",
     "@sigma/db": "workspace:*",
+    "@sigma/report": "workspace:*",
     "@sigma/shared": "workspace:*",
     "ai": "6.0.208",
     "docx": "^9.7.1",
