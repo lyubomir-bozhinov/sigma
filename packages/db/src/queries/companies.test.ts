@@ -366,13 +366,16 @@ describe('streamCompaniesCsv masking', () => {
   });
 });
 
-describe('listCompanies source() projection — legal_form only when needed (PR #183 review T-007)', () => {
-  // The listCompanies hot path returns CompanyListItem via toCompanyListItem, which does not read
-  // legal_form. Projecting `b.legal_form AS legal_form` plus the LEFT JOIN on every list query is
-  // wasted work. Only the CSV streamer needs legal_form (for the natural-person masker). The
-  // unfiltered rollup subquery must therefore omit the join + projection on the list path but
-  // keep them on the CSV path. (The base-aggregation CTE is shared and must project legal_form
-  // because the CSV path may go through it too.)
+describe('listCompanies source() projection — legal_form is required for masking (PR #183)', () => {
+  // PR #183 taught `toCompanyListItem` to mask sole traders on `r.legal_form`, and `COLS` selects
+  // `legal_form`. `company_totals` has no `legal_form` column, so the rollup source MUST LEFT JOIN
+  // `bidders` and project `b.legal_form AS legal_form` on the LIST path too — not only on the CSV
+  // path. The earlier "omit the join on the list path as a perf optimisation" intent was invalidated
+  // by the masking change: without the projection the unfiltered `/companies` query references a
+  // non-existent column and D1 500s the whole leaderboard (and its `.data` twin). A mock DB that
+  // only captures SQL strings never executes the query, so this class of break is invisible to the
+  // unit lane — it is asserted end-to-end in the integration lane
+  // (`test/integration/privacy-noindex-data.test.ts`).
   function spySqlDb(): { db: D1Database; sql: string[] } {
     const db = fakeDb();
     const sql: string[] = [];
@@ -384,13 +387,13 @@ describe('listCompanies source() projection — legal_form only when needed (PR 
     return { db, sql };
   }
 
-  it('omits LEFT JOIN bidders in the rollup subquery on the listCompanies path (no legal_form needed)', async () => {
+  it('keeps LEFT JOIN bidders + b.legal_form projection in the rollup subquery on the listCompanies path (masking needs it)', async () => {
     const { db, sql } = spySqlDb();
     await listCompanies(db, {});
     const rollupQueries = sql.filter((q) => q.includes('company_totals') && q.includes('FROM ('));
     expect(rollupQueries.length).toBeGreaterThan(0);
-    expect(rollupQueries.every((q) => !q.includes('LEFT JOIN bidders'))).toBe(true);
-    expect(rollupQueries.every((q) => !q.includes('b.legal_form AS legal_form'))).toBe(true);
+    expect(rollupQueries.some((q) => q.includes('LEFT JOIN bidders'))).toBe(true);
+    expect(rollupQueries.some((q) => q.includes('b.legal_form AS legal_form'))).toBe(true);
   });
 
   it('keeps LEFT JOIN bidders + b.legal_form projection in the rollup subquery on the streamCompaniesCsv path', async () => {

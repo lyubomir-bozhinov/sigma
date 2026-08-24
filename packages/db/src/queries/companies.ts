@@ -166,7 +166,13 @@ export async function listCompanies(
 ): Promise<Page<CompanyListItem>> {
   const sort = SORTS[p.sort as keyof typeof SORTS] ?? SORTS['won'];
   const pageSize = p.pageSize ?? 25;
-  const src = source(p); // legal_form not needed — toCompanyListItem drops it
+  // `toCompanyListItem` masks sole traders on `r.legal_form` (PR #183), and `COLS` selects
+  // `legal_form`, so the rollup source MUST project it — `company_totals` has no `legal_form`
+  // column, so without the `{ legalForm: true }` LEFT JOIN on `bidders` the unfiltered list query
+  // references a non-existent column and D1 500s the whole `/companies` leaderboard (and its
+  // `.data` twin). The join is by primary key (`b.id = ct.bidder_id`), so it does not change the
+  // row set or the count.
+  const src = source(p, { legalForm: true });
   const ew = entityWhere(p);
   const signature = companyFilterSignature(p);
   const ks = keyset({
