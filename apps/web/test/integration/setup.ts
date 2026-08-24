@@ -108,6 +108,24 @@ export async function appFetch(request: Request): Promise<Response> {
   return app.default.fetch(request, proxy.env, proxy.ctx);
 }
 
+/**
+ * Seed extra rows into THIS worker's shared D1 (the same DB `appFetch` reads through). Bootstraps
+ * the proxy first (migrations + base fixtures) if it has not booted yet, then execs each statement
+ * in order. Vitest runs each test file in its own worker process with its own proxy, so rows seeded
+ * here are visible only to `appFetch` calls from the same file — they never perturb other lanes.
+ */
+export async function seedRows(statements: readonly string[]): Promise<void> {
+  const proxy = await getProxy();
+  // `DB.exec` treats each newline as a statement boundary, so a multi-line statement errors with
+  // "incomplete input". Route every statement through the same string-aware collapser the migration
+  // seeder uses (`stripSqlCommentsAndCollapse`) so callers can write readable multi-line SQL.
+  for (const stmt of statements) {
+    for (const collapsed of stripSqlCommentsAndCollapse(stmt)) {
+      await proxy.env.DB.exec(collapsed);
+    }
+  }
+}
+
 /** Reset the memoised worker import. Test-only escape hatch. */
 export function __resetSigmaAppForTesting(): void {
   appPromise = null;
