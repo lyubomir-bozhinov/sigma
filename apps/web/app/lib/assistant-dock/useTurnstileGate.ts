@@ -1,20 +1,20 @@
 import { useEffect } from 'react';
 import { setTurnstileMinter } from './turnstile-token';
 
-// Mounts the invisible Cloudflare Turnstile widget and registers an execute-per-send token minter.
-// No-op without a site key (dev/preview/staging that haven't provisioned Turnstile) — the server gate
-// is a no-op there too, so the assistant works unchanged.
+// EXPERIMENT (do not merge as-is): a VISIBLE "Managed" Turnstile widget instead of the invisible
+// `execution:'execute'` one. The invisible widget forces Turnstile's Private-Access-Token path, which
+// in Firefox fetches from the IPv6-only `brunhild.challenges.cloudflare.com` and 401s on IPv6-less
+// networks (no token → the gate 403s the chat). A visible Managed widget has an interactive fallback,
+// so it doesn't dead-end on PAT. See docs/turnstile-firefox-pat-ipv6.md.
 //
-// Execution mode `'execute'`: the widget does nothing on render; we call `turnstile.execute()` before
-// each send to mint a FRESH single-use token (reset() first, so a prior token never lingers). Browser-
-// only + Cloudflare-hosted — verified manually on a preview with real/test keys, not in unit tests.
+// Token model changes with it: a Managed widget solves once on render (callback delivers a token); the
+// minter hands that token over and reset()s to pre-solve the next one. No-op without a site key.
 
 const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-const EXECUTE_TIMEOUT_MS = 8000;
+const MINT_TIMEOUT_MS = 8000;
 
 interface TurnstileApi {
   render(el: HTMLElement, opts: Record<string, unknown>): string;
-  execute(id: string): void;
   reset(id: string): void;
   remove(id: string): void;
 }
@@ -52,45 +52,68 @@ export function useTurnstileGate(siteKey?: string | null): void {
     let container: HTMLDivElement | null = null;
     let cancelled = false;
 
-    // A single in-flight mint at a time (sends are sequential). `resolve`/`timer` are shared between the
-    // widget's render callbacks (below) and the minter so either path settles the same pending promise.
+    // A Managed widget pre-solves and holds one token. `currentToken` is the ready-to-use one; a single
+    // waiter (`resolve`/`timer`) covers the case where a send arrives before the first solve completes.
+    let currentToken: string | null = null;
     let resolve: ((token: string | null) => void) | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const settle = (token: string | null) => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-      const r = resolve;
-      resolve = null;
-      r?.(token);
+
+    const deliver = (token: string | null) => {
+      if (resolve) {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        const r = resolve;
+        resolve = null;
+        r?.(token); // hand straight to the waiting send (single-use — don't also cache it)
+        return;
+      }
+      currentToken = token; // no waiter yet → cache the pre-solved token for the next send
     };
 
     loadTurnstileScript()
       .then(() => {
         if (cancelled || !window.turnstile) return;
         container = document.createElement('div');
-        container.style.display = 'none';
+        // EXPERIMENT: render it visibly (fixed, bottom-left) so the Managed challenge can show its
+        // interactive fallback instead of dead-ending on the PAT path.
+        container.style.position = 'fixed';
+        container.style.bottom = '12px';
+        container.style.left = '12px';
+        container.style.zIndex = '2147483647';
         document.body.appendChild(container);
         widgetId = window.turnstile.render(container, {
           sitekey: siteKey,
-          execution: 'execute',
-          callback: (token: string) => settle(token),
-          'error-callback': () => settle(null),
-          'expired-callback': () => settle(null),
-          'timeout-callback': () => settle(null),
+          callback: (token: string) => deliver(token),
+          'error-callback': () => deliver(null),
+          'expired-callback': () => {
+            currentToken = null;
+          },
+          'timeout-callback': () => deliver(null),
         });
 
         setTurnstileMinter(
           () =>
             new Promise<string | null>((res) => {
               if (!widgetId || !window.turnstile || resolve) return res(null);
-              resolve = res;
-              timer = setTimeout(() => settle(null), EXECUTE_TIMEOUT_MS);
-              try {
-                window.turnstile.reset(widgetId);
-                window.turnstile.execute(widgetId);
-              } catch {
-                settle(null);
+              // Pre-solved token ready → use it, then reset() to pre-solve the next one.
+              if (currentToken) {
+                const t = currentToken;
+                currentToken = null;
+                try {
+                  window.turnstile.reset(widgetId);
+                } catch {
+                  /* ignore */
+                }
+                return res(t);
               }
+              // Not solved yet (first solve in flight, or re-solving) → wait for the next callback.
+              resolve = res;
+              timer = setTimeout(() => {
+                const r = resolve;
+                resolve = null;
+                timer = null;
+                r?.(null);
+              }, MINT_TIMEOUT_MS);
             }),
         );
       })
@@ -101,7 +124,12 @@ export function useTurnstileGate(siteKey?: string | null): void {
     return () => {
       cancelled = true;
       setTurnstileMinter(null);
-      settle(null);
+      if (timer) clearTimeout(timer);
+      if (resolve) {
+        const r = resolve;
+        resolve = null;
+        r(null);
+      }
       if (widgetId && window.turnstile) {
         try {
           window.turnstile.remove(widgetId);
