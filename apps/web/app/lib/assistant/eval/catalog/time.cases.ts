@@ -11,7 +11,10 @@ export const cases: CaseDef[] = [
   {
     id: 'time-spend-2020-today',
     prompt: 'Как се разпределят разходите по години от 2020 до днес?',
-    checks: [reportPresent(), contentIncludes('2025')],
+    // reportText scores only STRING fields (labels/periods/prose), never numeric values — so a bare
+    // „2025" cannot match a money figure, but it does match inside a longer digit string such as a
+    // YYYYMM period label („202501"). Require it as a standalone year token.
+    checks: [reportPresent(), contentIncludes('(^|[^0-9])2025([^0-9]|$)')],
     baseline: 'pass',
     dataVersion: V,
   }, // Q5

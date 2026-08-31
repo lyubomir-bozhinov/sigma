@@ -56,7 +56,8 @@ export function numeric(opts: { expect: number; tolerancePct: number; metric?: s
 }
 
 /** The series blocks (bar/timeseries/flows points) must sum to the `totalMetric` totals item within
- *  tolerance — top-N parts vs the stated grand total (Q6/Q11/Q23). */
+ *  tolerance — top-N parts vs the stated grand total (Q11/Q23). Not Q6: that fix was the ABSENCE of a
+ *  grand-total headline, and this check fails when no total item matches, so it cannot express it. */
 export function reconciles(opts: { totalMetric: string; tolerancePct: number }): Check {
   return { kind: 'reconciles', ...opts };
 }

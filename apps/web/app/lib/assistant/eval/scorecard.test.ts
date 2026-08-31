@@ -40,6 +40,32 @@ describe('evaluateCase', () => {
     expect(r.regressed).toBe(false);
   });
 
+  it('flags a regression when a warn-baselined case declines to fail', () => {
+    const r = evaluateCase({
+      case: kase({
+        id: 'w2f',
+        checks: [numeric({ expect: 1, tolerancePct: 1 })],
+        baseline: 'warn',
+      }),
+      run: answered(999),
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.regressed).toBe(true);
+  });
+
+  it('does not flag a case that improves on its baseline', () => {
+    const r = evaluateCase({
+      case: kase({
+        id: 'f2p',
+        checks: [numeric({ expect: 5, tolerancePct: 1 })],
+        baseline: 'fail',
+      }),
+      run: answered(5),
+    });
+    expect(r.verdict).toBe('pass');
+    expect(r.regressed).toBe(false);
+  });
+
   it('fail when every check fails', () => {
     const r = evaluateCase({
       case: kase({ id: 'b', checks: [numeric({ expect: 1, tolerancePct: 1 })] }),

@@ -1,7 +1,14 @@
 // Top-N & reconciliation — leaderboards + flows (eval Q6, 8, 9, 10, 11, 31, 33). The Q6/Q11 fix was
 // "top-N list, no spurious grand-total headline"; Q33 had a raw LaTeX artifact in the title.
 
-import { contentExcludes, contentIncludes, numeric, reportPresent, type CaseDef } from './_schema';
+import {
+  contentExcludes,
+  contentIncludes,
+  numeric,
+  reconciles,
+  reportPresent,
+  type CaseDef,
+} from './_schema';
 
 const V = 'dev-2026-07';
 
@@ -10,6 +17,8 @@ export const cases: CaseDef[] = [
     id: 'topn-authorities-spend',
     prompt: 'Кои са 10-те най-големи възложители по похарчена сума?',
     // Q6: top-10 table, no grand-total headline; top authority ≈ 4,59 млрд €.
+    // NOT reconciles(): the Q6 fix was the ABSENCE of a grand total, and reconciles() fails when no
+    // total item is found — it cannot express „no spurious total". Q11/Q23 below carry a real total.
     checks: [reportPresent(), numeric({ expect: 4_590_000_000, tolerancePct: 8 })],
     baseline: 'pass',
     dataVersion: V,
@@ -17,8 +26,14 @@ export const cases: CaseDef[] = [
   {
     id: 'topn-companies-won',
     prompt: 'Кои са 10-те компании с най-много спечелени поръчки по стойност?',
-    // Q11: the top-10 total reconciles to 7,31 млрд € (matches the homepage top-10).
-    checks: [reportPresent(), numeric({ expect: 7_310_000_000, tolerancePct: 6 })],
+    // Q11: the top-10 total reconciles to 7,31 млрд € (matches the homepage top-10). reconciles()
+    // is the actual guard for that claim — the bar points must sum to the stated total, so a
+    // top-N list carrying a total it does not add up to fails here.
+    checks: [
+      reportPresent(),
+      numeric({ expect: 7_310_000_000, tolerancePct: 6 }),
+      reconciles({ totalMetric: 'общо', tolerancePct: 6 }),
+    ],
     baseline: 'pass',
     dataVersion: V,
   }, // Q11

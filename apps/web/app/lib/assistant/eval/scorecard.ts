@@ -16,7 +16,7 @@ export interface CaseResult {
   category: string;
   verdict: Verdict;
   baseline?: Verdict;
-  /** True when this case anchored a passing baseline but no longer passes — the signal that matters. */
+  /** True when the verdict is WORSE than the baseline it anchors to — including warn → fail. */
   regressed: boolean;
   passed: number;
   total: number;
@@ -24,7 +24,11 @@ export interface CaseResult {
   failures: string[];
 }
 
-/** All checks pass → pass; none pass → fail; a partial (or a case with no checks) → warn. */
+/** Rank so a regression is any DOWNGRADE against the baseline, not just a fall from `pass`: a
+ *  `warn`-baselined case declining to `fail` is a real degradation and must not read as steady state. */
+const RANK: Record<Verdict, number> = { fail: 0, warn: 1, pass: 2 };
+
+/** All checks pass → pass; none pass → fail; a partial → warn. (The loader rejects an empty check set.) */
 export function evaluateCase({ case: c, run }: CaseRun): CaseResult {
   // Score each check defensively: a scorer that throws on a malformed report becomes one failed check,
   // never an exception that aborts the whole scorecard run.
@@ -47,7 +51,7 @@ export function evaluateCase({ case: c, run }: CaseRun): CaseResult {
     category: c.category,
     verdict,
     baseline: c.baseline,
-    regressed: c.baseline === 'pass' && verdict !== 'pass',
+    regressed: c.baseline !== undefined && RANK[verdict] < RANK[c.baseline],
     passed,
     total,
     failures: results.filter((r) => !r.pass).map((r) => r.detail),

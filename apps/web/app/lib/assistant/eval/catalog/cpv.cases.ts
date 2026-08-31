@@ -1,7 +1,14 @@
 // CPV / sector — the theme→division trap (eval Q21–25, 47). „здравеопазване" = CPV 33 (+85), never 38
 // (lab) or 31 (electrical). Scored on the answer: the right total and the absence of the wrong labels.
 
-import { contentExcludes, contentIncludes, numeric, reportPresent, type CaseDef } from './_schema';
+import {
+  contentExcludes,
+  contentIncludes,
+  numeric,
+  reconciles,
+  reportPresent,
+  type CaseDef,
+} from './_schema';
 
 const V = 'dev-2026-07';
 
@@ -9,7 +16,12 @@ export const cases: CaseDef[] = [
   {
     id: 'cpv-top-sector',
     prompt: 'В кой сектор (CPV) отиват най-много средства?',
-    checks: [contentIncludes('45'), numeric({ expect: 19_400_000_000, tolerancePct: 6 })],
+    // „45" alone matches those digits anywhere in a string label — „Обособена позиция 45/2" satisfies
+    // it without the answer naming sector 45 at all. Anchor it to the sector LABEL.
+    checks: [
+      contentIncludes('Сектор 45|45[^0-9]{0,3}[Сс]троителств'),
+      numeric({ expect: 19_400_000_000, tolerancePct: 6 }),
+    ],
     baseline: 'pass',
     dataVersion: V,
   }, // Q21 — сектор 45 (строителство), 19,4 млрд €
@@ -23,7 +35,13 @@ export const cases: CaseDef[] = [
   {
     id: 'cpv-construction-leaders',
     prompt: 'Кои са водещите изпълнители в строителството?',
-    checks: [reportPresent(), numeric({ expect: 17_900_000_000, tolerancePct: 8 })],
+    // Q23: the leaders are parts of the stated construction total — reconciles() holds the list to
+    // that total, the regression this scorer exists for.
+    checks: [
+      reportPresent(),
+      numeric({ expect: 17_900_000_000, tolerancePct: 8 }),
+      reconciles({ totalMetric: 'общо', tolerancePct: 8 }),
+    ],
     baseline: 'pass',
     dataVersion: V,
   }, // Q23

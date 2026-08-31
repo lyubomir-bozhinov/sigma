@@ -23,9 +23,11 @@ export const cases: CaseDef[] = [
   {
     id: 'headline-authorities-bidders',
     prompt: 'Колко възложителя и колко изпълнителя има?',
+    // Both counts live in the same totals block, so unanchored they cross-satisfy: a swapped answer
+    // (17 540 възложителя / 4 449 изпълнителя) would pass both. `metric` pins each to its own label.
     checks: [
-      numeric({ expect: 4_449, tolerancePct: 3 }),
-      numeric({ expect: 17_540, tolerancePct: 3 }),
+      numeric({ expect: 4_449, tolerancePct: 3, metric: 'възложител' }),
+      numeric({ expect: 17_540, tolerancePct: 3, metric: 'изпълнител' }),
     ],
     baseline: 'pass',
     dataVersion: V,

@@ -26,6 +26,7 @@ export const cases: CaseDef[] = [
       contentExcludes('Пътна инфраструктура'),
     ],
     baseline: 'fail',
+    dataVersion: V,
     knownLimitation: 'Гео-класификацията беше ненадеждна (Q41); проверяваме симптома в отговора.',
   },
 ];

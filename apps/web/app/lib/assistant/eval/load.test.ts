@@ -5,9 +5,11 @@ import { assembleCases, categoryOf } from './load';
 
 const geo: CaseDef[] = [
   { id: 'geo-1', prompt: 'q1', checks: [numeric({ expect: 1, tolerancePct: 1 })] },
-  { id: 'geo-2', prompt: 'q2', checks: [] },
+  { id: 'geo-2', prompt: 'q2', checks: [numeric({ expect: 1, tolerancePct: 1 })] },
 ];
-const cpv: CaseDef[] = [{ id: 'cpv-1', prompt: 'q3', checks: [] }];
+const cpv: CaseDef[] = [
+  { id: 'cpv-1', prompt: 'q3', checks: [numeric({ expect: 1, tolerancePct: 1 })] },
+];
 
 describe('assembleCases', () => {
   it('flattens groups and stamps the category from the group', () => {
@@ -22,11 +24,23 @@ describe('assembleCases', () => {
     ]);
   });
 
+  it('throws on a case with no checks (a pass baseline would regress forever)', () => {
+    expect(() =>
+      assembleCases([{ category: 'geo', defs: [{ id: 'empty', prompt: 'q', checks: [] }] }]),
+    ).toThrowError('eval case has no checks: geo.cases.ts / empty');
+  });
+
   it('throws on a duplicate id across the whole corpus', () => {
     expect(() =>
       assembleCases([
-        { category: 'geo', defs: [{ id: 'dup', prompt: 'a', checks: [] }] },
-        { category: 'cpv', defs: [{ id: 'dup', prompt: 'b', checks: [] }] },
+        {
+          category: 'geo',
+          defs: [{ id: 'dup', prompt: 'a', checks: [numeric({ expect: 1, tolerancePct: 1 })] }],
+        },
+        {
+          category: 'cpv',
+          defs: [{ id: 'dup', prompt: 'b', checks: [numeric({ expect: 1, tolerancePct: 1 })] }],
+        },
       ]),
     ).toThrowError('duplicate eval case id: dup');
   });
@@ -35,13 +49,21 @@ describe('assembleCases', () => {
     const [only] = assembleCases([
       {
         category: 'honesty',
-        defs: [{ id: 'h1', prompt: 'p', checks: [], baseline: 'fail', knownLimitation: 'annexes' }],
+        defs: [
+          {
+            id: 'h1',
+            prompt: 'p',
+            checks: [numeric({ expect: 1, tolerancePct: 1 })],
+            baseline: 'fail',
+            knownLimitation: 'annexes',
+          },
+        ],
       },
     ]);
     expect(only).toEqual({
       id: 'h1',
       prompt: 'p',
-      checks: [],
+      checks: [numeric({ expect: 1, tolerancePct: 1 })],
       baseline: 'fail',
       knownLimitation: 'annexes',
       category: 'honesty',

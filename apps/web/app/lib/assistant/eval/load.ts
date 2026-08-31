@@ -21,6 +21,12 @@ export function assembleCases(groups: CaseGroup[]): EvalCase[] {
       if (!def || typeof def.id !== 'string' || !def.id || !Array.isArray(def.checks)) {
         throw new Error(`malformed eval case in ${category}.cases.ts: ${JSON.stringify(def)}`);
       }
+      // A case with no checks scores `warn` by definition, so a 'pass' baseline would read as a permanent
+      // regression that no accuracy change can clear. That is a configuration error, not a finding —
+      // reject it at load rather than let it sit in the scorecard forever.
+      if (def.checks.length === 0) {
+        throw new Error(`eval case has no checks: ${category}.cases.ts / ${def.id}`);
+      }
       if (seen.has(def.id)) throw new Error(`duplicate eval case id: ${def.id}`);
       seen.add(def.id);
       out.push({ ...def, category });
