@@ -26,7 +26,11 @@ describe('mapSectorWord', () => {
     expect(r.ambiguous).toBe(false);
   });
 
-  it('maps a category word to multiple divisions with ambiguous: true', () => {
+  // Named in the title, like every sibling: this IS the „инфраструктура" coverage — a renamed or
+  // removed @sigma/config key fails the toEqual below. It stays a dedicated test rather than a row in
+  // the it.each table because it asserts more than the table does (ambiguous + callout, not just the
+  // divisions); it was read as missing several times when the title said only „a category word".
+  it('maps „инфраструктура" to its exact divisions, with ambiguous: true', () => {
     const r = mapSectorWord('инфраструктура');
     expect(r.matchType).toBe('category');
     expect(r.divisions).toEqual(['45', '44', '43', '71']);
@@ -40,6 +44,8 @@ describe('mapSectorWord', () => {
     expect(r.divisions).toEqual(['33', '85']);
   });
 
+  // „инфраструктура" and „здравеопазване" are NOT absent here — each has a dedicated test above that
+  // pins the same exact divisions plus its own extra assertions. Do not add them as rows too.
   it.each([
     ['ит', ['48', '72', '30', '32', '64']],
     ['софтуер', ['48', '72', '30', '32', '64']],
