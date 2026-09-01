@@ -8,7 +8,9 @@ import { sharedCoverage } from '../../vitest.shared';
 // Convention: a component/hook test must be named *.test.tsx. Mis-named *.test.ts, it runs under node and
 // fails loudly (no `document`/`render`) — a self-correcting mistake, not a silent pass.
 // The golden replay suite (*.golden.test.ts) is isolated to its own task (vitest.golden.config.ts), so the
-// node project excludes it here to keep `pnpm test` and `pnpm test:golden` separate.
+// node project excludes it here to keep `pnpm test` and `pnpm test:golden` separate. The live accuracy
+// lane (*.eval-live.test.ts) is likewise isolated to vitest.eval.config.ts and excluded here so `pnpm
+// test` never hits the model.
 //
 // Coverage exclude extends the shared preset: the assistant ships a large data corpus under app/** —
 // the golden replay fixtures (app/lib/assistant/golden/fixtures/*.json) and R2 report fixtures — which
@@ -27,7 +29,11 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['app/**/*.test.ts', 'workers/**/*.test.ts'],
-          exclude: [...configDefaults.exclude, 'app/**/*.golden.test.ts'],
+          exclude: [
+            ...configDefaults.exclude,
+            'app/**/*.golden.test.ts',
+            'app/**/*.eval-live.test.ts',
+          ],
         },
       },
       {

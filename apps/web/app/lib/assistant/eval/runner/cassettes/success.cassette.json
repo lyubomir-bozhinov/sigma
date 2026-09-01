@@ -1,0 +1,38 @@
+{
+  "note": "Client-wire success turn (post phase-filter): a totals report of 52,1 млрд €.",
+  "status": 200,
+  "chunks": [
+    { "type": "start" },
+    { "type": "text-start", "id": "t0" },
+    { "type": "text-delta", "id": "t0", "delta": "Изчислявам общата стойност…" },
+    { "type": "text-end", "id": "t0" },
+    { "type": "data-phase", "data": { "phase": "querying" } },
+    { "type": "data-phase", "data": { "phase": "composing" } },
+    {
+      "type": "tool-input-available",
+      "toolCallId": "c2",
+      "toolName": "emit_report",
+      "input": { "title": "Обща стойност", "question": "Каква е общата стойност?", "blocks": [] }
+    },
+    {
+      "type": "tool-output-available",
+      "toolCallId": "c2",
+      "output": {
+        "ok": true,
+        "report": {
+          "title": "Обща стойност на обществените поръчки",
+          "question": "Каква е общата стойност на всички обществени поръчки?",
+          "watermark": "ai-generated",
+          "blocks": [
+            {
+              "type": "totals",
+              "items": [{ "label": "Обща стойност", "value": 52100000000, "format": "money" }]
+            }
+          ]
+        }
+      }
+    },
+    { "type": "data-report-ready", "data": { "reportId": "r_abc", "title": "Обща стойност" } },
+    { "type": "finish" }
+  ]
+}

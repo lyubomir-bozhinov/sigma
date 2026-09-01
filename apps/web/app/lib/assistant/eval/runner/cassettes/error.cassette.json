@@ -1,0 +1,5 @@
+{
+  "note": "Provider failure (Q17/Q19 class before the fix): HTTP 500, no report.",
+  "status": 500,
+  "chunks": [{ "type": "start" }, { "type": "error", "errorText": "maximum context length" }]
+}
